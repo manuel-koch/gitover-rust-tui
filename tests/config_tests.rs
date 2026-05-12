@@ -10,8 +10,6 @@ use tempfile::tempdir;
 fn config_default_has_no_git_override() {
     let cfg = Config::default();
     assert!(cfg.general.git.is_none());
-    assert!(cfg.repo_commands.is_empty());
-    assert!(cfg.status_commands.is_empty());
 }
 
 #[test]
@@ -30,22 +28,6 @@ fn config_load_git_override() {
     fs::write(&path, "general:\n  git: /usr/local/bin/git\n").unwrap();
     let cfg = Config::load_from(&path);
     assert_eq!(cfg.general.git.as_deref(), Some("/usr/local/bin/git"));
-}
-
-#[test]
-fn config_load_repo_commands() {
-    let tmp = tempdir().unwrap();
-    let path = tmp.path().join("config.yaml");
-    fs::write(
-        &path,
-        "repo_commands:\n  - cmd: \"echo hello\"\n    name: hello\n    title: Say Hello\n",
-    )
-    .unwrap();
-    let cfg = Config::load_from(&path);
-    assert_eq!(cfg.repo_commands.len(), 1);
-    assert_eq!(cfg.repo_commands[0].cmd, "echo hello");
-    assert_eq!(cfg.repo_commands[0].name, "hello");
-    assert_eq!(cfg.repo_commands[0].title, "Say Hello");
 }
 
 #[test]

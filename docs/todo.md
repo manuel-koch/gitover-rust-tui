@@ -1,4 +1,4 @@
-# Gitover Rust TUI - Implementation ToDo
+# Implementation ToDo for Gitover Rust TUI
 
 This is a living document.
 New tasks are added as needed.
@@ -70,9 +70,9 @@ Done tasks are check-marked when implemented.
 
 ## Documentation & Release
 
-- [ ] Write README.md
-  - [ ] brief description of features ( features.md will contain the full detailed description )
-  - [ ] how to build and install the tool
-  - [ ] basic usage examples
-  - [ ] keybindings
-- [ ] Add AGENTS.md notes for contributors
+- [x] Write README.md
+  - [x] brief description of features ( features.md will contain the full detailed description )
+  - [x] how to build and install the tool
+  - [x] basic usage examples
+  - [x] keybindings
+- [x] Add AGENTS.md notes for contributors

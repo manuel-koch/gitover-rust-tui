@@ -4,15 +4,13 @@
 
 - Rust-based terminal UI application
 - Tracks multiple git repositories simultaneously
-- Configuration loaded from `.gitover` YAML file, searched upward from `$HOME`
+- Configuration loaded from `~/.config/gitover/config.yaml` (optional; missing file is valid)
 - Persisted state (repo list, recents) stored at `~/.config/gitover/state.yaml`
 
 ## Configuration
 
-- Config file format: YAML at `~/.config/gitover/config.yaml`
+- Config file: `~/.config/gitover/config.yaml` (optional; missing file is valid)
 - `general.git`: override the path to the git executable
-- `repo_commands`: named custom commands to run per repo
-- `status_commands`: named commands scoped to a specific file status
 
 ## Repository Management
 

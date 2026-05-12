@@ -1,4 +1,4 @@
-# Gitover Rust UI
+# Agent Guidelines for Gitover Rust TUI
 
 A rust based terminal UI to track git status of multiple repositories.
 
@@ -27,4 +27,37 @@ Merge finished todo tasks with the features document:
 
 For updated features document, consult the sources/implementation to check if features are actually implemented
 the way they are currently stated in the feature description.
-Update the feature descriptions to matc the current implementation.
+Update the feature descriptions to match the current implementation.
+
+## Contributor Notes
+
+### Project layout
+
+```text
+src/
+  main.rs       — event loop, key handling, ops channel dispatch
+  app.rs        — application state (AppState, Focus, AppMode, all fields)
+  ui.rs         — ratatui rendering (all draw_* functions)
+  git.rs        — git status parsing (RepoStatus, FileEntry, FileStatusKind)
+  ops.rs        — background git operations (OpRequest, spawn_op, run_op)
+  watcher.rs    — file-system watcher (notify crate, git-aware filter)
+  config.rs     — config file loading (~/.config/gitover/config.yaml)
+  state.rs      — persistent state (repo list, recents, ~/.config/gitover/state.yaml)
+  lib.rs        — re-exports config/git/state for integration tests
+tests/
+  git_tests.rs  — unit + integration tests for git.rs
+  config_tests.rs — unit tests for config.rs and state.rs
+docs/
+  features.md   — implemented feature reference (keep in sync with code)
+  todo.md       — living task list (never delete sections, use placeholder)
+Makefile        — lint / format / build-and-run / test targets
+```
+
+### Development workflow
+
+```shell
+make lint          # cargo clippy — fix all warnings before committing
+make format        # cargo fmt
+make test          # cargo test — all tests must pass
+make build-and-run # quick run for manual testing
+```
