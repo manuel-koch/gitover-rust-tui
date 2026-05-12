@@ -714,11 +714,16 @@ fn handle_history_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, 
         KeyCode::Up => app.previous(),
         KeyCode::PageDown => app.next_page(),
         KeyCode::PageUp => app.previous_page(),
+        // Global keys that must work from any pane
+        KeyCode::Char('s') => app.toggle_detail(),
+        KeyCode::Char('l') => app.toggle_log(),
+        KeyCode::Char('r') => refresh_repos(app),
+        KeyCode::Char('A') => app.enter_pick_mode(),
+        KeyCode::Char('D') => app.request_remove_selected(),
         KeyCode::Char('c') => app.open_branch_select(),
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
-        KeyCode::Char('r') => refresh_repos(app),
         _ => {}
     }
 }

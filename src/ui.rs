@@ -333,7 +333,7 @@ fn detail_panel_height(app: &App) -> u16 {
 
 fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let title = match app.repos.get(app.selected) {
-        Some(r) => format!(" Status Details — {} ", r.path),
+        Some(_) => " Status Details ".to_string(),
         None => " Status Details ".to_string(),
     };
 
@@ -479,16 +479,11 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
 fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let focused = app.focus == Focus::History;
-    let repo_name = app
-        .history_repo_path
-        .rsplit('/')
-        .next()
-        .unwrap_or(&app.history_repo_path);
     let filter_label = app.history_filter.label();
     let title = if filter_label.is_empty() {
-        format!(" Commit History — {repo_name} ")
+        " Commit History ".to_string()
     } else {
-        format!(" Commit History — {repo_name} ({filter_label}) ")
+        format!(" Commit History ({filter_label}) ")
     };
     let block = Block::default()
         .borders(Borders::ALL)
