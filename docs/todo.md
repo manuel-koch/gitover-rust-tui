@@ -18,7 +18,9 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [ ]
+- [x] Extract all used colors into a theme struct
+- [x] Allow switching between color themes at runtime
+- [x] Provide just one theme for now ( using the current colors )
 
 ## Bugs
 

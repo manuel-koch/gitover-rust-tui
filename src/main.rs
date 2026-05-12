@@ -3,6 +3,7 @@ mod config;
 mod git;
 mod ops;
 mod state;
+mod theme;
 mod ui;
 mod watcher;
 
@@ -232,6 +233,7 @@ fn handle_normal_key(
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
         KeyCode::Char('c') => app.open_branch_select(),
         KeyCode::Char('h') => app.open_history(app::HistoryFilter::Full),
+        KeyCode::Char('T') => app.next_theme(),
         _ => {}
     }
 }
@@ -718,6 +720,7 @@ fn handle_history_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, 
         KeyCode::Char('s') => app.toggle_detail(),
         KeyCode::Char('l') => app.toggle_log(),
         KeyCode::Char('r') => refresh_repos(app),
+        KeyCode::Char('T') => app.next_theme(),
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),
         KeyCode::Char('c') => app.open_branch_select(),

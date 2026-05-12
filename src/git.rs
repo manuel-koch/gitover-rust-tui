@@ -31,16 +31,6 @@ impl DeltaKind {
             DeltaKind::Other => "?",
         }
     }
-
-    pub fn colour(&self) -> ratatui::style::Color {
-        match self {
-            DeltaKind::Added => ratatui::style::Color::Blue,
-            DeltaKind::Modified => ratatui::style::Color::Green,
-            DeltaKind::Deleted => ratatui::style::Color::Red,
-            DeltaKind::Renamed => ratatui::style::Color::Yellow,
-            DeltaKind::Other => ratatui::style::Color::DarkGray,
-        }
-    }
 }
 
 /// One file touched by a commit.

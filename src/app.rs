@@ -146,6 +146,9 @@ pub struct App {
     /// Branch name staged for deletion (shown in confirm dialog).
     pub branch_to_delete: String,
 
+    /// Index into `theme::THEMES` for the active theme.
+    pub theme_idx: usize,
+
     // ── Git History ───────────────────────────────────────────────────────────
     /// Commit history for the repo that was selected when `h` was pressed.
     pub history: Vec<CommitEntry>,
@@ -205,6 +208,7 @@ impl App {
             branch_selected: 0,
             branch_input: String::new(),
             branch_to_delete: String::new(),
+            theme_idx: 0,
             history: Vec::new(),
             show_history: false,
             history_repo_path: String::new(),
@@ -289,18 +293,22 @@ impl App {
     }
 
     /// Cycle the keyboard focus to the next visible pane.
-    /// Repos is always visible; Detail and Log are only included when open.
+    /// Order is fixed: Repos -> Detail -> History -> Log (only shown panes are included).
     pub fn cycle_focus(&mut self) {
         let mut order: Vec<Focus> = vec![Focus::Repos];
+        // Detail is shown before History and Log in the layout, so tab to it first if enabled
         if self.show_detail {
             order.push(Focus::Detail);
         }
-        if self.show_log {
-            order.push(Focus::Log);
-        }
+        // History pane is rendered before Log
         if self.show_history {
             order.push(Focus::History);
         }
+        // Log pane is last in the sequence
+        if self.show_log {
+            order.push(Focus::Log);
+        }
+
         if order.len() < 2 {
             self.focus = Focus::Repos;
             return;
@@ -875,6 +883,16 @@ impl App {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// Return the currently active theme.
+    pub fn theme(&self) -> &'static crate::theme::Theme {
+        crate::theme::THEMES[self.theme_idx % crate::theme::THEMES.len()]
+    }
+
+    /// Advance to the next theme in the cycle.
+    pub fn next_theme(&mut self) {
+        self.theme_idx = (self.theme_idx + 1) % crate::theme::THEMES.len();
+    }
 
     /// Sort the repo list by absolute path (case-insensitive).
     /// Call this after any operation that adds entries to self.repos.

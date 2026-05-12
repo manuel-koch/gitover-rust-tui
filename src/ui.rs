@@ -10,18 +10,26 @@ use crate::app::{App, AppMode, Focus, RepoOperation};
 use crate::git::{FileStatusKind, RepoStatus};
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    // Build a vertical layout: header / table / optional detail / optional log / help bar.
+    // Compute remaining vertical space after fixed-height panels.
+    let fixed_height: u16 = 4; // header 3 + help bar 1 always present
+    let total_available = frame.area().height.saturating_sub(fixed_height);
+
+    // Build constraints in fixed order: header / table / detail / history / log / help bar
     let mut constraints: Vec<Constraint> = Vec::new();
     constraints.push(Constraint::Length(3)); // header
     constraints.push(Constraint::Min(5)); // table
+
+    // Detail (Status) pane: if shown, capped to 50% of available vertical space
     if app.show_detail {
-        constraints.push(Constraint::Length(detail_panel_height(app)));
+        constraints.push(Constraint::Max(total_available / 2));
     }
-    if app.show_log {
-        constraints.push(Constraint::Length(log_panel_height(app)));
-    }
+    // History pane: if shown, capped to 50% of available vertical space
     if app.show_history {
-        constraints.push(Constraint::Min(8)); // history pane takes remaining space
+        constraints.push(Constraint::Max(total_available / 2));
+    }
+    // Log pane: if shown, capped to 50% of available vertical space
+    if app.show_log {
+        constraints.push(Constraint::Max(total_available / 2));
     }
     constraints.push(Constraint::Length(1)); // help bar
 
@@ -31,22 +39,28 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
 
     let mut idx = 0;
+
+    // Always present panes (order fixed)
     draw_header(frame, chunks[idx], app);
     idx += 1;
     draw_repo_table(frame, chunks[idx], app);
     idx += 1;
+
+    // Optional panes in fixed order: Status -> History -> Log
     if app.show_detail {
         draw_detail_panel(frame, chunks[idx], app);
-        idx += 1;
-    }
-    if app.show_log {
-        draw_log_panel(frame, chunks[idx], app);
         idx += 1;
     }
     if app.show_history {
         draw_history_panel(frame, chunks[idx], app);
         idx += 1;
     }
+    if app.show_log {
+        draw_log_panel(frame, chunks[idx], app);
+        idx += 1;
+    }
+
+    // Always present help bar
     draw_help_bar(frame, chunks[idx], app);
 
     if app.mode == AppMode::FilePicker {
@@ -478,6 +492,7 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 // ── Help bar ──────────────────────────────────────────────────────────────
 
 fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+    let t = app.theme();
     let focused = app.focus == Focus::History;
     let filter_label = app.history_filter.label();
     let title = if filter_label.is_empty() {
@@ -575,7 +590,7 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                         .chars()
                         .take(summary_w + author_w + ts_w)
                         .collect::<String>(),
-                    Style::default().fg(file_delta.kind.colour()),
+                    Style::default().fg(t.delta_colour(&file_delta.kind)),
                 );
                 let row = Row::new(vec![
                     Cell::from(""),
