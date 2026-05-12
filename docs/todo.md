@@ -87,11 +87,12 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## Testing & Quality
 
-- [ ] Unit tests for git status parsing logic (git.rs)
-- [ ] Unit tests for config load/save
-- [ ] Integration smoke test: spawn app against temp git repos
-  - [ ] if possible test various repo scenarios by creating/tweaking a temp git repo into a test scenario
+- [x] Unit tests for git status parsing logic (git.rs)
+- [x] Unit tests for config load/save
+- [x] Integration smoke test: spawn app against temp git repos
+  - [x] if possible test various repo scenarios by creating/tweaking a temp git repo into a test scenario
         and run the tool on it.
+  - [x] Add make target "test" to run all tests
 
 ## Documentation & Release
 

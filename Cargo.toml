@@ -7,6 +7,10 @@ edition = "2021"
 name = "gitover"
 path = "src/main.rs"
 
+[lib]
+name = "gitover"
+path = "src/lib.rs"
+
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.28"
@@ -18,3 +22,6 @@ notify = "6"
 serde_yaml = "0.9"
 ratatui-explorer = { version = "0.3", features = ["crossterm"] }
 chrono = "0.4.44"
+
+[dev-dependencies]
+tempfile = "3"
