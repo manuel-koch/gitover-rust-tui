@@ -1,4 +1,5 @@
 use crate::config::Config;
+pub use crate::git::HistoryFilter;
 use crate::git::{CommitEntry, FileStatusKind, RepoStatus};
 use crate::state::State;
 use ratatui_explorer::FileExplorer;
@@ -148,8 +149,12 @@ pub struct App {
     // ── Git History ───────────────────────────────────────────────────────────
     /// Commit history for the repo that was selected when `h` was pressed.
     pub history: Vec<CommitEntry>,
+    /// Whether the history pane is visible (persistent, independent of mode).
+    pub show_history: bool,
     /// Path of the repo whose history is loaded (used to detect staleness).
     pub history_repo_path: String,
+    /// Active filter applied to the history.
+    pub history_filter: HistoryFilter,
     /// Currently highlighted row in the flat history list (commits + file sub-rows).
     pub history_selected: usize,
     /// Scroll offset (top visible row) for the history pane.
@@ -201,7 +206,9 @@ impl App {
             branch_input: String::new(),
             branch_to_delete: String::new(),
             history: Vec::new(),
+            show_history: false,
             history_repo_path: String::new(),
+            history_filter: HistoryFilter::Full,
             history_selected: 0,
             history_scroll: 0,
         }
@@ -291,7 +298,7 @@ impl App {
         if self.show_log {
             order.push(Focus::Log);
         }
-        if self.mode == AppMode::History {
+        if self.show_history {
             order.push(Focus::History);
         }
         if order.len() < 2 {
@@ -404,10 +411,10 @@ impl App {
         self.mode = AppMode::FilePicker;
     }
 
-    /// Cancel the file picker and return to normal mode.
+    /// Cancel the file picker and return to base mode.
     pub fn cancel_pick(&mut self) {
         self.file_explorer = None;
-        self.mode = AppMode::Normal;
+        self.restore_base_mode();
     }
 
     /// Return the path currently highlighted in the file explorer.
@@ -442,7 +449,7 @@ impl App {
         }
 
         self.file_explorer = None;
-        self.mode = AppMode::Normal;
+        self.restore_base_mode();
 
         if added {
             Ok(Some(path.to_string()))
@@ -463,7 +470,7 @@ impl App {
 
     /// Dismiss the confirmation dialog without removing anything.
     pub fn cancel_remove(&mut self) {
-        self.mode = AppMode::Normal;
+        self.restore_base_mode();
     }
 
     /// Remove the currently-selected repo from tracking and persist.
@@ -481,7 +488,7 @@ impl App {
         if self.selected > 0 && self.selected >= self.repos.len() - 1 {
             self.selected -= 1;
         }
-        self.mode = AppMode::Normal;
+        self.restore_base_mode();
         Some(path)
     }
 
@@ -497,6 +504,16 @@ impl App {
     #[allow(dead_code)]
     pub fn end_operation(&mut self, path: &str) {
         self.operations.remove(path);
+    }
+
+    /// Dismiss any transient popup and return to the appropriate base mode:
+    /// History if the history pane is open, Normal otherwise.
+    pub fn restore_base_mode(&mut self) {
+        if self.show_history {
+            self.mode = AppMode::History;
+        } else {
+            self.mode = AppMode::Normal;
+        }
     }
 
     // ── Action menu ───────────────────────────────────────────────────────────
@@ -543,6 +560,33 @@ impl App {
                 label: "Delete branch".into(),
                 key: 'x',
             });
+            items.push(MenuItem {
+                label: "Commit history".into(),
+                key: 'H',
+            });
+            if repo.upstream.is_some() {
+                items.push(MenuItem {
+                    label: format!(
+                        "History: ahead of {}",
+                        repo.upstream.as_ref().unwrap().branch
+                    ),
+                    key: 'u',
+                });
+                items.push(MenuItem {
+                    label: format!("History: behind {}", repo.upstream.as_ref().unwrap().branch),
+                    key: 'U',
+                });
+            }
+            if repo.trunk.is_some() {
+                items.push(MenuItem {
+                    label: format!("History: ahead of {}", repo.trunk.as_ref().unwrap().branch),
+                    key: 't',
+                });
+                items.push(MenuItem {
+                    label: format!("History: behind {}", repo.trunk.as_ref().unwrap().branch),
+                    key: 'T',
+                });
+            }
         }
         self.menu_items = items;
         self.menu_selected = 0;
@@ -566,7 +610,7 @@ impl App {
     }
 
     pub fn close_menu(&mut self) {
-        self.mode = AppMode::Normal;
+        self.restore_base_mode();
     }
 
     // ── Branch select ─────────────────────────────────────────────────────────
@@ -620,7 +664,7 @@ impl App {
     }
 
     pub fn close_branch_select(&mut self) {
-        self.mode = AppMode::Normal;
+        self.restore_base_mode();
     }
 
     // ── New branch input ──────────────────────────────────────────────────────
@@ -641,7 +685,7 @@ impl App {
     }
 
     pub fn close_new_branch_input(&mut self) {
-        self.mode = AppMode::Normal;
+        self.restore_base_mode();
     }
 
     // ── Delete branch confirm ─────────────────────────────────────────────────
@@ -674,7 +718,7 @@ impl App {
     // ── Git History ───────────────────────────────────────────────────────────
 
     /// Open the history pane for the selected repo, loading fresh commit data.
-    pub fn open_history(&mut self) {
+    pub fn open_history(&mut self, filter: HistoryFilter) {
         if self.repos.is_empty() {
             return;
         }
@@ -683,20 +727,57 @@ impl App {
             return;
         }
         let path = repo.path.clone();
-        self.history = crate::git::get_commit_history(&path, 200).unwrap_or_default();
+        self.history = crate::git::get_commit_history(&path, &filter, 200).unwrap_or_default();
         self.history_repo_path = path;
+        self.history_filter = filter;
         self.history_selected = 0;
         self.history_scroll = 0;
-        self.mode = AppMode::History;
+        self.show_history = true;
         self.focus = Focus::History;
+        self.restore_base_mode();
     }
 
-    /// Close the history pane and return to normal mode.
+    /// Close the history pane and return to normal focus.
     pub fn close_history(&mut self) {
-        self.mode = AppMode::Normal;
-        self.focus = Focus::Repos;
+        self.show_history = false;
+        if self.focus == Focus::History {
+            self.focus = Focus::Repos;
+        }
+        self.restore_base_mode();
     }
 
+    /// Reload history for the current selected repo if the history pane is open
+    /// and the selected repo has changed.
+    pub fn reload_history_if_open(&mut self) {
+        if !self.show_history {
+            return;
+        }
+        let current_path = match self.repos.get(self.selected) {
+            Some(r) if r.error.is_none() => r.path.clone(),
+            _ => return,
+        };
+        if current_path == self.history_repo_path {
+            return;
+        }
+        let filter = self.history_filter.clone();
+        self.history =
+            crate::git::get_commit_history(&current_path, &filter, 200).unwrap_or_default();
+        self.history_repo_path = current_path;
+        self.history_selected = 0;
+        self.history_scroll = 0;
+    }
+
+    /// Force-reload history if the pane is open and it belongs to `repo_path`.
+    /// Called after a git operation completes on that repo.
+    pub fn refresh_history_for_repo(&mut self, repo_path: &str) {
+        if !self.show_history || self.history_repo_path != repo_path {
+            return;
+        }
+        let filter = self.history_filter.clone();
+        self.history = crate::git::get_commit_history(repo_path, &filter, 200).unwrap_or_default();
+        self.history_selected = 0;
+        self.history_scroll = 0;
+    }
     /// Return the total number of visible rows in the history pane:
     /// one row per commit + one row per file delta within each commit.
     pub fn history_row_count(&self) -> usize {

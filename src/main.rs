@@ -130,7 +130,11 @@ where
             match app.mode {
                 AppMode::Normal => {
                     if let Event::Key(key) = &ev {
-                        handle_normal_key(app, dirty_rx, op_tx, key.code, key.modifiers);
+                        if app.show_history && app.focus == app::Focus::History {
+                            handle_history_key(app, op_tx, key.code);
+                        } else {
+                            handle_normal_key(app, dirty_rx, op_tx, key.code, key.modifiers);
+                        }
                     }
                 }
                 AppMode::FilePicker => handle_picker_event(app, dirty_rx, &ev),
@@ -166,7 +170,11 @@ where
                 }
                 AppMode::History => {
                     if let Event::Key(key) = &ev {
-                        handle_history_key(app, key.code);
+                        if app.focus == app::Focus::Repos {
+                            handle_normal_key(app, dirty_rx, op_tx, key.code, key.modifiers);
+                        } else {
+                            handle_history_key(app, op_tx, key.code);
+                        }
                     }
                 }
             }
@@ -196,10 +204,22 @@ fn handle_normal_key(
     match key {
         KeyCode::Char('Q') => app.should_quit = true,
         KeyCode::Tab => app.cycle_focus(),
-        KeyCode::Down => app.next(),
-        KeyCode::Up => app.previous(),
-        KeyCode::PageDown => app.next_page(),
-        KeyCode::PageUp => app.previous_page(),
+        KeyCode::Down => {
+            app.next();
+            app.reload_history_if_open();
+        }
+        KeyCode::Up => {
+            app.previous();
+            app.reload_history_if_open();
+        }
+        KeyCode::PageDown => {
+            app.next_page();
+            app.reload_history_if_open();
+        }
+        KeyCode::PageUp => {
+            app.previous_page();
+            app.reload_history_if_open();
+        }
         KeyCode::Char('r') => refresh_repos(app),
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),
@@ -212,7 +232,7 @@ fn handle_normal_key(
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
         KeyCode::Char('c') => app.open_branch_select(),
-        KeyCode::Char('h') => app.open_history(),
+        KeyCode::Char('h') => app.open_history(app::HistoryFilter::Full),
         _ => {}
     }
 }
@@ -292,6 +312,7 @@ fn handle_op_result(
         app.log(format!("  {line}"));
     }
     refresh_single_repo(app, &result.repo_path);
+    app.refresh_history_for_repo(&result.repo_path.clone());
     *dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
 }
 
@@ -348,6 +369,58 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
         'x' => {
             app.close_menu();
             app.open_delete_branch_select();
+        }
+        'H' => {
+            app.close_menu();
+            app.open_history(app::HistoryFilter::Full);
+        }
+        'u' => {
+            let branch = app
+                .repos
+                .get(app.selected)
+                .and_then(|r| r.upstream.as_ref())
+                .map(|u| u.branch.clone())
+                .unwrap_or_default();
+            app.close_menu();
+            if !branch.is_empty() {
+                app.open_history(app::HistoryFilter::AheadOf(branch));
+            }
+        }
+        'U' => {
+            let branch = app
+                .repos
+                .get(app.selected)
+                .and_then(|r| r.upstream.as_ref())
+                .map(|u| u.branch.clone())
+                .unwrap_or_default();
+            app.close_menu();
+            if !branch.is_empty() {
+                app.open_history(app::HistoryFilter::BehindOf(branch));
+            }
+        }
+        't' => {
+            let branch = app
+                .repos
+                .get(app.selected)
+                .and_then(|r| r.trunk.as_ref())
+                .map(|t| t.branch.clone())
+                .unwrap_or_default();
+            app.close_menu();
+            if !branch.is_empty() {
+                app.open_history(app::HistoryFilter::AheadOf(branch));
+            }
+        }
+        'T' => {
+            let branch = app
+                .repos
+                .get(app.selected)
+                .and_then(|r| r.trunk.as_ref())
+                .map(|t| t.branch.clone())
+                .unwrap_or_default();
+            app.close_menu();
+            if !branch.is_empty() {
+                app.open_history(app::HistoryFilter::BehindOf(branch));
+            }
         }
         _ => {}
     }
@@ -409,11 +482,11 @@ fn handle_confirm_force_push_key(
 ) {
     match key {
         KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-            app.mode = app::AppMode::Normal;
+            app.restore_base_mode();
             launch_op(app, op_tx, OpRequest::ForcePush);
         }
         KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-            app.mode = app::AppMode::Normal;
+            app.restore_base_mode();
         }
         _ => {}
     }
@@ -428,12 +501,12 @@ fn handle_confirm_delete_branch_key(
         KeyCode::Down => app.branch_select_next(),
         KeyCode::Up => app.branch_select_previous(),
         KeyCode::Esc => {
-            app.mode = app::AppMode::Normal;
+            app.restore_base_mode();
         }
         KeyCode::Enter => {
             if let Some(item) = app.selected_branch_item().cloned() {
                 app.branch_to_delete = item.name.clone();
-                app.mode = app::AppMode::Normal;
+                app.restore_base_mode();
                 launch_op(app, op_tx, OpRequest::DeleteBranch(item.name));
             }
         }
@@ -630,7 +703,7 @@ fn refresh_single_repo(app: &mut App, path: &str) {
     app.last_refreshed = Some(Instant::now());
 }
 
-fn handle_history_key(app: &mut App, key: KeyCode) {
+fn handle_history_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
     match key {
         KeyCode::Char('Q') => app.should_quit = true,
         KeyCode::Char('h') => app.close_history(),
@@ -639,6 +712,11 @@ fn handle_history_key(app: &mut App, key: KeyCode) {
         KeyCode::Up => app.previous(),
         KeyCode::PageDown => app.next_page(),
         KeyCode::PageUp => app.previous_page(),
+        KeyCode::Char('c') => app.open_branch_select(),
+        KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
+        KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
+        KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
+        KeyCode::Char('r') => refresh_repos(app),
         _ => {}
     }
 }

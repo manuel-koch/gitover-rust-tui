@@ -20,7 +20,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.show_log {
         constraints.push(Constraint::Length(log_panel_height(app)));
     }
-    if app.mode == AppMode::History {
+    if app.show_history {
         constraints.push(Constraint::Min(8)); // history pane takes remaining space
     }
     constraints.push(Constraint::Length(1)); // help bar
@@ -43,7 +43,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_log_panel(frame, chunks[idx], app);
         idx += 1;
     }
-    if app.mode == AppMode::History {
+    if app.show_history {
         draw_history_panel(frame, chunks[idx], app);
         idx += 1;
     }
@@ -479,13 +479,17 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
 fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let focused = app.focus == Focus::History;
-    let title = format!(
-        " Commit History — {} ",
-        app.history_repo_path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&app.history_repo_path)
-    );
+    let repo_name = app
+        .history_repo_path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&app.history_repo_path);
+    let filter_label = app.history_filter.label();
+    let title = if filter_label.is_empty() {
+        format!(" Commit History — {repo_name} ")
+    } else {
+        format!(" Commit History — {repo_name} ({filter_label}) ")
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)

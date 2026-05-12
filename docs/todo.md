@@ -40,9 +40,10 @@ Done tasks are check-marked when implemented.
 - [x] Order commits ascending, newest commit at top of list
 - [x] Update commit history data only if pane is current open, force refresh on opening the pane
 - [x] Distribute the column widths so that columns with more content are wider
-- [ ] When repo action is triggered, add action to show commit history of
-  - [ ] ahead/behind commits with respect to upstream
-  - [ ] ahead/behind commits with respect to trunk
+- [x] When repo action is triggered, add action to show commit history of
+  - [x] ahead/behind commits with respect to upstream
+  - [x] ahead/behind commits with respect to trunk
+- [x] Update commit history when current selected repo changes
 
 ## Git Basic Operations
 

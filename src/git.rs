@@ -65,13 +65,73 @@ pub struct CommitEntry {
     pub files: Vec<CommitFileDelta>,
 }
 
+/// Filter applied when loading commit history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HistoryFilter {
+    /// All commits reachable from HEAD (newest first, up to limit).
+    Full,
+    /// Commits reachable from HEAD but NOT from the given remote ref
+    /// (i.e. local commits not yet present in that ref — "ahead" commits).
+    AheadOf(String),
+    /// Commits reachable from the given remote ref but NOT from HEAD
+    /// (i.e. remote commits not yet merged locally — "behind" commits).
+    BehindOf(String),
+}
+
+impl HistoryFilter {
+    /// Short human-readable label shown in the history pane title.
+    pub fn label(&self) -> String {
+        match self {
+            HistoryFilter::Full => String::new(),
+            HistoryFilter::AheadOf(r) => format!("ahead of {r}"),
+            HistoryFilter::BehindOf(r) => format!("behind {r}"),
+        }
+    }
+}
+
 /// Load the commit history for the repository at `path`.
-/// Returns up to `limit` commits, newest first.
-pub fn get_commit_history(path: &str, limit: usize) -> Result<Vec<CommitEntry>> {
+/// Returns up to `limit` commits, newest first, optionally filtered.
+pub fn get_commit_history(
+    path: &str,
+    filter: &HistoryFilter,
+    limit: usize,
+) -> Result<Vec<CommitEntry>> {
     let repo = Repository::open(path)?;
     let mut revwalk = repo.revwalk()?;
-    revwalk.push_head()?;
     revwalk.set_sorting(git2::Sort::TIME)?;
+
+    match filter {
+        HistoryFilter::Full => {
+            revwalk.push_head()?;
+        }
+        HistoryFilter::AheadOf(refname) => {
+            // Commits reachable from HEAD but not from the remote ref.
+            revwalk.push_head()?;
+            // Try as a direct ref first, then as refs/remotes/<refname>.
+            let hidden = repo
+                .find_reference(&format!("refs/remotes/{refname}"))
+                .or_else(|_| repo.find_reference(refname));
+            if let Ok(r) = hidden {
+                if let Some(oid) = r.target() {
+                    revwalk.hide(oid)?;
+                }
+            }
+        }
+        HistoryFilter::BehindOf(refname) => {
+            // Commits reachable from the remote ref but not from HEAD.
+            let r = repo
+                .find_reference(&format!("refs/remotes/{refname}"))
+                .or_else(|_| repo.find_reference(refname))?;
+            if let Some(oid) = r.target() {
+                revwalk.push(oid)?;
+            }
+            if let Ok(head) = repo.head() {
+                if let Some(head_oid) = head.target() {
+                    revwalk.hide(head_oid)?;
+                }
+            }
+        }
+    }
 
     let mut entries = Vec::new();
     for oid_result in revwalk.take(limit) {
