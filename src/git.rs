@@ -149,7 +149,7 @@ pub fn get_commit_history(
             let dt = Local
                 .timestamp_opt(ts.seconds(), 0)
                 .single()
-                .unwrap_or_else(|| Local::now());
+                .unwrap_or_else(Local::now);
             dt.format("%Y-%m-%d %H:%M:%S").to_string()
         };
 
@@ -258,6 +258,7 @@ pub struct RepoStatus {
     /// Remote branches that have no corresponding local branch
     pub remote_only_branches: Vec<String>,
     /// Local branches already merged into the trunk branch
+    #[allow(dead_code)]
     pub merged_branches: Vec<String>,
     /// Per-file status entries, used by the detail panel.
     pub files: Vec<FileEntry>,

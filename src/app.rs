@@ -564,26 +564,23 @@ impl App {
                 label: "Commit history".into(),
                 key: 'H',
             });
-            if repo.upstream.is_some() {
+            if let Some(upstream) = &repo.upstream {
                 items.push(MenuItem {
-                    label: format!(
-                        "History: ahead of {}",
-                        repo.upstream.as_ref().unwrap().branch
-                    ),
+                    label: format!("History: ahead of {}", upstream.branch),
                     key: 'u',
                 });
                 items.push(MenuItem {
-                    label: format!("History: behind {}", repo.upstream.as_ref().unwrap().branch),
+                    label: format!("History: behind {}", upstream.branch),
                     key: 'U',
                 });
             }
-            if repo.trunk.is_some() {
+            if let Some(trunk) = &repo.trunk {
                 items.push(MenuItem {
-                    label: format!("History: ahead of {}", repo.trunk.as_ref().unwrap().branch),
+                    label: format!("History: ahead of {}", trunk.branch),
                     key: 't',
                 });
                 items.push(MenuItem {
-                    label: format!("History: behind {}", repo.trunk.as_ref().unwrap().branch),
+                    label: format!("History: behind {}", trunk.branch),
                     key: 'T',
                 });
             }
