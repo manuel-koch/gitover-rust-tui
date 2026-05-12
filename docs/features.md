@@ -15,7 +15,9 @@
 ## Repository Management
 
 - Add a repository with `A`; opens a directory-browser to choose the repo root
-  - `Enter` / `→` / `l` navigates into the selected directory
+  - `↑`/`↓` navigate the directory list
+  - `→` / `Enter` navigates into the selected directory
+  - `←` / `Backspace` goes to the parent directory
   - `Space` confirms the current directory as the repo to add — this allows adding a
     child repo even when its parent directory is itself a git repo
   - Auto-discovers and adds git submodules when a repo is added
@@ -91,7 +93,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 | Key | Action |
 |-----|--------|
 | `Q` | Quit |
-| `j` / `k` or `↑` / `↓` | Navigate up/down in focused pane |
+| `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows; clamps at list boundaries, no wrap |
 | `Tab` | Cycle focus between Repositories / Status Details / Output Log panes |
 | `A` | Add repository (opens file picker) |
@@ -118,8 +120,7 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Refresh timestamp shown right-aligned in the header bar
 - Single-line help bar at the bottom showing active key bindings
 - Confirmation dialogs for destructive actions (remove repo, force push)
-- File picker popup for adding repos with vim-style navigation (`j`/`k`/`h`/`l`);
-  `Enter`/`→` navigates into a directory, `Space` selects it as the repo to add
+- File picker popup for adding repos; `↑`/`↓` navigate, `→`/`Enter` descend into directory, `←`/`Backspace` go to parent, `Space` selects current directory as repo to add
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
 
 ## Branch Information (per repo, available for future use)

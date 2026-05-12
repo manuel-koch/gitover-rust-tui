@@ -77,8 +77,8 @@ On first launch the repo list is empty. Press `A` to add a repository using the 
 
 | Key           | Action                                  |
 |---------------|-----------------------------------------|
-| `j` / `↓`     | Move cursor down                        |
-| `k` / `↑`     | Move cursor up                          |
+| `↓`           | Move cursor down                        |
+| `↑`           | Move cursor up                          |
 | `PgDn`        | Jump 10 rows down                       |
 | `PgUp`        | Jump 10 rows up                         |
 | `Enter`       | Open per-repo action menu               |
@@ -108,7 +108,7 @@ On first launch the repo list is empty. Press `A` to add a repository using the 
 
 | Key       | Action              |
 |-----------|---------------------|
-| `j` / `↓` | Scroll down        |
-| `k` / `↑` | Scroll up          |
+| `↓`       | Scroll down        |
+| `↑`       | Scroll up          |
 | `PgDn`    | Jump 10 lines down  |
 | `PgUp`    | Jump 10 lines up    |

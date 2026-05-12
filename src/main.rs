@@ -191,8 +191,8 @@ fn handle_normal_key(
     match key {
         KeyCode::Char('Q') => app.should_quit = true,
         KeyCode::Tab => app.cycle_focus(),
-        KeyCode::Char('j') | KeyCode::Down => app.next(),
-        KeyCode::Char('k') | KeyCode::Up => app.previous(),
+        KeyCode::Down => app.next(),
+        KeyCode::Up => app.previous(),
         KeyCode::PageDown => app.next_page(),
         KeyCode::PageUp => app.previous_page(),
         KeyCode::Char('r') => refresh_repos(app),
@@ -296,8 +296,8 @@ fn handle_menu_key(
     key: KeyCode,
 ) {
     match key {
-        KeyCode::Char('j') | KeyCode::Down => app.menu_next(),
-        KeyCode::Char('k') | KeyCode::Up => app.menu_previous(),
+        KeyCode::Down => app.menu_next(),
+        KeyCode::Up => app.menu_previous(),
         KeyCode::Esc => app.close_menu(),
         KeyCode::Enter => {
             if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {
@@ -353,8 +353,8 @@ fn handle_branch_select_key(
     key: KeyCode,
 ) {
     match key {
-        KeyCode::Char('j') | KeyCode::Down => app.branch_select_next(),
-        KeyCode::Char('k') | KeyCode::Up => app.branch_select_previous(),
+        KeyCode::Down => app.branch_select_next(),
+        KeyCode::Up => app.branch_select_previous(),
         KeyCode::Esc => app.close_branch_select(),
         KeyCode::Enter => {
             if let Some(item) = app.selected_branch_item().cloned() {
@@ -419,8 +419,8 @@ fn handle_confirm_delete_branch_key(
     key: KeyCode,
 ) {
     match key {
-        KeyCode::Char('j') | KeyCode::Down => app.branch_select_next(),
-        KeyCode::Char('k') | KeyCode::Up => app.branch_select_previous(),
+        KeyCode::Down => app.branch_select_next(),
+        KeyCode::Up => app.branch_select_previous(),
         KeyCode::Esc => {
             app.mode = app::AppMode::Normal;
         }
@@ -493,25 +493,25 @@ fn handle_picker_event(
             }
 
             // Navigate down
-            KeyCode::Char('j') | KeyCode::Down => {
+            KeyCode::Down => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Down);
                 }
             }
             // Navigate up
-            KeyCode::Char('k') | KeyCode::Up => {
+            KeyCode::Up => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Up);
                 }
             }
             // Go into dir
-            KeyCode::Char('l') | KeyCode::Right => {
+            KeyCode::Right => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Right);
                 }
             }
             // Go to parent
-            KeyCode::Char('h') | KeyCode::Left | KeyCode::Backspace => {
+            KeyCode::Left | KeyCode::Backspace => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Left);
                 }

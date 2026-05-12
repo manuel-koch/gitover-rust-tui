@@ -476,7 +476,7 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, _app: &App) {
         Span::raw(" quit  "),
         Span::styled("Tab", Style::default().fg(Color::Yellow)),
         Span::raw(" focus  "),
-        Span::styled("j/k ↑↓", Style::default().fg(Color::Yellow)),
+        Span::styled("↑↓", Style::default().fg(Color::Yellow)),
         Span::raw(" nav  "),
         Span::styled("PgUp/Dn", Style::default().fg(Color::Yellow)),
         Span::raw(" fast  "),
