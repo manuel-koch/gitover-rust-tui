@@ -482,8 +482,6 @@ impl App {
             items.push(MenuItem { label: "Create new branch".into(), key: 'n' });
             items.push(MenuItem { label: "Delete branch".into(), key: 'x' });
         }
-        items.push(MenuItem { label: "Cancel".into(), key: 'q' });
-
         self.menu_items = items;
         self.menu_selected = 0;
         self.mode = AppMode::ActionMenu;

@@ -259,7 +259,7 @@ fn handle_menu_key(
     match key {
         KeyCode::Char('j') | KeyCode::Down => app.menu_next(),
         KeyCode::Char('k') | KeyCode::Up => app.menu_previous(),
-        KeyCode::Esc | KeyCode::Char('q') => app.close_menu(),
+        KeyCode::Esc => app.close_menu(),
         KeyCode::Enter => {
             if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {
                 dispatch_menu_action(app, op_tx, item.key);
@@ -287,7 +287,6 @@ fn dispatch_menu_action(
         'c' => { app.close_menu(); app.open_branch_select(); }
         'n' => { app.close_menu(); app.open_new_branch_input(); }
         'x' => { app.close_menu(); app.open_delete_branch_select(); }
-        'q' => app.close_menu(),
         _ => {}
     }
 }

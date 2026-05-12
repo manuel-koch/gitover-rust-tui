@@ -39,8 +39,8 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## Bugs
 
-- [ ] repo actions menu should not use "q" keybinding, just "esc", which actually works although it is not contained in the menu.
-- [ ] Attempt to add a new repo, that is within another parent repo directory will not work.
+- [x] repo actions menu should not use "q" keybinding, just "esc", which actually works although it is not contained in the menu.
+- [x] Attempt to add a new repo, that is within another parent repo directory will not work.
       Likely because the "enter" key in the file/dir picker is reused to: 1. dive into a dir 2. select a repo.
       if dir is a git repo and has child repos, then enter will select it and never dive into it.
 
