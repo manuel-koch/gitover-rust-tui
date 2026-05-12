@@ -491,7 +491,9 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, _app: &App) {
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
         Span::raw(" actions  "),
         Span::styled("r", Style::default().fg(Color::Yellow)),
-        Span::raw(" refresh"),
+        Span::raw(" refresh  "),
+        Span::styled("Alt-f", Style::default().fg(Color::Yellow)),
+        Span::raw(" fetch all"),
     ]);
     frame.render_widget(Paragraph::new(help), area);
 }

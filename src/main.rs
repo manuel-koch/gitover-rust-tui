@@ -130,7 +130,7 @@ where
             match app.mode {
                 AppMode::Normal => {
                     if let Event::Key(key) = &ev {
-                        handle_normal_key(app, dirty_rx, op_tx, key.code);
+                        handle_normal_key(app, dirty_rx, op_tx, key.code, key.modifiers);
                     }
                 }
                 AppMode::FilePicker => handle_picker_event(app, dirty_rx, &ev),
@@ -180,7 +180,14 @@ fn handle_normal_key(
     _dirty_rx: &mut std::sync::mpsc::Receiver<String>,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
+    modifiers: KeyModifiers,
 ) {
+    // Alt-f: fetch all tracked repos
+    if modifiers.contains(KeyModifiers::ALT) && key == KeyCode::Char('f') {
+        launch_all_fetch(app, op_tx);
+        return;
+    }
+
     match key {
         KeyCode::Char('Q') => app.should_quit = true,
         KeyCode::Tab => app.cycle_focus(),
@@ -200,6 +207,37 @@ fn handle_normal_key(
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
         _ => {}
+    }
+}
+
+/// Fetch all tracked repos in parallel.
+fn launch_all_fetch(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+) {
+    let git_bin = app
+        .config
+        .general
+        .git
+        .clone()
+        .unwrap_or_else(|| "git".to_string());
+
+    let paths: Vec<String> = app
+        .repos
+        .iter()
+        .filter(|r| r.error.is_none())
+        .map(|r| r.path.clone())
+        .collect();
+
+    if paths.is_empty() {
+        return;
+    }
+
+    app.log(format!("fetching all {} repos…", paths.len()));
+
+    for path in paths {
+        app.operations.insert(path.clone(), app::RepoOperation::Fetching);
+        spawn_op(path, OpRequest::Fetch, git_bin.clone(), op_tx.clone());
     }
 }
 

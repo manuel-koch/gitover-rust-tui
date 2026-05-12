@@ -35,7 +35,7 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## UX Polish
 
-- [ ] Add global keybinding "alt-f" to fetch all tracked repos
+- [x] Add global keybinding "alt-f" to fetch all tracked repos
 
 ## Bugs
 
