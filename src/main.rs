@@ -202,7 +202,6 @@ fn handle_normal_key(
     }
 
     match key {
-        KeyCode::Char('Q') => app.should_quit = true,
         KeyCode::Tab => app.cycle_focus(),
         KeyCode::Down => {
             app.next();
@@ -705,7 +704,6 @@ fn refresh_single_repo(app: &mut App, path: &str) {
 
 fn handle_history_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
     match key {
-        KeyCode::Char('Q') => app.should_quit = true,
         KeyCode::Char('h') => app.close_history(),
         KeyCode::Tab => app.cycle_focus(),
         KeyCode::Down => app.next(),

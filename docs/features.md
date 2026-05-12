@@ -92,7 +92,6 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 
 | Key | Action |
 |-----|--------|
-| `Q` | Quit |
 | `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows; clamps at list boundaries, no wrap |
 | `Tab` | Cycle focus between Repositories / Status Details / Output Log panes |
@@ -108,7 +107,6 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 | `l` | Toggle Output Log pane |
 | `r` | Refresh all repositories |
 | `Ctrl-C` | Quit (works in all modes) |
-
 In the action menu, `Esc` dismisses the menu without taking any action.
 
 ## User Interface

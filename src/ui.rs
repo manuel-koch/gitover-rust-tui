@@ -631,8 +631,6 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
 fn draw_help_bar(frame: &mut Frame, area: Rect, _app: &App) {
     let help = Line::from(vec![
-        Span::styled("Q", Style::default().fg(Color::Yellow)),
-        Span::raw(" quit  "),
         Span::styled("Tab", Style::default().fg(Color::Yellow)),
         Span::raw(" focus  "),
         Span::styled("↑↓", Style::default().fg(Color::Yellow)),

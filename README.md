@@ -67,8 +67,7 @@ On first launch the repo list is empty. Press `A` to add a repository using the 
 
 | Key       | Action                                      |
 |-----------|---------------------------------------------|
-| `Q`       | Quit                                        |
-| `Ctrl-C`  | Quit (works in all modes)                   |
+| `Ctrl-C`  | Quit                                        |
 | `Tab`     | Cycle focus: Repositories / Status Details / Output Log |
 | `r`       | Refresh all repositories                    |
 | `Alt-f`   | Fetch all tracked repos in parallel         |
