@@ -4,23 +4,6 @@ This is a living document.
 New tasks are added as needed.
 Done tasks are check-marked when implemented.
 
-## Cleanup Todo and merge to features
-
-When user requests cleanup of todo, then merge finished tasks with the features document.
-
-Force re-reading features and todo document to fully grasp their current content !
-
-- Check if there is an existing feature that matches task content fully/almost/partly
-  - If feature is matched fully, just remove the task from todo
-  - If feature is matched partly/almost, check whats the diff to task content and decide if feature
-    text should be updated or a new distinct feature be introduced with the task content
-  - If feature is not matched, introduce a new distinct feature with tasks content.
-    If needed check if the new feature belongs to a new section/heading within the documents
-    to group features by topics.
-  - if in doubt if a task matches a feature, ask the user how to proceed, provide proposal what you think would fit best.
-- Don't remove empty todo sections - we might add new tasks to it, just add a placeholder "- [ ]" task.
-- Don't remove the section "Cleanup Todo and merge to features"
-
 ## Config & Repo Management
 
 - [ ]
@@ -35,8 +18,7 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## UX Polish
 
-- [x] Add global keybinding "alt-f" to fetch all tracked repos
-- [x] Don't cycle round the edges of the repo list when moving cursor up/down, stick at the start/end
+- [ ]
 
 ## Bugs
 
@@ -80,19 +62,11 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## Tooling
 
-- [x] Introduce Makefile with useful targets to
-  - [x] "lint": Run `cargo clippy` and fix all warnings
-  - [x] "format": Run `cargo fmt` and enforce formatting
-  - [x] "build-and-run": Build the app and run it with `cargo run`
+- [ ]
 
 ## Testing & Quality
 
-- [x] Unit tests for git status parsing logic (git.rs)
-- [x] Unit tests for config load/save
-- [x] Integration smoke test: spawn app against temp git repos
-  - [x] if possible test various repo scenarios by creating/tweaking a temp git repo into a test scenario
-        and run the tool on it.
-  - [x] Add make target "test" to run all tests
+- [ ]
 
 ## Documentation & Release
 

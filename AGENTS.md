@@ -23,6 +23,7 @@ Merge finished todo tasks with the features document:
     to group features by topics.
   - if in doubt if a task matches a feature, ask the user how to proceed, provide proposal what you think would fit best.
 - Don't remove empty todo sections - we might add new tasks to it, just add a placeholder "- [ ]" task instead.
+- Don't add explicit features that would stem from adding tests or fixing bugs
 
 For updated features document, consult the sources/implementation to check if features are actually implemented
 the way they are currently stated in the feature description.

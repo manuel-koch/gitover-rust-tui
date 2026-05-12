@@ -58,6 +58,8 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 
 Direct shortcuts `f`, `p`, `P` also work from the normal Repositories view without opening the menu.
 
+`Alt-f` fetches all tracked repositories in parallel (global shortcut, works from any pane).
+
 All git operations run in the background. Progress is shown via the Activity column spinner.
 Output lines (stdout + stderr) are appended to the Output Log pane with timestamps.
 
@@ -100,6 +102,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 | `f` | Fetch selected repo (shortcut, no menu needed) |
 | `p` | Pull selected repo (shortcut, no menu needed) |
 | `P` | Push selected repo (shortcut, no menu needed) |
+| `Alt-f` | Fetch all tracked repos in parallel |
 | `s` | Toggle Status Details pane |
 | `l` | Toggle Output Log pane |
 | `r` | Refresh all repositories |
@@ -125,3 +128,11 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Full list of local branches
 - Remote branches not yet checked out locally
 - Local branches already merged into the trunk branch
+
+## Tooling
+
+- `Makefile` at the project root with the following targets:
+  - `make lint` — runs `cargo clippy`
+  - `make format` — runs `cargo fmt`
+  - `make build-and-run` — builds and launches the app via `cargo run`
+  - `make test` — runs all unit and integration tests via `cargo test`
