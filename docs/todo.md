@@ -18,10 +18,7 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [x] Immediately show the "Output Log" pane when a git command like fetch/checkout/fetch/pull failed.
-- [x] Remove keybinding for "Q" to quit the app, we just rely on ctrl-c to quit the app.
-      Adapt documentation *.md files too.
-      Adapt app footer too, to remove the "Q" key hint.
+- [ ]
 
 ## Bugs
 
@@ -29,24 +26,7 @@ Done tasks are check-marked when implemented.
 
 ## Git History Pane
 
-- [x] When repo is selected, upon "h" key open git commit history for current branch
-- [x] Display the commit history using a table with the following columns
-  - [x] short-commit-hash
-  - [x] timstamp: YYYY-MM-DD HH:MM:SS in local time
-  - [x] username
-  - [x] Commit message, just first line
-    - [x] Sub-rows, a row for every file of that commit, content in the commit message column
-      - [x] file cell formatted as: "<change-identifier> <path>" where change identifier is a single key
-        - [x] M=modified (green)
-        - [x] D=deleted (red)
-        - [x] A=added (blue)
-- [x] Order commits ascending, newest commit at top of list
-- [x] Update commit history data only if pane is current open, force refresh on opening the pane
-- [x] Distribute the column widths so that columns with more content are wider
-- [x] When repo action is triggered, add action to show commit history of
-  - [x] ahead/behind commits with respect to upstream
-  - [x] ahead/behind commits with respect to trunk
-- [x] Update commit history when current selected repo changes
+- [ ]
 
 ## Git Basic Operations
 
@@ -77,9 +57,4 @@ Done tasks are check-marked when implemented.
 
 ## Documentation & Release
 
-- [x] Write README.md
-  - [x] brief description of features ( features.md will contain the full detailed description )
-  - [x] how to build and install the tool
-  - [x] basic usage examples
-  - [x] keybindings
-- [x] Add AGENTS.md notes for contributors
+- [ ]

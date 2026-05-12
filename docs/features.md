@@ -55,6 +55,9 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `c` | Checkout Branch — shows a list of local and remote branches; auto-stashes dirty changes before checkout, pops stash afterwards |
 | `n` | Create New Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
 | `x` | Delete Branch — shows list of local branches (excluding current); runs `git branch -D <name>` |
+| `H` | Commit History — opens the history pane for the selected repo (full log) |
+| `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
+| `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
 
 Direct shortcuts `f`, `p`, `P`, `c` also work from the normal Repositories view without opening the menu.
 
@@ -78,6 +81,26 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 - Auto-follows new entries (scrolls to tail) when cursor is at the last visible line
 - When pane is not focused, always shows the tail (latest entries)
 - User can scroll up into history; scrolling back to tail re-enables auto-follow
+- Automatically shown when a git operation fails, so error output is immediately visible
+
+## Git History Pane
+
+- Toggle with `h`; also opened via action menu entries `H` / `u` / `U` / `t` / `T`
+- Title shows repo name and active filter (e.g. "ahead of origin/main")
+- Displays commit history for the current branch, newest commit first, up to 200 commits
+- Table columns: short hash (8 chars, yellow) | timestamp (YYYY-MM-DD HH:MM:SS local, gray) | author (cyan, up to 20 chars) | commit message (first line)
+  - Column widths are distributed: author column sized to the widest name in the loaded history; summary takes all remaining space
+- Each commit row is followed by file sub-rows indented in the summary column:
+  - Format: `  <change-identifier> <path>`
+  - A = added (blue), M = modified (green), D = deleted (red), R = renamed (yellow)
+- `↑`/`↓` and `PgUp`/`PgDn` scroll through commits and file rows
+- Commit counter shown top-right of the pane (e.g. `3/47`) based on commit index, not flat row index
+- History reloads automatically when the selected repo changes while the pane is open
+- History reloads automatically after a git operation completes on the shown repo
+- Filtered views available from the action menu:
+  - Ahead of upstream / trunk — commits in HEAD not yet in the remote ref
+  - Behind upstream / trunk — commits in the remote ref not yet merged locally
+- `h` closes the pane; `Tab` cycles focus between panes without closing it
 
 ## Real-time Updates
 
@@ -94,7 +117,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 |-----|--------|
 | `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows; clamps at list boundaries, no wrap |
-| `Tab` | Cycle focus between Repositories / Status Details / Output Log panes |
+| `Tab` | Cycle focus between Repositories / Status Details / Output Log / Git History panes |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
 | `Enter` | Open per-repo action menu |
@@ -102,17 +125,19 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 | `p` | Pull selected repo (shortcut, no menu needed) |
 | `P` | Push selected repo (shortcut, no menu needed) |
 | `c` | Checkout branch on selected repo (shortcut, no menu needed) |
+| `h` | Toggle Git History pane |
 | `Alt-f` | Fetch all tracked repos in parallel |
 | `s` | Toggle Status Details pane |
 | `l` | Toggle Output Log pane |
 | `r` | Refresh all repositories |
 | `Ctrl-C` | Quit (works in all modes) |
+
 In the action menu, `Esc` dismisses the menu without taking any action.
 
 ## User Interface
 
-- Three-pane layout (vertical): Repositories table / Status Details / Output Log
-- Status Details and Output Log are optional; shown only when toggled open
+- Four-pane layout (vertical): Repositories / Status Details / Output Log / Git History
+- Status Details, Output Log, and Git History are optional; shown only when toggled open
 - Focused pane highlighted with cyan border; unfocused panes use dark-gray border
 - Loading spinner in header while repos are being scanned
 - Refresh timestamp shown right-aligned in the header bar
