@@ -797,10 +797,7 @@ fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
         ])
         .split(inner);
 
-    frame.render_widget(
-        Paragraph::new("Force-push current branch?"),
-        chunks[0],
-    );
+    frame.render_widget(Paragraph::new("Force-push current branch?"), chunks[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(target, Style::default().fg(Color::Yellow))),
         chunks[1],

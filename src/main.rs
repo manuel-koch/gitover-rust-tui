@@ -211,10 +211,7 @@ fn handle_normal_key(
 }
 
 /// Fetch all tracked repos in parallel.
-fn launch_all_fetch(
-    app: &mut App,
-    op_tx: &std::sync::mpsc::Sender<OpResult>,
-) {
+fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
     let git_bin = app
         .config
         .general
@@ -236,17 +233,14 @@ fn launch_all_fetch(
     app.log(format!("fetching all {} repos…", paths.len()));
 
     for path in paths {
-        app.operations.insert(path.clone(), app::RepoOperation::Fetching);
+        app.operations
+            .insert(path.clone(), app::RepoOperation::Fetching);
         spawn_op(path, OpRequest::Fetch, git_bin.clone(), op_tx.clone());
     }
 }
 
 /// Dispatch a git operation for the currently selected repo.
-fn launch_op(
-    app: &mut App,
-    op_tx: &std::sync::mpsc::Sender<OpResult>,
-    request: OpRequest,
-) {
+fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: OpRequest) {
     if app.repos.is_empty() {
         return;
     }
@@ -262,12 +256,15 @@ fn launch_op(
         .clone()
         .unwrap_or_else(|| "git".to_string());
     let label = request.label();
-    app.operations.insert(path.clone(), match &request {
-        OpRequest::Fetch => app::RepoOperation::Fetching,
-        OpRequest::Pull => app::RepoOperation::Pulling,
-        OpRequest::Push | OpRequest::ForcePush => app::RepoOperation::Pushing,
-        _ => app::RepoOperation::Fetching,
-    });
+    app.operations.insert(
+        path.clone(),
+        match &request {
+            OpRequest::Fetch => app::RepoOperation::Fetching,
+            OpRequest::Pull => app::RepoOperation::Pulling,
+            OpRequest::Push | OpRequest::ForcePush => app::RepoOperation::Pushing,
+            _ => app::RepoOperation::Fetching,
+        },
+    );
     app.log(format!("{label} {path}"));
     spawn_op(path, request, git_bin, op_tx.clone());
 }
@@ -280,7 +277,10 @@ fn handle_op_result(
 ) {
     app.operations.remove(&result.repo_path);
     let status = if result.success { "ok" } else { "FAILED" };
-    app.log(format!("{} {} — {status}", result.op_label, result.repo_path));
+    app.log(format!(
+        "{} {} — {status}",
+        result.op_label, result.repo_path
+    ));
     for line in &result.lines {
         app.log(format!("  {line}"));
     }
@@ -312,19 +312,36 @@ fn handle_menu_key(
     }
 }
 
-fn dispatch_menu_action(
-    app: &mut App,
-    op_tx: &std::sync::mpsc::Sender<OpResult>,
-    key: char,
-) {
+fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: char) {
     match key {
-        'f' => { app.close_menu(); launch_op(app, op_tx, OpRequest::Fetch); }
-        'p' => { app.close_menu(); launch_op(app, op_tx, OpRequest::Pull); }
-        'P' => { app.close_menu(); launch_op(app, op_tx, OpRequest::Push); }
-        'F' => { app.close_menu(); app.confirm_force_push(); }
-        'c' => { app.close_menu(); app.open_branch_select(); }
-        'n' => { app.close_menu(); app.open_new_branch_input(); }
-        'x' => { app.close_menu(); app.open_delete_branch_select(); }
+        'f' => {
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::Fetch);
+        }
+        'p' => {
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::Pull);
+        }
+        'P' => {
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::Push);
+        }
+        'F' => {
+            app.close_menu();
+            app.confirm_force_push();
+        }
+        'c' => {
+            app.close_menu();
+            app.open_branch_select();
+        }
+        'n' => {
+            app.close_menu();
+            app.open_new_branch_input();
+        }
+        'x' => {
+            app.close_menu();
+            app.open_delete_branch_select();
+        }
         _ => {}
     }
 }
@@ -341,10 +358,14 @@ fn handle_branch_select_key(
         KeyCode::Enter => {
             if let Some(item) = app.selected_branch_item().cloned() {
                 app.close_branch_select();
-                launch_op(app, op_tx, OpRequest::CheckoutBranch {
-                    name: item.name,
-                    is_remote: item.is_remote,
-                });
+                launch_op(
+                    app,
+                    op_tx,
+                    OpRequest::CheckoutBranch {
+                        name: item.name,
+                        is_remote: item.is_remote,
+                    },
+                );
             }
         }
         _ => {}
@@ -366,7 +387,9 @@ fn handle_new_branch_key(
                 launch_op(app, op_tx, OpRequest::CreateBranch(name));
             }
         }
-        KeyCode::Backspace => { app.branch_input.pop(); }
+        KeyCode::Backspace => {
+            app.branch_input.pop();
+        }
         KeyCode::Char(c) => app.branch_input.push(c),
         _ => {}
     }
@@ -397,7 +420,9 @@ fn handle_confirm_delete_branch_key(
     match key {
         KeyCode::Char('j') | KeyCode::Down => app.branch_select_next(),
         KeyCode::Char('k') | KeyCode::Up => app.branch_select_previous(),
-        KeyCode::Esc => { app.mode = app::AppMode::Normal; }
+        KeyCode::Esc => {
+            app.mode = app::AppMode::Normal;
+        }
         KeyCode::Enter => {
             if let Some(item) = app.selected_branch_item().cloned() {
                 app.branch_to_delete = item.name.clone();

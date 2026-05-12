@@ -17,7 +17,10 @@ pub enum OpRequest {
     Push,
     ForcePush,
     /// Checkout a branch.  `is_remote` controls whether `--track` is added.
-    CheckoutBranch { name: String, is_remote: bool },
+    CheckoutBranch {
+        name: String,
+        is_remote: bool,
+    },
     CreateBranch(String),
     DeleteBranch(String),
 }
@@ -54,7 +57,12 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
     let mut lines = Vec::new();
 
     let ok = match request {
-        OpRequest::Fetch => run_git(git_bin, repo_path, &["fetch", "origin", "--prune"], &mut lines),
+        OpRequest::Fetch => run_git(
+            git_bin,
+            repo_path,
+            &["fetch", "origin", "--prune"],
+            &mut lines,
+        ),
 
         OpRequest::Pull => {
             let stashed = maybe_stash(git_bin, repo_path, &mut lines);
@@ -82,7 +90,12 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
         OpRequest::CheckoutBranch { name, is_remote } => {
             let stashed = maybe_stash(git_bin, repo_path, &mut lines);
             let ok = if *is_remote {
-                run_git(git_bin, repo_path, &["checkout", "--track", name], &mut lines)
+                run_git(
+                    git_bin,
+                    repo_path,
+                    &["checkout", "--track", name],
+                    &mut lines,
+                )
             } else {
                 run_git(git_bin, repo_path, &["checkout", name], &mut lines)
             };

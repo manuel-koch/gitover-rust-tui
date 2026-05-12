@@ -235,9 +235,7 @@ fn get_branch_name(repo: &Repository) -> String {
                 .and_then(|r| r.symbolic_target().map(|s| s.to_string()))
                 .and_then(|refname| {
                     // refname is e.g. "refs/heads/main" — strip the prefix
-                    refname
-                        .strip_prefix("refs/heads/")
-                        .map(|s| s.to_string())
+                    refname.strip_prefix("refs/heads/").map(|s| s.to_string())
                 })
                 .unwrap_or_else(|| "unborn".to_string())
         }

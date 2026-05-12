@@ -472,15 +472,36 @@ impl App {
 
         let mut items = Vec::new();
         if !has_error {
-            items.push(MenuItem { label: "Fetch".into(), key: 'f' });
-            items.push(MenuItem { label: "Pull".into(), key: 'p' });
+            items.push(MenuItem {
+                label: "Fetch".into(),
+                key: 'f',
+            });
+            items.push(MenuItem {
+                label: "Pull".into(),
+                key: 'p',
+            });
             if has_upstream {
-                items.push(MenuItem { label: "Push".into(), key: 'P' });
-                items.push(MenuItem { label: "Force Push".into(), key: 'F' });
+                items.push(MenuItem {
+                    label: "Push".into(),
+                    key: 'P',
+                });
+                items.push(MenuItem {
+                    label: "Force Push".into(),
+                    key: 'F',
+                });
             }
-            items.push(MenuItem { label: "Checkout branch".into(), key: 'c' });
-            items.push(MenuItem { label: "Create new branch".into(), key: 'n' });
-            items.push(MenuItem { label: "Delete branch".into(), key: 'x' });
+            items.push(MenuItem {
+                label: "Checkout branch".into(),
+                key: 'c',
+            });
+            items.push(MenuItem {
+                label: "Create new branch".into(),
+                key: 'n',
+            });
+            items.push(MenuItem {
+                label: "Delete branch".into(),
+                key: 'x',
+            });
         }
         self.menu_items = items;
         self.menu_selected = 0;
@@ -520,10 +541,16 @@ impl App {
             .local_branches
             .iter()
             .filter(|b| b.as_str() != current)
-            .map(|b| BranchItem { name: b.clone(), is_remote: false })
+            .map(|b| BranchItem {
+                name: b.clone(),
+                is_remote: false,
+            })
             .collect();
         for rb in &repo.remote_only_branches {
-            items.push(BranchItem { name: rb.clone(), is_remote: true });
+            items.push(BranchItem {
+                name: rb.clone(),
+                is_remote: true,
+            });
         }
         self.branch_items = items;
         self.branch_selected = 0;
@@ -589,7 +616,10 @@ impl App {
             .local_branches
             .iter()
             .filter(|b| b.as_str() != current)
-            .map(|b| BranchItem { name: b.clone(), is_remote: false })
+            .map(|b| BranchItem {
+                name: b.clone(),
+                is_remote: false,
+            })
             .collect();
         self.branch_items = items;
         self.branch_selected = 0;
