@@ -18,7 +18,10 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [ ]
+- [x] Immediately show the "Output Log" pane when a git command like fetch/checkout/fetch/pull failed.
+- [x] Remove keybinding for "Q" to quit the app, we just rely on ctrl-c to quit the app.
+      Adapt documentation *.md files too.
+      Adapt app footer too, to remove the "Q" key hint.
 
 ## Bugs
 
