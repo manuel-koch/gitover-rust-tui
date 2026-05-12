@@ -17,10 +17,12 @@
 ## Repository Management
 
 - Add a repository with `A`; opens a directory-browser to choose the repo root
-  - Also accepts a plain path typed directly
+  - `Enter` / `→` / `l` navigates into the selected directory
+  - `Space` confirms the current directory as the repo to add — this allows adding a
+    child repo even when its parent directory is itself a git repo
   - Auto-discovers and adds git submodules when a repo is added
   - Recently-used repos are offered for quick re-add
-- Remove a repository with `D`; shows a confirmation dialog before removing
+- Remove a repository from the app ( not from disk ! ) with `D`; shows a confirmation dialog before removing
 - Repo list is kept sorted by absolute path
 - Repo list and recents are persisted across sessions
 - Invalid or missing repo paths are shown inline as error rows instead of being silently dropped
@@ -30,13 +32,34 @@
 Each tracked repository is shown as a table row with:
 
 - **Repository**: directory name, green when working tree is clean
-- **Branch**: current branch name, or `detached <sha8>` for detached HEAD
+- **Branch**: current branch name, or `detached <sha8>` for detached HEAD; unborn
+  branches (no commits yet) show the branch name correctly
 - **Status**: combined change counts — `3-S 2-C 4-M 1-D 2-U` (S=staged blue, C=conflict yellow, M=modified green, D=deleted red, U=untracked gray); shows `clean` in dark gray when no changes
 - **Activity**: spinner + operation name when a git operation is in progress (fetching / pulling / pushing / rebasing / scanning)
 - **↑↓ Upstream**: ahead/behind vs configured tracking branch, yellow when out of sync
 - **↑↓ Trunk**: ahead/behind vs trunk branch, red when behind, yellow when ahead only
   - Trunk resolution order: `gitover.trunkbranch` config → `origin/main` → `origin/develop` → `origin/master`
 - Column widths are distributed so branch/upstream/trunk columns are wider than status
+
+## Git Operations
+
+Pressing `Enter` on a selected repository opens the per-repo action menu. The menu
+lists all available actions with their shortcut key. Dismiss with `Esc`.
+
+| Key (in menu) | Action |
+|---------------|--------|
+| `f` | Fetch — runs `git fetch origin --prune`; triggers a status refresh on completion |
+| `p` | Pull — runs `git pull --prune`; auto-stashes dirty changes before pull, pops stash afterwards |
+| `P` | Push — pushes current branch; automatically sets upstream (`--set-upstream origin HEAD`) if not configured |
+| `F` | Force Push — pushes with `--force --set-upstream origin HEAD` (confirmation dialog shown first) |
+| `c` | Checkout Branch — shows a list of local and remote branches; auto-stashes dirty changes before checkout, pops stash afterwards |
+| `n` | Create New Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
+| `x` | Delete Branch — shows list of local branches (excluding current); runs `git branch -D <name>` |
+
+Direct shortcuts `f`, `p`, `P` also work from the normal Repositories view without opening the menu.
+
+All git operations run in the background. Progress is shown via the Activity column spinner.
+Output lines (stdout + stderr) are appended to the Output Log pane with timestamps.
 
 ## Status Details Pane
 
@@ -71,12 +94,18 @@ Each tracked repository is shown as a table row with:
 | `j` / `k` or `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows; clamps at list boundaries, no wrap |
 | `Tab` | Cycle focus between Repositories / Status Details / Output Log panes |
-| `A` | Add repository |
+| `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
+| `Enter` | Open per-repo action menu |
+| `f` | Fetch selected repo (shortcut, no menu needed) |
+| `p` | Pull selected repo (shortcut, no menu needed) |
+| `P` | Push selected repo (shortcut, no menu needed) |
 | `s` | Toggle Status Details pane |
 | `l` | Toggle Output Log pane |
 | `r` | Refresh all repositories |
 | `Ctrl-C` | Quit (works in all modes) |
+
+In the action menu, `Esc` dismisses the menu without taking any action.
 
 ## User Interface
 
@@ -86,8 +115,10 @@ Each tracked repository is shown as a table row with:
 - Loading spinner in header while repos are being scanned
 - Refresh timestamp shown right-aligned in the header bar
 - Single-line help bar at the bottom showing active key bindings
-- Confirmation dialog for destructive actions (remove repo)
-- File picker popup for adding repos with vim-style navigation (`j`/`k`/`h`/`l`)
+- Confirmation dialogs for destructive actions (remove repo, force push)
+- File picker popup for adding repos with vim-style navigation (`j`/`k`/`h`/`l`);
+  `Enter`/`→` navigates into a directory, `Space` selects it as the repo to add
+- Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
 
 ## Branch Information (per repo, available for future use)
 

@@ -35,14 +35,11 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## UX Polish
 
-- [ ]
+- [ ] Add global keybinding "alt-f" to fetch all tracked repos
 
 ## Bugs
 
-- [x] repo actions menu should not use "q" keybinding, just "esc", which actually works although it is not contained in the menu.
-- [x] Attempt to add a new repo, that is within another parent repo directory will not work.
-      Likely because the "enter" key in the file/dir picker is reused to: 1. dive into a dir 2. select a repo.
-      if dir is a git repo and has child repos, then enter will select it and never dive into it.
+- [ ]
 
 ## Git History Pane
 
@@ -63,18 +60,7 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## Git Basic Operations
 
-- [x] Available per-repo-actions are shown in a poup-menu for the current selected repo when enter key is hit
-- [x] Fetch: run `git fetch origin --prune` per repo (keybinding: `f`)
-      After fetch completes, trigger a status update
-- [x] Pull: run `git pull --prune` per repo (keybinding: `p`)
-      Auto-stash dirty changes before pull, pop stash afterwards
-- [x] Push: push current branch, set upstream automatically if no tracking branch is configured
-      (keybinding: `P`)
-- [x] Force push: push with `--force` (keybinding: `shift+P` or prompt)
-- [x] Checkout branch: select from list of local and available remote branches
-      Auto-stash dirty changes before checkout, pop stash afterwards
-- [x] Create new branch: prompt for branch name, sanitise input, run `git checkout -b <name>`
-- [x] Delete branch: select from list of local branches, run `git branch -D <name>`
+- [ ]
 
 ## Git Rebase Operation
 
@@ -91,16 +77,26 @@ Force re-reading features and todo document to fully grasp their current content
       Handle merge-conflict case: `git reset -- <path>` first, then `git checkout -- <path>`
 - [ ] Discard untracked file: delete the file from disk
 
+## Tooling
+
+- [ ] Introduce Makefile with useful targets to
+  - [ ] Run `cargo clippy` and fix all warnings
+  - [ ] Run `cargo fmt` and enforce formatting
+  - [ ] Build the app and run it with `cargo run`
+
 ## Testing & Quality
 
 - [ ] Unit tests for git status parsing logic (git.rs)
 - [ ] Unit tests for config load/save
-- [ ] Integration smoke test: spawn app against a temp git repo
-- [ ] Run `cargo clippy` and fix all warnings
-- [ ] Run `cargo fmt` and enforce formatting
+- [ ] Integration smoke test: spawn app against temp git repos
+  - [ ] if possible test various repo scenarios by creating/tweaking a temp git repo into a test scenario
+        and run the tool on it.
 
 ## Documentation & Release
 
-- [ ] Write README.md (features, install, usage, keybindings)
+- [ ] Write README.md
+  - [ ] brief description of features ( features.md will contain the full detailed description )
+  - [ ] how to build and install the tool
+  - [ ] basic usage examples
+  - [ ] keybindings
 - [ ] Add AGENTS.md notes for contributors
-- [ ] Add `cargo install` instructions
