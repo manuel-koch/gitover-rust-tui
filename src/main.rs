@@ -403,8 +403,15 @@ fn handle_picker_event(
                 app.cancel_pick();
             }
 
-            // Enter: confirm if it's a git repo, otherwise navigate into dir
+            // Enter: always navigate into the directory
             KeyCode::Enter => {
+                if let Some(explorer) = app.file_explorer.as_mut() {
+                    let _ = explorer.handle(ExplorerInput::Right);
+                }
+            }
+
+            // Space: select the current directory as a repo
+            KeyCode::Char(' ') => {
                 if let Some(path) = app.picker_selected_path() {
                     match app.add_repo_path(&path) {
                         Ok(Some(new_path)) => {
@@ -413,11 +420,9 @@ fn handle_picker_event(
                         Ok(None) => {
                             // Already tracked — close picker
                         }
-                        Err(_) => {
-                            // Not a git repo — navigate into it
-                            if let Some(explorer) = app.file_explorer.as_mut() {
-                                let _ = explorer.handle(ExplorerInput::Right);
-                            }
+                        Err(e) => {
+                            // Not a valid git repo — show nothing, stay open
+                            let _ = e;
                         }
                     }
                 }

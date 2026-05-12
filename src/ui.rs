@@ -538,11 +538,11 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
     let hint = Line::from(vec![
         Span::styled("↑↓/jk", Style::default().fg(Color::Yellow)),
         Span::raw(" navigate  "),
-        Span::styled("→/l/Enter", Style::default().fg(Color::Yellow)),
+        Span::styled("Enter/→/l", Style::default().fg(Color::Yellow)),
         Span::raw(" open dir  "),
         Span::styled("←/h/Bksp", Style::default().fg(Color::Yellow)),
         Span::raw(" parent  "),
-        Span::styled("Enter", Style::default().fg(Color::Green)),
+        Span::styled("Space", Style::default().fg(Color::Green)),
         Span::raw(" select repo  "),
         Span::styled("Esc", Style::default().fg(Color::Yellow)),
         Span::raw(" cancel"),
