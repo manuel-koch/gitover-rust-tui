@@ -197,7 +197,10 @@ impl App {
         match self.focus {
             Focus::Repos => {
                 if !self.repos.is_empty() {
-                    self.selected = (self.selected + 1) % self.repos.len();
+                    let last = self.repos.len() - 1;
+                    if self.selected < last {
+                        self.selected += 1;
+                    }
                     self.detail_selected = 0;
                     self.detail_scroll = 0;
                 }
@@ -226,9 +229,7 @@ impl App {
         match self.focus {
             Focus::Repos => {
                 if !self.repos.is_empty() {
-                    if self.selected == 0 {
-                        self.selected = self.repos.len() - 1;
-                    } else {
+                    if self.selected > 0 {
                         self.selected -= 1;
                     }
                     self.detail_selected = 0;

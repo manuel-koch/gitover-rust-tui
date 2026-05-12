@@ -36,6 +36,7 @@ Force re-reading features and todo document to fully grasp their current content
 ## UX Polish
 
 - [x] Add global keybinding "alt-f" to fetch all tracked repos
+- [x] Don't cycle round the edges of the repo list when moving cursor up/down, stick at the start/end
 
 ## Bugs
 
