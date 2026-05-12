@@ -310,6 +310,10 @@ fn handle_op_result(
     for line in &result.lines {
         app.log(format!("  {line}"));
     }
+    // Auto-show output log on failure so the user sees what went wrong.
+    if !result.success && !app.show_log {
+        app.toggle_log();
+    }
     refresh_single_repo(app, &result.repo_path);
     app.refresh_history_for_repo(&result.repo_path.clone());
     *dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
