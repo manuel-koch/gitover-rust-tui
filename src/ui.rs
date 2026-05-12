@@ -20,6 +20,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.show_log {
         constraints.push(Constraint::Length(log_panel_height(app)));
     }
+    if app.mode == AppMode::History {
+        constraints.push(Constraint::Min(8)); // history pane takes remaining space
+    }
     constraints.push(Constraint::Length(1)); // help bar
 
     let chunks = Layout::default()
@@ -38,6 +41,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     if app.show_log {
         draw_log_panel(frame, chunks[idx], app);
+        idx += 1;
+    }
+    if app.mode == AppMode::History {
+        draw_history_panel(frame, chunks[idx], app);
         idx += 1;
     }
     draw_help_bar(frame, chunks[idx], app);
@@ -470,6 +477,154 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
 // ── Help bar ──────────────────────────────────────────────────────────────
 
+fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+    let focused = app.focus == Focus::History;
+    let title = format!(
+        " Commit History — {} ",
+        app.history_repo_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&app.history_repo_path)
+    );
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(focus_border_style(focused));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if app.history.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No commits found.").style(Style::default().fg(Color::DarkGray)),
+            inner,
+        );
+        return;
+    }
+
+    // Column widths — distribute proportionally.
+    // hash:10  timestamp:20  author:dynamic  summary:rest
+    let total = inner.width as usize;
+    let hash_w = 10usize;
+    let ts_w = 20usize;
+    // measure widest author name (capped at 20)
+    let author_w = app
+        .history
+        .iter()
+        .map(|c| c.author.len())
+        .max()
+        .unwrap_or(8)
+        .min(20);
+    let sep = 2usize; // " │ " between cols is 3 chars; account for 3 separators
+    let summary_w = total.saturating_sub(hash_w + ts_w + author_w + sep * 3 + 4);
+
+    let visible = inner.height as usize;
+
+    // Scroll: ensure selected row is visible.
+    if app.history_selected >= app.history_scroll + visible {
+        app.history_scroll = app.history_selected - visible + 1;
+    }
+    if app.history_selected < app.history_scroll {
+        app.history_scroll = app.history_selected;
+    }
+
+    // Build flat row list for the visible window.
+    let mut rows: Vec<Row<'static>> = Vec::new();
+    let mut flat_idx = 0usize;
+
+    'outer: for commit in &app.history {
+        // Commit header row
+        if flat_idx >= app.history_scroll {
+            let selected = flat_idx == app.history_selected;
+            let row_style = if selected {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let hash_cell =
+                Cell::from(commit.short_hash.clone()).style(Style::default().fg(Color::Yellow));
+            let ts_cell =
+                Cell::from(commit.timestamp.clone()).style(Style::default().fg(Color::DarkGray));
+            let author_cell = Cell::from(commit.author.chars().take(author_w).collect::<String>())
+                .style(Style::default().fg(Color::Cyan));
+            let summary_cell =
+                Cell::from(commit.summary.chars().take(summary_w).collect::<String>());
+            let row =
+                Row::new(vec![hash_cell, ts_cell, author_cell, summary_cell]).style(row_style);
+            rows.push(row);
+            if rows.len() >= visible {
+                break 'outer;
+            }
+        }
+        flat_idx += 1;
+
+        // File sub-rows
+        for file_delta in &commit.files {
+            if flat_idx >= app.history_scroll {
+                let selected = flat_idx == app.history_selected;
+                let row_style = if selected {
+                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                } else {
+                    Style::default()
+                };
+                // empty hash / ts / author; file info in summary column
+                let file_text = format!("  {} {}", file_delta.kind.code(), file_delta.path);
+                let file_span = Span::styled(
+                    file_text
+                        .chars()
+                        .take(summary_w + author_w + ts_w)
+                        .collect::<String>(),
+                    Style::default().fg(file_delta.kind.colour()),
+                );
+                let row = Row::new(vec![
+                    Cell::from(""),
+                    Cell::from(""),
+                    Cell::from(""),
+                    Cell::from(Line::from(vec![file_span])),
+                ])
+                .style(row_style);
+                rows.push(row);
+                if rows.len() >= visible {
+                    break 'outer;
+                }
+            }
+            flat_idx += 1;
+        }
+    }
+
+    // Scroll indicator: show commit N of M (not flat row index).
+    let commit_idx = app
+        .history_row_at(app.history_selected)
+        .map(|(ci, _)| ci + 1)
+        .unwrap_or(1)
+        .min(app.history.len());
+    let scroll_info = format!("{}/{}", commit_idx, app.history.len());
+    let info_width = scroll_info.len() as u16 + 2;
+    if inner.width > info_width {
+        let info_area = Rect {
+            x: inner.x + inner.width - info_width,
+            y: inner.y,
+            width: info_width,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(scroll_info).style(Style::default().fg(Color::DarkGray)),
+            info_area,
+        );
+    }
+
+    let widths = [
+        Constraint::Length(hash_w as u16),
+        Constraint::Length(ts_w as u16),
+        Constraint::Length(author_w as u16),
+        Constraint::Min(4),
+    ];
+    let table = Table::new(rows, widths).column_spacing(1);
+    frame.render_widget(table, inner);
+}
+
 fn draw_help_bar(frame: &mut Frame, area: Rect, _app: &App) {
     let help = Line::from(vec![
         Span::styled("Q", Style::default().fg(Color::Yellow)),
@@ -492,6 +647,8 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, _app: &App) {
         Span::raw(" actions  "),
         Span::styled("c", Style::default().fg(Color::Yellow)),
         Span::raw(" checkout  "),
+        Span::styled("h", Style::default().fg(Color::Yellow)),
+        Span::raw(" history  "),
         Span::styled("r", Style::default().fg(Color::Yellow)),
         Span::raw(" refresh  "),
         Span::styled("Alt-f", Style::default().fg(Color::Yellow)),

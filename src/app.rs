@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::git::{FileStatusKind, RepoStatus};
+use crate::git::{CommitEntry, FileStatusKind, RepoStatus};
 use crate::state::State;
 use ratatui_explorer::FileExplorer;
 use std::collections::HashMap;
@@ -44,6 +44,7 @@ pub enum Focus {
     Repos,
     Detail,
     Log,
+    History,
 }
 
 /// What the UI is currently showing.
@@ -65,6 +66,8 @@ pub enum AppMode {
     ConfirmForcePush,
     /// Confirmation dialog for deleting a branch.
     ConfirmDeleteBranch,
+    /// Commit history pane (h key).
+    History,
 }
 
 /// One entry in the action menu.
@@ -141,6 +144,16 @@ pub struct App {
     pub branch_input: String,
     /// Branch name staged for deletion (shown in confirm dialog).
     pub branch_to_delete: String,
+
+    // ── Git History ───────────────────────────────────────────────────────────
+    /// Commit history for the repo that was selected when `h` was pressed.
+    pub history: Vec<CommitEntry>,
+    /// Path of the repo whose history is loaded (used to detect staleness).
+    pub history_repo_path: String,
+    /// Currently highlighted row in the flat history list (commits + file sub-rows).
+    pub history_selected: usize,
+    /// Scroll offset (top visible row) for the history pane.
+    pub history_scroll: usize,
 }
 
 /// Maximum number of log lines retained.
@@ -187,6 +200,10 @@ impl App {
             branch_selected: 0,
             branch_input: String::new(),
             branch_to_delete: String::new(),
+            history: Vec::new(),
+            history_repo_path: String::new(),
+            history_selected: 0,
+            history_scroll: 0,
         }
     }
 
@@ -221,6 +238,12 @@ impl App {
                     self.log_follow = true;
                 }
             }
+            Focus::History => {
+                let n = self.history_row_count();
+                if n > 0 && self.history_selected + 1 < n {
+                    self.history_selected += 1;
+                }
+            }
         }
     }
 
@@ -250,6 +273,11 @@ impl App {
                 }
                 self.log_follow = false;
             }
+            Focus::History => {
+                if self.history_selected > 0 {
+                    self.history_selected -= 1;
+                }
+            }
         }
     }
 
@@ -262,6 +290,9 @@ impl App {
         }
         if self.show_log {
             order.push(Focus::Log);
+        }
+        if self.mode == AppMode::History {
+            order.push(Focus::History);
         }
         if order.len() < 2 {
             self.focus = Focus::Repos;
@@ -296,6 +327,12 @@ impl App {
                     self.log_follow = true;
                 }
             }
+            Focus::History => {
+                let n = self.history_row_count();
+                if n > 0 {
+                    self.history_selected = (self.history_selected + PAGE_STEP).min(n - 1);
+                }
+            }
         }
     }
 
@@ -316,6 +353,9 @@ impl App {
                 let max_back = self.log.len().saturating_sub(1);
                 self.log_offset = (self.log_offset + PAGE_STEP).min(max_back);
                 self.log_follow = false;
+            }
+            Focus::History => {
+                self.history_selected = self.history_selected.saturating_sub(PAGE_STEP);
             }
         }
     }
@@ -629,6 +669,55 @@ impl App {
 
     pub fn confirm_force_push(&mut self) {
         self.mode = AppMode::ConfirmForcePush;
+    }
+
+    // ── Git History ───────────────────────────────────────────────────────────
+
+    /// Open the history pane for the selected repo, loading fresh commit data.
+    pub fn open_history(&mut self) {
+        if self.repos.is_empty() {
+            return;
+        }
+        let repo = &self.repos[self.selected];
+        if repo.error.is_some() {
+            return;
+        }
+        let path = repo.path.clone();
+        self.history = crate::git::get_commit_history(&path, 200).unwrap_or_default();
+        self.history_repo_path = path;
+        self.history_selected = 0;
+        self.history_scroll = 0;
+        self.mode = AppMode::History;
+        self.focus = Focus::History;
+    }
+
+    /// Close the history pane and return to normal mode.
+    pub fn close_history(&mut self) {
+        self.mode = AppMode::Normal;
+        self.focus = Focus::Repos;
+    }
+
+    /// Return the total number of visible rows in the history pane:
+    /// one row per commit + one row per file delta within each commit.
+    pub fn history_row_count(&self) -> usize {
+        self.history.iter().map(|c| 1 + c.files.len()).sum()
+    }
+
+    /// Resolve a flat `row_index` into (commit_index, Option<file_index>).
+    /// Returns None if row_index is out of bounds.
+    pub fn history_row_at(&self, row_index: usize) -> Option<(usize, Option<usize>)> {
+        let mut remaining = row_index;
+        for (ci, commit) in self.history.iter().enumerate() {
+            if remaining == 0 {
+                return Some((ci, None));
+            }
+            remaining -= 1;
+            if remaining < commit.files.len() {
+                return Some((ci, Some(remaining)));
+            }
+            remaining -= commit.files.len();
+        }
+        None
     }
 
     /// Append a timestamped line to the output log.

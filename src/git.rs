@@ -10,6 +10,125 @@ pub struct AheadBehind {
     pub branch: String,
 }
 
+/// Change type for a file within a commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeltaKind {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+    Other,
+}
+
+impl DeltaKind {
+    /// Single-letter identifier used in the history sub-row.
+    pub fn code(&self) -> &'static str {
+        match self {
+            DeltaKind::Added => "A",
+            DeltaKind::Modified => "M",
+            DeltaKind::Deleted => "D",
+            DeltaKind::Renamed => "R",
+            DeltaKind::Other => "?",
+        }
+    }
+
+    pub fn colour(&self) -> ratatui::style::Color {
+        match self {
+            DeltaKind::Added => ratatui::style::Color::Blue,
+            DeltaKind::Modified => ratatui::style::Color::Green,
+            DeltaKind::Deleted => ratatui::style::Color::Red,
+            DeltaKind::Renamed => ratatui::style::Color::Yellow,
+            DeltaKind::Other => ratatui::style::Color::DarkGray,
+        }
+    }
+}
+
+/// One file touched by a commit.
+#[derive(Debug, Clone)]
+pub struct CommitFileDelta {
+    pub kind: DeltaKind,
+    pub path: String,
+}
+
+/// One commit in the history pane.
+#[derive(Debug, Clone)]
+pub struct CommitEntry {
+    /// First 8 characters of the commit SHA.
+    pub short_hash: String,
+    /// Commit timestamp formatted as `YYYY-MM-DD HH:MM:SS` in local time.
+    pub timestamp: String,
+    /// Author name.
+    pub author: String,
+    /// First line of the commit message.
+    pub summary: String,
+    /// Files changed in this commit.
+    pub files: Vec<CommitFileDelta>,
+}
+
+/// Load the commit history for the repository at `path`.
+/// Returns up to `limit` commits, newest first.
+pub fn get_commit_history(path: &str, limit: usize) -> Result<Vec<CommitEntry>> {
+    let repo = Repository::open(path)?;
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push_head()?;
+    revwalk.set_sorting(git2::Sort::TIME)?;
+
+    let mut entries = Vec::new();
+    for oid_result in revwalk.take(limit) {
+        let oid = oid_result?;
+        let commit = repo.find_commit(oid)?;
+
+        let short_hash = format!("{:.8}", commit.id());
+        let author = commit.author().name().unwrap_or("?").to_string();
+        let summary = commit.summary().unwrap_or("").to_string();
+
+        // Format timestamp as local time YYYY-MM-DD HH:MM:SS
+        let ts = commit.time();
+        let timestamp = {
+            use chrono::{Local, TimeZone};
+            let dt = Local
+                .timestamp_opt(ts.seconds(), 0)
+                .single()
+                .unwrap_or_else(|| Local::now());
+            dt.format("%Y-%m-%d %H:%M:%S").to_string()
+        };
+
+        // Collect file deltas by diffing against first parent (or empty tree).
+        let files = {
+            let tree = commit.tree()?;
+            let parent_tree = commit.parents().next().and_then(|p| p.tree().ok());
+            let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+            let mut deltas = Vec::new();
+            for delta in diff.deltas() {
+                let kind = match delta.status() {
+                    git2::Delta::Added => DeltaKind::Added,
+                    git2::Delta::Modified => DeltaKind::Modified,
+                    git2::Delta::Deleted => DeltaKind::Deleted,
+                    git2::Delta::Renamed => DeltaKind::Renamed,
+                    _ => DeltaKind::Other,
+                };
+                let path = delta
+                    .new_file()
+                    .path()
+                    .or_else(|| delta.old_file().path())
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                deltas.push(CommitFileDelta { kind, path });
+            }
+            deltas
+        };
+
+        entries.push(CommitEntry {
+            short_hash,
+            timestamp,
+            author,
+            summary,
+            files,
+        });
+    }
+    Ok(entries)
+}
+
 /// One entry in a repo's changed-files list — drives the detail panel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileStatusKind {

@@ -26,20 +26,23 @@ Done tasks are check-marked when implemented.
 
 ## Git History Pane
 
-- [ ] When repo is selected, upon "h" key open git commit history for current branch
-- [ ] Display the commit history using a table with the following columns
-  - [ ] short-commit-hash
-  - [ ] timstamp: YYYY-MM-DD HH:MM:SS in local time
-  - [ ] username
-  - [ ] Commit message, just first line
-    - [ ] Sub-rows, a row for every file of that commit, content in the commit message column
-      - [ ] file cell formatted as: "<change-identifier> <path>" where change identifier is a single key
-        - [ ] M=modified (green)
-        - [ ] D=deleted (red)
-        - [ ] A=added (blue)
-- [ ] Order commits ascending, newest commit at top of list
-- [ ] Update commit history data only if pane is current open, force refresh on opening the pane
-- [ ] Distribute the column widths so that columns with more content are wider
+- [x] When repo is selected, upon "h" key open git commit history for current branch
+- [x] Display the commit history using a table with the following columns
+  - [x] short-commit-hash
+  - [x] timstamp: YYYY-MM-DD HH:MM:SS in local time
+  - [x] username
+  - [x] Commit message, just first line
+    - [x] Sub-rows, a row for every file of that commit, content in the commit message column
+      - [x] file cell formatted as: "<change-identifier> <path>" where change identifier is a single key
+        - [x] M=modified (green)
+        - [x] D=deleted (red)
+        - [x] A=added (blue)
+- [x] Order commits ascending, newest commit at top of list
+- [x] Update commit history data only if pane is current open, force refresh on opening the pane
+- [x] Distribute the column widths so that columns with more content are wider
+- [ ] When repo action is triggered, add action to show commit history of
+  - [ ] ahead/behind commits with respect to upstream
+  - [ ] ahead/behind commits with respect to trunk
 
 ## Git Basic Operations
 

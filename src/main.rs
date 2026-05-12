@@ -164,6 +164,11 @@ where
                         handle_confirm_delete_branch_key(app, op_tx, key.code);
                     }
                 }
+                AppMode::History => {
+                    if let Event::Key(key) = &ev {
+                        handle_history_key(app, key.code);
+                    }
+                }
             }
         }
 
@@ -207,6 +212,7 @@ fn handle_normal_key(
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
         KeyCode::Char('c') => app.open_branch_select(),
+        KeyCode::Char('h') => app.open_history(),
         _ => {}
     }
 }
@@ -622,4 +628,17 @@ fn refresh_single_repo(app: &mut App, path: &str) {
         }
     }
     app.last_refreshed = Some(Instant::now());
+}
+
+fn handle_history_key(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Char('Q') => app.should_quit = true,
+        KeyCode::Char('h') => app.close_history(),
+        KeyCode::Tab => app.cycle_focus(),
+        KeyCode::Down => app.next(),
+        KeyCode::Up => app.previous(),
+        KeyCode::PageDown => app.next_page(),
+        KeyCode::PageUp => app.previous_page(),
+        _ => {}
+    }
 }
