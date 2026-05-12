@@ -79,10 +79,10 @@ Force re-reading features and todo document to fully grasp their current content
 
 ## Tooling
 
-- [ ] Introduce Makefile with useful targets to
-  - [ ] Run `cargo clippy` and fix all warnings
-  - [ ] Run `cargo fmt` and enforce formatting
-  - [ ] Build the app and run it with `cargo run`
+- [x] Introduce Makefile with useful targets to
+  - [x] "lint": Run `cargo clippy` and fix all warnings
+  - [x] "format": Run `cargo fmt` and enforce formatting
+  - [x] "build-and-run": Build the app and run it with `cargo run`
 
 ## Testing & Quality
 
