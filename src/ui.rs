@@ -490,6 +490,8 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, _app: &App) {
         Span::raw(" log  "),
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
         Span::raw(" actions  "),
+        Span::styled("c", Style::default().fg(Color::Yellow)),
+        Span::raw(" checkout  "),
         Span::styled("r", Style::default().fg(Color::Yellow)),
         Span::raw(" refresh  "),
         Span::styled("Alt-f", Style::default().fg(Color::Yellow)),

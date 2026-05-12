@@ -54,7 +54,7 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `n` | Create New Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
 | `x` | Delete Branch — shows list of local branches (excluding current); runs `git branch -D <name>` |
 
-Direct shortcuts `f`, `p`, `P` also work from the normal Repositories view without opening the menu.
+Direct shortcuts `f`, `p`, `P`, `c` also work from the normal Repositories view without opening the menu.
 
 `Alt-f` fetches all tracked repositories in parallel (global shortcut, works from any pane).
 
@@ -100,6 +100,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 | `f` | Fetch selected repo (shortcut, no menu needed) |
 | `p` | Pull selected repo (shortcut, no menu needed) |
 | `P` | Push selected repo (shortcut, no menu needed) |
+| `c` | Checkout branch on selected repo (shortcut, no menu needed) |
 | `Alt-f` | Fetch all tracked repos in parallel |
 | `s` | Toggle Status Details pane |
 | `l` | Toggle Output Log pane |

@@ -206,6 +206,7 @@ fn handle_normal_key(
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
+        KeyCode::Char('c') => app.open_branch_select(),
         _ => {}
     }
 }

@@ -85,6 +85,7 @@ On first launch the repo list is empty. Press `A` to add a repository using the 
 | `f`           | Fetch selected repo                     |
 | `p`           | Pull selected repo                      |
 | `P`           | Push selected repo                      |
+| `c`           | Checkout branch (opens branch list)     |
 | `A`           | Add repository (file picker)            |
 | `D`           | Remove selected repository              |
 | `s`           | Toggle Status Details pane              |
