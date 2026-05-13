@@ -4,6 +4,10 @@ This is a living document.
 New tasks are added as needed.
 Done tasks are check-marked when implemented.
 
+## Bugs
+
+- [ ]
+
 ## Config & Repo Management
 
 - [ ]
@@ -18,16 +22,12 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [x] Vertical sizing of "Repositories" pane is not good, ensure that this pane is always the biggest.
-      When evenly distibuting the vertical space, add any remaining space to "Repositories".
-      If total available height for panes is 20
-      and open panes are: Repositories, Status & History
-      then distribute height like: Repositories=8 Status=6 History=6
-- [x] Show repo root path in "Status" pane title
-
-## Bugs
-
 - [ ]
+
+## UX Mouse Interaction
+
+- [ ] Click on pane gives focus to that pane
+- [ ] Mouse wheel moves cursor up/down in current focused pane
 
 ## Git History Pane
 
@@ -51,10 +51,6 @@ Done tasks are check-marked when implemented.
 - [ ] Revert file: run `git checkout -- <path>` to discard working-tree changes
       Handle merge-conflict case: `git reset -- <path>` first, then `git checkout -- <path>`
 - [ ] Discard untracked file: delete the file from disk
-
-## Tooling
-
-- [ ]
 
 ## Testing & Quality
 
