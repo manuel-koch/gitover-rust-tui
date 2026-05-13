@@ -42,6 +42,7 @@ src/
   ops.rs        — background git operations (OpRequest, spawn_op, run_op)
   watcher.rs    — file-system watcher (notify crate, git-aware filter)
   config.rs     — config file loading (~/.config/gitover/config.yaml)
+  theme.rs      — UI color theme definitions
   state.rs      — persistent state (repo list, recents, ~/.config/gitover/state.yaml)
   lib.rs        — re-exports config/git/state for integration tests
 tests/
