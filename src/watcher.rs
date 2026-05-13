@@ -52,10 +52,6 @@ fn watch_repo(root: String, tx: Sender<String>) {
     };
 
     let root_path = PathBuf::from(&root);
-    if let Err(e) = watcher.watch(&root_path, RecursiveMode::Recursive) {
-        eprintln!("watcher: failed to watch {root}: {e}");
-        return;
-    }
 
     let repo = git2::Repository::open(&root_path).ok();
 
@@ -66,6 +62,28 @@ fn watch_repo(root: String, tx: Sender<String>) {
         .as_ref()
         .map(|r| r.path().to_path_buf())
         .unwrap_or_else(|| root_path.join(".git"));
+
+    // Always watch the root (worktree). For normal repos the git_dir is inside
+    // root_path so this covers everything. For worktrees and submodules the
+    // git_dir is OUTSIDE root_path, so we must watch it separately.
+    if let Err(e) = watcher.watch(&root_path, RecursiveMode::Recursive) {
+        eprintln!("watcher: failed to watch {root}: {e}");
+        return;
+    }
+
+    // For worktrees and submodules, also watch the git_dir directly since it
+    // lives outside the worktree (the .git is a file pointing there).
+    // Skip this if git_dir is inside root_path (normal repo) or if git_dir
+    // equals root_path/.git (meaning we already cover it via root_path watch).
+    let git_dir_outside_worktree = !git_dir.starts_with(&root_path);
+    let git_dir_is_file = root_path.join(".git") != git_dir;
+    if git_dir_outside_worktree && git_dir_is_file {
+        // git_dir is outside root_path (worktree/submodule case) — watch it too
+        if let Err(e) = watcher.watch(&git_dir, RecursiveMode::Recursive) {
+            eprintln!("watcher: failed to watch git_dir {git_dir:?}: {e}");
+            // Continue anyway — we still have root_path watched
+        }
+    }
 
     let mut last_relevant: Option<Instant> = None;
 
