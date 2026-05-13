@@ -11,6 +11,8 @@
 
 - Config file: `~/.config/gitover/config.yaml` (optional; missing file is valid)
 - `general.git`: override the path to the git executable
+- `general.auto_fetch_interval`: interval in seconds for automatic background fetch of all repos
+  (default: 600 = 10 minutes; set to 0 to disable automatic fetch)
 
 ## Repository Management
 
@@ -142,6 +144,7 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Focused pane highlighted with cyan border; unfocused panes use dark-gray border
 - Loading spinner in header while repos are being scanned
 - Refresh timestamp shown right-aligned in the header bar
+- Auto-fetch countdown shown right-aligned in the header bar (e.g. "fetching all in 30s"; hidden when auto-fetch is disabled)
 - Single-line help bar at the bottom showing active key bindings
 - Confirmation dialogs for destructive actions (remove repo, force push)
 - File picker popup for adding repos; `↑`/`↓` navigate, `→`/`Enter` descend into directory, `←`/`Backspace` go to parent, `Space` selects current directory as repo to add
