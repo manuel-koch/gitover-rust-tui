@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{App, AppMode, Focus, RepoOperation};
-use crate::git::{FileStatusKind, RepoStatus};
+use crate::git::RepoStatus;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     // Compute remaining vertical space after fixed-height panels.
@@ -88,6 +88,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 /// Header — shows app title, spinner when scanning, and refresh time right-aligned.
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
+    let theme = app.theme();
     let refresh_text = match app.seconds_since_refresh() {
         Some(s) if s < 5 => "just now".to_string(),
         Some(s) => format!("{s}s ago"),
@@ -98,7 +99,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let mut left_spans: Vec<Span<'static>> = vec![Span::styled(
         "Gitover - Git Repository Monitor",
         Style::default()
-            .fg(Color::Cyan)
+            .fg(theme.title)
             .add_modifier(Modifier::BOLD),
     )];
 
@@ -106,12 +107,12 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         left_spans.push(Span::raw("  "));
         left_spans.push(Span::styled(
             app.spinner_frame(),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme.spinner),
         ));
         left_spans.push(Span::raw(" "));
         left_spans.push(Span::styled(
             "scanning…",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme.spinner),
         ));
     }
 
@@ -129,7 +130,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let right_text = format!("refreshed: {}  ", refresh_text);
     let right_para = Paragraph::new(Line::from(Span::styled(
         right_text,
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme.refresh_info),
     )))
     .alignment(ratatui::layout::Alignment::Right);
     frame.render_widget(right_para, inner);
@@ -141,7 +142,8 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     let visible_rows = table_visible_rows(area);
     clamp_offset(app, visible_rows);
 
-    let header_cells = [
+    let theme = app.theme();
+    let header_cells: Vec<Cell<'static>> = [
         "Repository",
         "Branch",
         "Status",
@@ -153,34 +155,35 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     .map(|h| {
         Cell::from(*h).style(
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.table_header)
                 .add_modifier(Modifier::BOLD),
         )
-    });
+    })
+    .collect();
     let table_header = Row::new(header_cells).height(1).bottom_margin(1);
 
     let spinner = app.spinner_frame().to_string();
 
     let rows = app.repos.iter().map(|repo| {
         if let Some(err) = &repo.error {
-            return build_error_row(repo, err);
+            return build_error_row(repo, err, theme);
         }
 
         let name = repo.path.split('/').next_back().unwrap_or(&repo.path);
         let name_style = if repo.is_clean() {
-            Style::default().fg(Color::Green)
+            Style::default().fg(theme.repo_clean)
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(theme.repo_dirty)
         };
 
-        let status_spans = build_status_spans(repo);
-        let upstream_cell = build_ahead_behind_cell(&repo.upstream);
-        let trunk_cell = build_trunk_cell(&repo.trunk);
-        let activity_cell = build_activity_cell(app.repo_operation(&repo.path), &spinner);
+        let status_spans = build_status_spans(repo, theme);
+        let upstream_cell = build_ahead_behind_cell(&repo.upstream, theme);
+        let trunk_cell = build_trunk_cell(&repo.trunk, theme);
+        let activity_cell = build_activity_cell(app.repo_operation(&repo.path), &spinner, theme);
 
         Row::new(vec![
             Cell::from(name).style(name_style),
-            Cell::from(repo.branch.as_str()).style(Style::default().fg(Color::Cyan)),
+            Cell::from(repo.branch.as_str()).style(Style::default().fg(theme.branch)),
             Cell::from(status_spans),
             activity_cell,
             upstream_cell,
@@ -204,7 +207,7 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
         Block::default()
             .borders(Borders::ALL)
             .title("Repositories")
-            .border_style(focus_border_style(app.focus == Focus::Repos)),
+            .border_style(focus_border_style(app.focus == Focus::Repos, app.theme())),
     )
     .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol("> ");
@@ -247,28 +250,28 @@ fn clamp_offset(app: &mut App, visible: usize) {
 }
 
 /// Inline-error row for repos that failed to scan / have invalid paths.
-fn build_error_row(repo: &RepoStatus, err: &str) -> Row<'static> {
+fn build_error_row(repo: &RepoStatus, err: &str, theme: &crate::theme::Theme) -> Row<'static> {
     let name = repo.path.split('/').next_back().unwrap_or(&repo.path);
     Row::new(vec![
-        Cell::from(name.to_string()).style(Style::default().fg(Color::Red)),
-        Cell::from("—").style(Style::default().fg(Color::DarkGray)),
+        Cell::from(name.to_string()).style(Style::default().fg(theme.error)),
+        Cell::from("—").style(Style::default().fg(theme.placeholder)),
         Cell::from(Span::styled(
             format!("⚠ {err}"),
-            Style::default().fg(Color::Red),
+            Style::default().fg(theme.error),
         )),
-        Cell::from("—").style(Style::default().fg(Color::DarkGray)),
-        Cell::from("—").style(Style::default().fg(Color::DarkGray)),
-        Cell::from("—").style(Style::default().fg(Color::DarkGray)),
+        Cell::from("—").style(Style::default().fg(theme.placeholder)),
+        Cell::from("—").style(Style::default().fg(theme.placeholder)),
+        Cell::from("—").style(Style::default().fg(theme.placeholder)),
     ])
 }
 
-fn build_status_spans(repo: &RepoStatus) -> Line<'static> {
+fn build_status_spans(repo: &RepoStatus, theme: &crate::theme::Theme) -> Line<'static> {
     let parts: &[(usize, &str, Color)] = &[
-        (repo.staged, "S", Color::Blue),
-        (repo.conflict, "C", Color::Yellow),
-        (repo.modified, "M", Color::Green),
-        (repo.deleted, "D", Color::Red),
-        (repo.added, "U", Color::Gray),
+        (repo.staged, "S", theme.status_staged),
+        (repo.conflict, "C", theme.status_conflict),
+        (repo.modified, "M", theme.status_modified),
+        (repo.deleted, "D", theme.status_deleted),
+        (repo.added, "U", theme.status_untracked),
     ];
 
     let mut spans: Vec<Span<'static>> = Vec::new();
@@ -285,38 +288,47 @@ fn build_status_spans(repo: &RepoStatus) -> Line<'static> {
     }
 
     if spans.is_empty() {
-        Line::from(Span::styled("clean", Style::default().fg(Color::DarkGray)))
+        Line::from(Span::styled(
+            "clean",
+            Style::default().fg(theme.status_clean_text),
+        ))
     } else {
         Line::from(spans)
     }
 }
 
-fn build_ahead_behind_cell(ab: &Option<crate::git::AheadBehind>) -> Cell<'static> {
+fn build_ahead_behind_cell(
+    ab: &Option<crate::git::AheadBehind>,
+    theme: &crate::theme::Theme,
+) -> Cell<'static> {
     match ab {
-        None => Cell::from("-").style(Style::default().fg(Color::DarkGray)),
+        None => Cell::from("-").style(Style::default().fg(theme.placeholder)),
         Some(ab) => {
             let text = format!("↑{} ↓{} {}", ab.ahead, ab.behind, ab.branch);
             let style = if ab.ahead > 0 || ab.behind > 0 {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(theme.sync_warning)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme.sync_ok)
             };
             Cell::from(text).style(style)
         }
     }
 }
 
-fn build_trunk_cell(ab: &Option<crate::git::AheadBehind>) -> Cell<'static> {
+fn build_trunk_cell(
+    ab: &Option<crate::git::AheadBehind>,
+    theme: &crate::theme::Theme,
+) -> Cell<'static> {
     match ab {
-        None => Cell::from("-").style(Style::default().fg(Color::DarkGray)),
+        None => Cell::from("-").style(Style::default().fg(theme.placeholder)),
         Some(ab) => {
             let text = format!("↑{} ↓{} {}", ab.ahead, ab.behind, ab.branch);
             let style = if ab.behind > 0 {
-                Style::default().fg(Color::Red)
+                Style::default().fg(theme.trunk_behind)
             } else if ab.ahead > 0 {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(theme.sync_warning)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme.sync_ok)
             };
             Cell::from(text).style(style)
         }
@@ -324,19 +336,24 @@ fn build_trunk_cell(ab: &Option<crate::git::AheadBehind>) -> Cell<'static> {
 }
 
 /// Per-repo busy indicator + op name. Empty cell when idle.
-fn build_activity_cell(op: Option<RepoOperation>, spinner: &str) -> Cell<'static> {
+fn build_activity_cell(
+    op: Option<RepoOperation>,
+    spinner: &str,
+    theme: &crate::theme::Theme,
+) -> Cell<'static> {
     match op {
         None => Cell::from(""),
         Some(op) => Cell::from(Line::from(vec![
-            Span::styled(spinner.to_string(), Style::default().fg(Color::Yellow)),
+            Span::styled(spinner.to_string(), Style::default().fg(theme.activity)),
             Span::raw(" "),
-            Span::styled(op.label(), Style::default().fg(Color::Yellow)),
+            Span::styled(op.label(), Style::default().fg(theme.activity)),
         ])),
     }
 }
 
 // ── Detail panel ──────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 /// Decide how tall the detail panel should be (clamped to a sensible range).
 fn detail_panel_height(app: &App) -> u16 {
     let count = app.selected_files().len();
@@ -346,6 +363,7 @@ fn detail_panel_height(app: &App) -> u16 {
 }
 
 fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+    let theme = app.theme();
     let title = match app.repos.get(app.selected) {
         Some(_) => " Status Details ".to_string(),
         None => " Status Details ".to_string(),
@@ -355,7 +373,7 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(focus_border_style(focused));
+        .border_style(focus_border_style(focused, app.theme()));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -382,7 +400,7 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     if files.is_empty() {
         let msg = Paragraph::new(Line::from(Span::styled(
             "no changes — working tree clean",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme.placeholder),
         )));
         frame.render_widget(msg, inner);
         return;
@@ -394,11 +412,11 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         .skip(app.detail_scroll)
         .take(visible)
         .map(|(i, f)| {
-            let colour = file_status_colour(&f.status);
+            let colour = theme.file_status_colour(&f.status);
             let selected = focused && i == app.detail_selected;
             let base_style = if selected {
                 Style::default()
-                    .fg(Color::Black)
+                    .fg(theme.selection_fg)
                     .bg(colour)
                     .add_modifier(Modifier::BOLD)
             } else {
@@ -421,18 +439,9 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(para, inner);
 }
 
-fn file_status_colour(kind: &FileStatusKind) -> Color {
-    match kind {
-        FileStatusKind::Staged => Color::Blue,
-        FileStatusKind::Modified => Color::Green,
-        FileStatusKind::Deleted => Color::Red,
-        FileStatusKind::Conflict => Color::Yellow,
-        FileStatusKind::Untracked => Color::Gray,
-    }
-}
-
 // ── Log panel ─────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn log_panel_height(app: &App) -> u16 {
     let n = app.log.len() as u16;
     // 2 borders + at least 3 lines, at most 10
@@ -440,11 +449,12 @@ fn log_panel_height(app: &App) -> u16 {
 }
 
 fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+    let theme = app.theme();
     let focused = app.focus == Focus::Log;
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Output Log ")
-        .border_style(focus_border_style(focused));
+        .border_style(focus_border_style(focused, app.theme()));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -480,7 +490,7 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             Line::from(vec![
                 Span::styled(
                     format!("[{}] ", l.timestamp),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(theme.log_timestamp),
                 ),
                 Span::raw(l.text.clone()),
             ])
@@ -503,13 +513,13 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(focus_border_style(focused));
+        .border_style(focus_border_style(focused, t));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     if app.history.is_empty() {
         frame.render_widget(
-            Paragraph::new("No commits found.").style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("No commits found.").style(Style::default().fg(t.history_scroll_info)),
             inner,
         );
         return;
@@ -551,18 +561,18 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             let selected = flat_idx == app.history_selected;
             let row_style = if selected {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(t.selection_fg)
+                    .bg(t.selection_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
             let hash_cell =
-                Cell::from(commit.short_hash.clone()).style(Style::default().fg(Color::Yellow));
-            let ts_cell =
-                Cell::from(commit.timestamp.clone()).style(Style::default().fg(Color::DarkGray));
+                Cell::from(commit.short_hash.clone()).style(Style::default().fg(t.history_hash));
+            let ts_cell = Cell::from(commit.timestamp.clone())
+                .style(Style::default().fg(t.history_timestamp));
             let author_cell = Cell::from(commit.author.chars().take(author_w).collect::<String>())
-                .style(Style::default().fg(Color::Cyan));
+                .style(Style::default().fg(t.history_author));
             let summary_cell =
                 Cell::from(commit.summary.chars().take(summary_w).collect::<String>());
             let row =
@@ -579,7 +589,7 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             if flat_idx >= app.history_scroll {
                 let selected = flat_idx == app.history_selected;
                 let row_style = if selected {
-                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                    Style::default().fg(t.selection_fg).bg(t.selection_bg)
                 } else {
                     Style::default()
                 };
@@ -624,7 +634,7 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             height: 1,
         };
         frame.render_widget(
-            Paragraph::new(scroll_info).style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new(scroll_info).style(Style::default().fg(t.history_scroll_info)),
             info_area,
         );
     }
@@ -639,31 +649,32 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     frame.render_widget(table, inner);
 }
 
-fn draw_help_bar(frame: &mut Frame, area: Rect, _app: &App) {
+fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
+    let t = app.theme();
     let help = Line::from(vec![
-        Span::styled("Tab", Style::default().fg(Color::Yellow)),
+        Span::styled("Tab", Style::default().fg(t.help_key)),
         Span::raw(" focus  "),
-        Span::styled("↑↓", Style::default().fg(Color::Yellow)),
+        Span::styled("↑↓", Style::default().fg(t.help_key)),
         Span::raw(" nav  "),
-        Span::styled("PgUp/Dn", Style::default().fg(Color::Yellow)),
+        Span::styled("PgUp/Dn", Style::default().fg(t.help_key)),
         Span::raw(" fast  "),
-        Span::styled("A", Style::default().fg(Color::Yellow)),
+        Span::styled("A", Style::default().fg(t.help_key)),
         Span::raw(" add  "),
-        Span::styled("D", Style::default().fg(Color::Yellow)),
+        Span::styled("D", Style::default().fg(t.help_key)),
         Span::raw(" remove  "),
-        Span::styled("s", Style::default().fg(Color::Yellow)),
+        Span::styled("s", Style::default().fg(t.help_key)),
         Span::raw(" status  "),
-        Span::styled("l", Style::default().fg(Color::Yellow)),
+        Span::styled("l", Style::default().fg(t.help_key)),
         Span::raw(" log  "),
-        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+        Span::styled("Enter", Style::default().fg(t.help_key)),
         Span::raw(" actions  "),
-        Span::styled("c", Style::default().fg(Color::Yellow)),
+        Span::styled("c", Style::default().fg(t.help_key)),
         Span::raw(" checkout  "),
-        Span::styled("h", Style::default().fg(Color::Yellow)),
+        Span::styled("h", Style::default().fg(t.help_key)),
         Span::raw(" history  "),
-        Span::styled("r", Style::default().fg(Color::Yellow)),
+        Span::styled("r", Style::default().fg(t.help_key)),
         Span::raw(" refresh  "),
-        Span::styled("Alt-f", Style::default().fg(Color::Yellow)),
+        Span::styled("Alt-f", Style::default().fg(t.help_key)),
         Span::raw(" fetch all"),
     ]);
     frame.render_widget(Paragraph::new(help), area);
@@ -676,6 +687,7 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
         return;
     };
 
+    let t = app.theme();
     let area = centered_rect(65, 22, frame.area());
 
     // Outer wrapper with title and keybinding hint
@@ -686,10 +698,10 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
         .title(title)
         .title_style(
             Style::default()
-                .fg(Color::Cyan)
+                .fg(t.popup_border)
                 .add_modifier(Modifier::BOLD),
         )
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(t.popup_border));
 
     // Help line at bottom — 1 row, inside the popup
     let inner_chunks = Layout::default()
@@ -709,21 +721,22 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
 
     // Keybinding hint bar
     let hint = Line::from(vec![
-        Span::styled("↑↓/jk", Style::default().fg(Color::Yellow)),
+        Span::styled("↑↓/jk", Style::default().fg(t.help_key)),
         Span::raw(" navigate  "),
-        Span::styled("Enter/→/l", Style::default().fg(Color::Yellow)),
+        Span::styled("Enter/→/l", Style::default().fg(t.help_key)),
         Span::raw(" open dir  "),
-        Span::styled("←/h/Bksp", Style::default().fg(Color::Yellow)),
+        Span::styled("←/h/Bksp", Style::default().fg(t.help_key)),
         Span::raw(" parent  "),
-        Span::styled("Space", Style::default().fg(Color::Green)),
+        Span::styled("Space", Style::default().fg(t.help_key_confirm)),
         Span::raw(" select repo  "),
-        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+        Span::styled("Esc", Style::default().fg(t.help_key)),
         Span::raw(" cancel"),
     ]);
     frame.render_widget(Paragraph::new(hint), inner_chunks[1]);
 }
 
 fn draw_confirm_remove(frame: &mut Frame, app: &App) {
+    let t = app.theme();
     let target = app
         .repos
         .get(app.selected)
@@ -736,8 +749,12 @@ fn draw_confirm_remove(frame: &mut Frame, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Remove Repository? ")
-        .border_style(Style::default().fg(Color::Red))
-        .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+        .border_style(Style::default().fg(t.popup_border_danger))
+        .title_style(
+            Style::default()
+                .fg(t.popup_border_danger)
+                .add_modifier(Modifier::BOLD),
+        );
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -760,15 +777,15 @@ fn draw_confirm_remove(frame: &mut Frame, app: &App) {
     frame.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
             target,
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(t.popup_target),
         )])),
         chunks[1],
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("y/Enter", Style::default().fg(Color::Green)),
+            Span::styled("y/Enter", Style::default().fg(t.popup_confirm)),
             Span::raw(" confirm    "),
-            Span::styled("n/Esc", Style::default().fg(Color::Yellow)),
+            Span::styled("n/Esc", Style::default().fg(t.popup_cancel)),
             Span::raw(" cancel"),
         ])),
         chunks[3],
@@ -778,6 +795,7 @@ fn draw_confirm_remove(frame: &mut Frame, app: &App) {
 // ── Action menu popup ─────────────────────────────────────────────────────
 
 fn draw_action_menu(frame: &mut Frame, app: &App) {
+    let t = app.theme();
     let repo_name = app
         .repos
         .get(app.selected)
@@ -791,7 +809,7 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(t.popup_border));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -803,8 +821,8 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
             let selected = i == app.menu_selected;
             let style = if selected {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(t.selection_fg)
+                    .bg(t.selection_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -813,7 +831,7 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
                 Cell::from(format!(" {} ", item.key)).style(if selected {
                     style
                 } else {
-                    Style::default().fg(Color::Yellow)
+                    Style::default().fg(t.help_key)
                 }),
                 Cell::from(item.label.clone()).style(style),
             ])
@@ -828,6 +846,7 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
 // ── Branch select popup ───────────────────────────────────────────────────
 
 fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
+    let t = app.theme();
     let title = if delete_mode {
         " Delete Branch — select branch ".to_string()
     } else {
@@ -839,7 +858,11 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
     let area = centered_rect(55, height, frame.area());
     frame.render_widget(Clear, area);
 
-    let border_color = if delete_mode { Color::Red } else { Color::Cyan };
+    let border_color = if delete_mode {
+        t.popup_border_danger
+    } else {
+        t.popup_border
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -851,7 +874,7 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "no other branches available",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(t.popup_empty),
             )),
             inner,
         );
@@ -875,16 +898,16 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
             let selected = i == app.branch_selected;
             let base = if selected {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(t.selection_fg)
+                    .bg(t.selection_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
             let tag = if item.is_remote {
-                Span::styled(" remote ", Style::default().fg(Color::Yellow))
+                Span::styled(" remote ", Style::default().fg(t.branch_remote))
             } else {
-                Span::styled(" local  ", Style::default().fg(Color::DarkGray))
+                Span::styled(" local  ", Style::default().fg(t.branch_local))
             };
             Row::new(vec![
                 Cell::from(Line::from(vec![tag])),
@@ -901,13 +924,14 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
 // ── New branch input popup ─────────────────────────────────────────────────
 
 fn draw_new_branch_input(frame: &mut Frame, app: &App) {
+    let t = app.theme();
     let area = centered_rect(55, 7, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Create New Branch ")
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(t.popup_border));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -925,14 +949,14 @@ fn draw_new_branch_input(frame: &mut Frame, app: &App) {
     // Show the input with a trailing cursor
     let display = format!("{}▍", app.branch_input);
     frame.render_widget(
-        Paragraph::new(Span::styled(display, Style::default().fg(Color::Cyan))),
+        Paragraph::new(Span::styled(display, Style::default().fg(t.input_text))),
         chunks[1],
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("Enter", Style::default().fg(Color::Green)),
+            Span::styled("Enter", Style::default().fg(t.popup_confirm)),
             Span::raw(" confirm    "),
-            Span::styled("Esc", Style::default().fg(Color::Yellow)),
+            Span::styled("Esc", Style::default().fg(t.popup_cancel)),
             Span::raw(" cancel"),
         ])),
         chunks[3],
@@ -942,6 +966,7 @@ fn draw_new_branch_input(frame: &mut Frame, app: &App) {
 // ── Confirm force-push popup ───────────────────────────────────────────────
 
 fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
+    let t = app.theme();
     let target = app
         .repos
         .get(app.selected)
@@ -953,8 +978,12 @@ fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(" Force Push? ")
-        .border_style(Style::default().fg(Color::Red))
-        .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+        .border_style(Style::default().fg(t.popup_border_danger))
+        .title_style(
+            Style::default()
+                .fg(t.popup_border_danger)
+                .add_modifier(Modifier::BOLD),
+        );
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -970,14 +999,14 @@ fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
 
     frame.render_widget(Paragraph::new("Force-push current branch?"), chunks[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(target, Style::default().fg(Color::Yellow))),
+        Paragraph::new(Span::styled(target, Style::default().fg(t.popup_target))),
         chunks[1],
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("y/Enter", Style::default().fg(Color::Red)),
+            Span::styled("y/Enter", Style::default().fg(t.popup_confirm_danger)),
             Span::raw(" confirm    "),
-            Span::styled("n/Esc", Style::default().fg(Color::Yellow)),
+            Span::styled("n/Esc", Style::default().fg(t.popup_cancel)),
             Span::raw(" cancel"),
         ])),
         chunks[3],
@@ -997,13 +1026,13 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
 }
 
 /// Return a border style that highlights when the pane is focused.
-/// Focused: bright Cyan. Unfocused: DarkGray.
-fn focus_border_style(focused: bool) -> Style {
+/// Uses theme colors: border_focused (bright) when focused, border_unfocused when not.
+fn focus_border_style(focused: bool, theme: &crate::theme::Theme) -> Style {
     if focused {
         Style::default()
-            .fg(Color::Cyan)
+            .fg(theme.border_focused)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme.border_unfocused)
     }
 }

@@ -6,9 +6,6 @@ use crate::git::{DeltaKind, FileStatusKind};
 /// swapped at runtime without touching any draw logic.
 #[derive(Debug, Clone)]
 pub struct Theme {
-    #[allow(dead_code)]
-    pub name: &'static str,
-
     // ── Chrome ────────────────────────────────────────────────────────────────
     pub border_focused: Color,
     pub border_unfocused: Color,
@@ -109,8 +106,6 @@ impl Theme {
 
 /// Default dark theme — the original color scheme.
 pub const DEFAULT: Theme = Theme {
-    name: "Default",
-
     border_focused: Color::Cyan,
     border_unfocused: Color::DarkGray,
 

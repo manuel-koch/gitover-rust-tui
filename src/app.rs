@@ -399,15 +399,16 @@ impl App {
         // Apply a theme that makes the selected row clearly visible:
         // dark-gray background + cyan foreground on the highlighted entry,
         // plus a "> " prefix so there is no ambiguity about what is selected.
-        let theme = ratatui_explorer::Theme::default()
+        let t = self.theme();
+        let explorer_theme = ratatui_explorer::Theme::default()
             .with_highlight_dir_style(
                 ratatui::style::Style::default()
-                    .fg(ratatui::style::Color::Cyan)
-                    .bg(ratatui::style::Color::DarkGray)
+                    .fg(t.selection_fg)
+                    .bg(t.selection_bg)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             )
             .with_highlight_symbol("> ");
-        explorer.set_theme(theme);
+        explorer.set_theme(explorer_theme);
 
         // Navigate to home dir
         let _ = explorer.set_cwd(start_dir);
