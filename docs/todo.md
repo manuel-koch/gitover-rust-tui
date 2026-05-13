@@ -23,7 +23,7 @@ Done tasks are check-marked when implemented.
       If total available height for panes is 20
       and open panes are: Repositories, Status & History
       then distribute height like: Repositories=8 Status=6 History=6
-- [ ] Show repo root path in "Status" pane title
+- [x] Show repo root path in "Status" pane title
 
 ## Bugs
 

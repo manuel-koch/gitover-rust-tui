@@ -413,7 +413,7 @@ fn detail_panel_height(app: &App) -> u16 {
 fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let theme = app.theme();
     let title = match app.repos.get(app.selected) {
-        Some(_) => " Status Details ".to_string(),
+        Some(repo) => format!(" Status Details — {} ", repo.path),
         None => " Status Details ".to_string(),
     };
 
