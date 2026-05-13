@@ -21,6 +21,12 @@ Done tasks are check-marked when implemented.
 - [x] Extract all used colors into a theme struct
 - [x] Allow switching between color themes at runtime
 - [x] Provide just one theme for now ( using the current colors )
+- [x] Perform fetch on all repos every 10min
+- [x] Add config key "general.auto_fetch_interval" to allow customizing auto-fetch-interval.
+      Use default of 10min.
+      Using zero auto-fetch-interval disables the auto fetch feature.
+- [x] Add hint to main app header/title ( right aligned, like refresh timer )
+      when next auto fetch will be performed ( e.g. "fetching all in 30s" )
 
 ## Bugs
 

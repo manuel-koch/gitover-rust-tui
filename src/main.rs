@@ -125,6 +125,12 @@ where
         if last_tick.elapsed() > WAKE_THRESHOLD {
             refresh_repos(app);
         }
+
+        // Check if the automatic background fetch timer has fired.
+        if app.is_auto_fetch_due() {
+            app.reset_auto_fetch_timer();
+            launch_all_fetch(app, op_tx);
+        }
         last_tick = Instant::now();
 
         app.spinner_tick = app.spinner_tick.wrapping_add(1);
@@ -212,6 +218,7 @@ fn handle_normal_key(
 ) {
     // Alt-f: fetch all tracked repos
     if modifiers.contains(KeyModifiers::ALT) && key == KeyCode::Char('f') {
+        app.reset_auto_fetch_timer();
         launch_all_fetch(app, op_tx);
         return;
     }

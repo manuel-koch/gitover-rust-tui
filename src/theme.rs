@@ -28,6 +28,7 @@ pub struct Theme {
     pub title: Color,
     pub spinner: Color,
     pub refresh_info: Color,
+    pub auto_fetch_info: Color,
 
     // ── Repository table ──────────────────────────────────────────────────────
     pub table_header: Color,
@@ -126,6 +127,7 @@ pub const DEFAULT: Theme = Theme {
     title: Color::Cyan,
     spinner: Color::Yellow,
     refresh_info: Color::DarkGray,
+    auto_fetch_info: Color::LightBlue,
 
     table_header: Color::Yellow,
     repo_clean: Color::Green,

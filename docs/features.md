@@ -108,6 +108,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
   - Git-aware filter: watches relevant `.git/` files (HEAD, refs, index, COMMIT_EDITMSG, rebase state, etc.) while ignoring noisy internals (objects, pack files, etc.)
   - 500 ms debounce prevents spurious updates during rapid saves
 - Wake-from-sleep detection: if a tick gap exceeds 3 s the system likely woke from sleep; a full refresh fires to catch missed events
+- Automatic background fetch of all tracked repos every 10 minutes; manual `Alt-f` resets the timer
 - No unconditional background polling — the file watcher handles real-time updates
 - Manual refresh with `r` key available from any pane
 

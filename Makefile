@@ -1,7 +1,8 @@
 .PHONY: lint format build-and-run test
 
-## lint: Run cargo clippy and report all warnings
+## lint: Run cargo check/clippy and report all warnings
 lint:
+	cargo check
 	cargo clippy
 
 ## format: Run cargo fmt to enforce consistent formatting

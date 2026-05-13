@@ -145,6 +145,9 @@ pub struct App {
     /// When true the log panel auto-follows new entries (scrolls to tail).
     /// Cleared when the user scrolls up; restored when they reach the bottom.
     pub log_follow: bool,
+    /// Next time the automatic background fetch of all repos should fire.
+    /// Resets to `Instant::now() + AUTO_FETCH_INTERVAL` after each fetch.
+    pub next_auto_fetch: Option<Instant>,
 
     // ── Git operations ────────────────────────────────────────────────────────
     /// Items shown in the action menu popup.
@@ -187,6 +190,9 @@ const PAGE_STEP: usize = 10;
 impl App {
     pub fn new() -> Self {
         let config = Config::load();
+        let config_clone = config.clone();
+        let interval = config.general.auto_fetch_interval();
+
         let state = State::load();
         let recent_repos = state
             .recent
@@ -202,7 +208,7 @@ impl App {
             mode: AppMode::Normal,
             file_explorer: None,
             recent_repos,
-            config,
+            config: config_clone,
             state,
             scanning: false,
             operations: HashMap::new(),
@@ -216,6 +222,7 @@ impl App {
             detail_scroll: 0,
             log_offset: 0,
             log_follow: true,
+            next_auto_fetch: Some(Instant::now() + interval),
             menu_items: Vec::new(),
             menu_selected: 0,
             branch_items: Vec::new(),
@@ -393,6 +400,23 @@ impl App {
 
     pub fn seconds_since_refresh(&self) -> Option<u64> {
         self.last_refreshed.map(|t| t.elapsed().as_secs())
+    }
+
+    /// Returns true if the automatic background fetch timer has fired.
+    pub fn is_auto_fetch_due(&self) -> bool {
+        self.next_auto_fetch
+            .map(|t| t <= Instant::now())
+            .unwrap_or(false)
+    }
+
+    /// Reset the automatic background fetch timer to now + the interval.
+    pub fn reset_auto_fetch_timer(&mut self) {
+        let interval = self.config.general.auto_fetch_interval();
+        if interval.as_secs() > 0 {
+            self.next_auto_fetch = Some(Instant::now() + interval);
+        } else {
+            self.next_auto_fetch = None;
+        }
     }
 
     pub fn tracked_paths(&self) -> Vec<String> {

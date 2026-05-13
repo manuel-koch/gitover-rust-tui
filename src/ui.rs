@@ -19,6 +19,7 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, FrameExt as _, Paragraph, Row, Table, TableState},
     Frame,
 };
+use std::time::Instant;
 
 use crate::app::{App, AppMode, Focus, RepoOperation};
 use crate::git::RepoStatus;
@@ -100,13 +101,34 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 }
 
-/// Header — shows app title, spinner when scanning, and refresh time right-aligned.
+/// Header — shows app title, spinner when scanning, auto-fetch timer, and refresh time right-aligned.
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let theme = app.theme();
     let refresh_text = match app.seconds_since_refresh() {
         Some(s) if s < 5 => "just now".to_string(),
         Some(s) => format!("{s}s ago"),
         None => "never".to_string(),
+    };
+
+    // Calculate auto-fetch information
+    let auto_fetch_info = if app.config.general.auto_fetch_interval().as_secs() == 0 {
+        "auto-fetch disabled".to_string()
+    } else if let Some(next) = app.next_auto_fetch {
+        let duration_until = next - Instant::now();
+        let secs = duration_until.as_secs();
+        if secs <= 1 {
+            "fetching all now".to_string()
+        } else if secs < 60 {
+            format!("fetching all in {}s", secs)
+        } else {
+            format!("fetching all in {}m", secs / 60)
+        }
+    } else {
+        match app.config.general.auto_fetch_interval().as_secs() {
+            0 => "auto-fetch disabled".to_string(),
+            interval if interval <= 60 => format!("fetching all in {}s", interval),
+            interval => format!("fetching all in {}m", interval / 60),
+        }
     };
 
     // Left side: title + optional scanning spinner.
@@ -140,13 +162,14 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let left_para = Paragraph::new(Line::from(left_spans));
     frame.render_widget(left_para, inner);
 
-    // Right paragraph (refresh indicator) — right-aligned
+    // Right paragraph (refresh indicator + auto-fetch hint) — right-aligned
     let right_text = format!("refreshed: {}  ", refresh_text);
-    let right_para = Paragraph::new(Line::from(Span::styled(
-        right_text,
-        Style::default().fg(theme.refresh_info),
-    )))
-    .alignment(ratatui::layout::Alignment::Right);
+    let right_spans = vec![
+        Span::styled(right_text, Style::default().fg(theme.refresh_info)),
+        Span::styled(&auto_fetch_info, Style::default().fg(theme.auto_fetch_info)),
+    ];
+    let right_para =
+        Paragraph::new(Line::from(right_spans)).alignment(ratatui::layout::Alignment::Right);
     frame.render_widget(right_para, inner);
 }
 

@@ -13,45 +13,36 @@
 // limitations under the License.
 
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 /// Application configuration loaded from `~/.config/gitover/config.yaml`.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
-    /// Named commands that can be executed for any repo.
-    #[serde(default)]
-    pub repo_commands: Vec<RepoCommand>,
-    /// Named commands scoped to a specific file status (e.g. "modified").
-    #[serde(default)]
-    pub status_commands: HashMap<String, Vec<RepoCommand>>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[allow(dead_code)]
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct GeneralConfig {
     /// Path to the git executable. When set it will be used instead of
     /// whatever `git` is on `$PATH`.
     pub git: Option<String>,
+    /// Interval in seconds for automatic background fetch of all repos.
+    /// Defaults to 600 seconds (10 minutes) if not set.
+    #[serde(default)]
+    pub auto_fetch_interval: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct RepoCommand {
-    /// Shell command to execute. Required.
-    pub cmd: String,
-    /// Internal identifier (defaults to first word of `cmd`).
-    #[serde(default)]
-    pub name: String,
-    /// Display label shown in the UI.
-    #[serde(default)]
-    pub title: String,
-    /// Optional keyboard shortcut hint.
-    #[serde(default)]
-    pub shortcut: String,
+impl GeneralConfig {
+    /// Get the auto_fetch_interval as Duration, falling back to default (600 seconds) if not set.
+    /// Set to 0 to disable automatic fetching completely.
+    pub fn auto_fetch_interval(&self) -> Duration {
+        self.auto_fetch_interval
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(600))
+    }
 }
 
 impl Config {
