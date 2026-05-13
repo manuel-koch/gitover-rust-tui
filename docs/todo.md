@@ -18,7 +18,12 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [ ]
+- [x] Vertical sizing of "Repositories" pane is not good, ensure that this pane is always the biggest.
+      When evenly distibuting the vertical space, add any remaining space to "Repositories".
+      If total available height for panes is 20
+      and open panes are: Repositories, Status & History
+      then distribute height like: Repositories=8 Status=6 History=6
+- [ ] Show repo root path in "Status" pane title
 
 ## Bugs
 

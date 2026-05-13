@@ -29,22 +29,33 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let fixed_height: u16 = 4; // header 3 + help bar 1 always present
     let total_available = frame.area().height.saturating_sub(fixed_height);
 
+    // Count open optional panes (Status, History, Log).
+    let open_panes = [app.show_detail, app.show_history, app.show_log]
+        .into_iter()
+        .filter(|&p| p)
+        .count();
+
+    // Distribute available space evenly among Repositories + open panes.
+    // Any remaining lines go to Repositories so it is always the biggest.
+    let base_share = total_available / (open_panes as u16 + 1);
+    let remainder = total_available % (open_panes as u16 + 1);
+    // Repositories gets `base_share + remainder`; each optional pane gets `base_share`.
+    let repo_height = base_share + remainder;
+    let pane_height = base_share;
+
     // Build constraints in fixed order: header / table / detail / history / log / help bar
     let mut constraints: Vec<Constraint> = Vec::new();
     constraints.push(Constraint::Length(3)); // header
-    constraints.push(Constraint::Min(5)); // table
+    constraints.push(Constraint::Length(repo_height)); // Repositories table — gets all extra space
 
-    // Detail (Status) pane: if shown, capped to 50% of available vertical space
     if app.show_detail {
-        constraints.push(Constraint::Max(total_available / 2));
+        constraints.push(Constraint::Length(pane_height));
     }
-    // History pane: if shown, capped to 50% of available vertical space
     if app.show_history {
-        constraints.push(Constraint::Max(total_available / 2));
+        constraints.push(Constraint::Length(pane_height));
     }
-    // Log pane: if shown, capped to 50% of available vertical space
     if app.show_log {
-        constraints.push(Constraint::Max(total_available / 2));
+        constraints.push(Constraint::Length(pane_height));
     }
     constraints.push(Constraint::Length(1)); // help bar
 
