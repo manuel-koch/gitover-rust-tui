@@ -6,9 +6,22 @@ Check [features](./docs/features.md) for list of implemented features.
 
 Check [todo](./docs/todo.md) for recent implemenation tasks and remaining tasks.
 
+## Task Execution
+
+Follow the user's instructions precisely!
+Do not add extra steps, merge documents, or perform cleanup actions unless explicitly asked!
+If you are unsure what the user wants, ask back using `clarify` with specific options
+or an open-ended question — do not guess or assume unstated intent.
+
 ## Cleanup Todo and merge to Features
 
 Only perform cleanup of todo document when user requests it explicitly !
+This means the user says "clean up the todo" or "merge done tasks".
+Implementing tasks or marking them `[x]` does NOT trigger this section.
+
+When it does apply, follow these steps.
+
+### Cleanup and merge steps
 
 Force re-reading features and todo document to fully grasp their current content !
 
@@ -56,6 +69,12 @@ Makefile        — lint / format / build-and-run / test targets
 ```
 
 ### Development workflow
+
+After implementing new functionality or fixing bugs, run the test suite to verify all tests still succeed.
+For new feature come up with appropriate test case(s) to verify it.
+For bugfixes check whether there is an existing test case that could be improved to verify the fix or introduce
+new test case(s) to verify the fix.
+If unclear whether to introduce new test case(s), ask user for clarification.
 
 ```shell
 make lint          # cargo clippy — fix all warnings before committing
