@@ -6,7 +6,9 @@ Done tasks are check-marked when implemented.
 
 ## Bugs
 
-- [ ]
+- [x] Change branch outside the app doesn't result in refresh of repositories to display
+      the new data of repository ( i.e. current branch still displayed the former branch ).
+      Likely an issue of the watcher implementation.
 
 ## Config & Repo Management
 

@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, Sender},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -26,6 +26,11 @@ pub type DirtyRx = Receiver<String>;
 
 /// Debounce window — we wait this long after the last event before reporting dirty.
 const DEBOUNCE: Duration = Duration::from_millis(500);
+
+/// How often to stat git state files (`HEAD`, `index`, etc.) as a fallback
+/// when the filesystem watcher produces no events (e.g. macOS FSEvents
+/// coalescing or missed events from external tools).
+const FALLBACK_POLL: Duration = Duration::from_secs(2);
 
 /// Start one background thread per repo path.
 /// Returns a channel receiver that yields repo root paths when they need refreshing.
@@ -86,11 +91,13 @@ fn watch_repo(root: String, tx: Sender<String>) {
     }
 
     let mut last_relevant: Option<Instant> = None;
+    let mut head_mtime: Option<SystemTime> = None;
+    let mut index_mtime: Option<SystemTime> = None;
 
     loop {
         let timeout = last_relevant
             .map(|t| DEBOUNCE.checked_sub(t.elapsed()).unwrap_or(Duration::ZERO))
-            .unwrap_or(Duration::from_secs(60));
+            .unwrap_or(FALLBACK_POLL);
 
         match ev_rx.recv_timeout(timeout) {
             Ok(Ok(event)) => {
@@ -110,6 +117,21 @@ fn watch_repo(root: String, tx: Sender<String>) {
                         }
                         last_relevant = None;
                     }
+                } else {
+                    // No filesystem events pending — poll HEAD and index as a
+                    // fallback in case the fs watcher missed the change (macOS
+                    // FSEvents coalescing, etc.).  Uses a simple mtime check:
+                    // stat is orders of magnitude cheaper than a full git status.
+                    match poll_mtime(&git_dir.join("HEAD"), &mut head_mtime, &tx, &root) {
+                        MtimeResult::DeadChannel => return,
+                        MtimeResult::Changed => continue,
+                        MtimeResult::Unchanged => {}
+                    }
+                    match poll_mtime(&git_dir.join("index"), &mut index_mtime, &tx, &root) {
+                        MtimeResult::DeadChannel => return,
+                        MtimeResult::Changed => {}
+                        MtimeResult::Unchanged => {}
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
@@ -117,10 +139,59 @@ fn watch_repo(root: String, tx: Sender<String>) {
     }
 }
 
+/// Result of polling a git state file for modification-time changes.
+enum MtimeResult {
+    /// File has not changed since the last poll (or stat/modified failed).
+    Unchanged,
+    /// File changed; a refresh signal was sent to the dirty channel.
+    Changed,
+    /// The receiver end of the dirty channel was dropped — the polling
+    /// thread should exit.
+    DeadChannel,
+}
+
+/// Stat a git state file and compare its mtime to the last-known value.
+/// On first call the mtime is recorded without triggering a refresh (baseline).
+/// On subsequent calls, if the mtime differs, a dirty signal is sent via `tx`.
+///
+/// Returns `MtimeResult::Changed` when a refresh was signalled,
+/// `MtimeResult::DeadChannel` when the receiver is gone (caller should exit),
+/// or `MtimeResult::Unchanged` otherwise.
+fn poll_mtime(
+    path: &Path,
+    mtime: &mut Option<SystemTime>,
+    tx: &Sender<String>,
+    root: &str,
+) -> MtimeResult {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return MtimeResult::Unchanged;
+    };
+    let Ok(new_mtime) = meta.modified() else {
+        return MtimeResult::Unchanged;
+    };
+
+    let changed = match *mtime {
+        Some(prev) => prev != new_mtime,
+        None => {
+            // First poll — record baseline without triggering a refresh.
+            *mtime = Some(new_mtime);
+            return MtimeResult::Unchanged;
+        }
+    };
+
+    if changed {
+        *mtime = Some(new_mtime);
+        if tx.send(root.to_string()).is_err() {
+            return MtimeResult::DeadChannel;
+        }
+        MtimeResult::Changed
+    } else {
+        MtimeResult::Unchanged
+    }
+}
+
 /// Returns true if this filesystem event should trigger a git status refresh.
-///
-/// Logic mirrors the Python fswatcher.py RepoTracker.ignored() / discarded():
-///
+//////
 /// For paths OUTSIDE .git:
 ///   - Skip noisy filenames: .DS_Store, __pycache__
 ///   - Skip directory-level events (only file changes matter)
