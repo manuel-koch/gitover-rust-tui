@@ -4,8 +4,6 @@
 
 - Rust-based terminal UI application
 - Tracks multiple git repositories simultaneously
-- Configuration loaded from `~/.config/gitover/config.yaml` (optional; missing file is valid)
-- Persisted state (repo list, recents) stored at `~/.config/gitover/state.yaml`
 
 ## Configuration
 
@@ -13,6 +11,7 @@
 - `general.git`: override the path to the git executable
 - `general.auto_fetch_interval`: interval in seconds for automatic background fetch of all repos
   (default: 600 = 10 minutes; set to 0 to disable automatic fetch)
+- Persisted app state (repo list, recent repos) stored at `~/.config/gitover/state.yaml`
 
 ## Repository Management
 
@@ -36,11 +35,17 @@ Each tracked repository is shown as a table row with:
 - **Repository**: directory name, green when working tree is clean
 - **Branch**: current branch name, or `detached <sha8>` for detached HEAD; unborn
   branches (no commits yet) show the branch name correctly
-- **Status**: combined change counts — `3-S 2-C 4-M 1-D 2-U` (S=staged blue, C=conflict yellow, M=modified green, D=deleted red, U=untracked gray); shows `clean` in dark gray when no changes
+- **Status**: combined change counts
+  - `3-S 2-C 4-M 1-D 2-U` (S=staged blue, C=conflict yellow, M=modified green, D=deleted red, U=untracked gray)
+  - Shows `clean` in dark gray when no changes
 - **Activity**: spinner + operation name when a git operation is in progress (fetching / pulling / pushing / rebasing / scanning)
 - **↑↓ Upstream**: ahead/behind vs configured tracking branch, yellow when out of sync
 - **↑↓ Trunk**: ahead/behind vs trunk branch, red when behind, yellow when ahead only
-  - Trunk resolution order: `gitover.trunkbranch` config → `origin/main` → `origin/develop` → `origin/master`
+  - Trunk resolution order:
+    - git config `gitover.trunkbranch`
+    - `origin/main`
+    - `origin/develop`
+    - `origin/master`
 - Column widths are distributed so branch/upstream/trunk columns are wider than status
 
 ## Git Operations
@@ -147,7 +152,11 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Auto-fetch countdown shown right-aligned in the header bar (e.g. "fetching all in 30s"; hidden when auto-fetch is disabled)
 - Single-line help bar at the bottom showing active key bindings
 - Confirmation dialogs for destructive actions (remove repo, force push)
-- File picker popup for adding repos; `↑`/`↓` navigate, `→`/`Enter` descend into directory, `←`/`Backspace` go to parent, `Space` selects current directory as repo to add
+- File picker popup for adding repos
+  - `↑`/`↓` navigate in list
+  - `→`/`Enter` descend into directory
+  - `←`/`Backspace` go to parent
+  - `Space` selects current directory as repo to add
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
 
 ## Branch Information (per repo, available for future use)
