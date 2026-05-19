@@ -789,32 +789,39 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
 fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme();
-    let help = Line::from(vec![
-        Span::styled("Tab", Style::default().fg(t.help_key)),
-        Span::raw(" focus  "),
-        Span::styled("↑↓", Style::default().fg(t.help_key)),
-        Span::raw(" nav  "),
-        Span::styled("PgUp/Dn", Style::default().fg(t.help_key)),
-        Span::raw(" fast  "),
-        Span::styled("A", Style::default().fg(t.help_key)),
-        Span::raw(" add  "),
-        Span::styled("D", Style::default().fg(t.help_key)),
-        Span::raw(" remove  "),
-        Span::styled("s", Style::default().fg(t.help_key)),
-        Span::raw(" status  "),
-        Span::styled("l", Style::default().fg(t.help_key)),
-        Span::raw(" log  "),
-        Span::styled("Enter", Style::default().fg(t.help_key)),
-        Span::raw(" actions  "),
-        Span::styled("c", Style::default().fg(t.help_key)),
-        Span::raw(" checkout  "),
-        Span::styled("h", Style::default().fg(t.help_key)),
-        Span::raw(" history  "),
-        Span::styled("r", Style::default().fg(t.help_key)),
-        Span::raw(" refresh  "),
-        Span::styled("Alt-f", Style::default().fg(t.help_key)),
-        Span::raw(" fetch all"),
-    ]);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+
+    // Navigation hints — hidden when terminal is too narrow
+    if area.width >= 110 {
+        spans.push(Span::styled("Tab", Style::default().fg(t.help_key)));
+        spans.push(Span::raw(" focus  "));
+        spans.push(Span::styled("↑↓", Style::default().fg(t.help_key)));
+        spans.push(Span::raw(" nav  "));
+        spans.push(Span::styled("PgUp/Dn", Style::default().fg(t.help_key)));
+        spans.push(Span::raw(" fast  "));
+    }
+
+    // Action keys in grouped order: A, D, r, Alt-f, s, h, l, c, Enter
+    spans.push(Span::styled("A", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" add  "));
+    spans.push(Span::styled("D", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" remove  "));
+    spans.push(Span::styled("r", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" refresh  "));
+    spans.push(Span::styled("Alt-f", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" fetch all  "));
+    spans.push(Span::styled("s", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" status  "));
+    spans.push(Span::styled("h", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" history  "));
+    spans.push(Span::styled("l", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" log  "));
+    spans.push(Span::styled("c", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" checkout  "));
+    spans.push(Span::styled("Enter", Style::default().fg(t.help_key)));
+    spans.push(Span::raw(" actions"));
+
+    let help = Line::from(spans);
     frame.render_widget(Paragraph::new(help), area);
 }
 
