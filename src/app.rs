@@ -182,7 +182,7 @@ pub struct App {
 }
 
 /// Maximum number of log lines retained.
-const MAX_LOG_LINES: usize = 500;
+const MAX_LOG_LINES: usize = 1000;
 
 /// Number of rows to jump when using Fn-Up/Down (PageUp/PageDown).
 const PAGE_STEP: usize = 10;
