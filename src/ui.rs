@@ -24,7 +24,97 @@ use std::time::Instant;
 use crate::app::{App, AppMode, Focus, RepoOperation};
 use crate::git::RepoStatus;
 
+/// Rectangles for each visible pane — used by mouse event handlers in main.rs.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct PaneAreas {
+    pub terminal: Rect,
+    pub header: Rect,
+    pub repos: Rect,
+    pub detail: Option<Rect>,
+    pub history: Option<Rect>,
+    pub log: Option<Rect>,
+    pub help_bar: Rect,
+}
+
+/// Compute the layout rectangles for all visible panes.
+/// This mirrors the layout logic in `draw()` so main.rs can use these
+/// rectangles for mouse-click focus detection.
+pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
+    let fixed_height: u16 = 4;
+    let total_available = total.height.saturating_sub(fixed_height);
+
+    let open_panes = [app.show_detail, app.show_history, app.show_log]
+        .into_iter()
+        .filter(|&p| p)
+        .count();
+
+    let base_share = total_available / (open_panes as u16 + 1);
+    let remainder = total_available % (open_panes as u16 + 1);
+    let repo_height = base_share + remainder;
+    let pane_height = base_share;
+
+    let mut constraints: Vec<Constraint> = Vec::new();
+    constraints.push(Constraint::Length(3));
+    constraints.push(Constraint::Length(repo_height));
+
+    if app.show_detail {
+        constraints.push(Constraint::Length(pane_height));
+    }
+    if app.show_history {
+        constraints.push(Constraint::Length(pane_height));
+    }
+    if app.show_log {
+        constraints.push(Constraint::Length(pane_height));
+    }
+    constraints.push(Constraint::Length(1));
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(total);
+
+    let mut idx = 0;
+    let header = chunks[idx];
+    idx += 1;
+    let repos = chunks[idx];
+    idx += 1;
+
+    let mut detail = None;
+    if app.show_detail {
+        detail = Some(chunks[idx]);
+        idx += 1;
+    }
+
+    let mut history = None;
+    if app.show_history {
+        history = Some(chunks[idx]);
+        idx += 1;
+    }
+
+    let mut log = None;
+    if app.show_log {
+        log = Some(chunks[idx]);
+        idx += 1;
+    }
+
+    let help_bar = chunks[idx];
+
+    PaneAreas {
+        terminal: total,
+        header,
+        repos,
+        detail,
+        history,
+        log,
+        help_bar,
+    }
+}
+
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    // Cache pane areas for mouse click detection
+    app.cached_pane_areas = Some(pane_areas(app, frame.area()));
+
     // Compute remaining vertical space after fixed-height panels.
     let fixed_height: u16 = 4; // header 3 + help bar 1 always present
     let total_available = frame.area().height.saturating_sub(fixed_height);
@@ -1061,7 +1151,7 @@ fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
     );
 }
 
-fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
+pub fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
     let popup_width = area.width * percent_x / 100;
     let x = area.x + (area.width.saturating_sub(popup_width)) / 2;
     let y = area.y + area.height.saturating_sub(height) / 3;

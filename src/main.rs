@@ -22,9 +22,12 @@ mod ui;
 mod watcher;
 
 use anyhow::Result;
-use app::{App, AppMode};
+use app::{App, AppMode, Focus};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
+        MouseEvent, MouseEventKind,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -148,6 +151,11 @@ where
                 }
             }
 
+            // Handle mouse events (clicks for focus, wheel for scroll)
+            if let Event::Mouse(mouse) = &ev {
+                handle_mouse_event(app, op_tx, mouse);
+            }
+
             match app.mode {
                 AppMode::Normal => {
                     if let Event::Key(key) = &ev {
@@ -203,6 +211,254 @@ where
     }
 
     Ok(())
+}
+
+/// Handle mouse events: clicks set pane focus, wheel scrolls the current pane.
+fn handle_mouse_event(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    mouse: &MouseEvent,
+) {
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            // ActionMenu mode: click on item executes, click outside closes
+            if matches!(app.mode, AppMode::ActionMenu) {
+                let terminal_area = app
+                    .cached_pane_areas
+                    .as_ref()
+                    .map(|a| a.terminal)
+                    .unwrap_or_default();
+                if let Some(item_idx) = menu_item_under_mouse(app, mouse, terminal_area) {
+                    if let Some(item) = app.menu_items.get(item_idx).cloned() {
+                        dispatch_menu_action(app, op_tx, item.key);
+                    }
+                } else {
+                    // Click outside menu closes it
+                    app.close_menu();
+                }
+                return;
+            }
+
+            let now = std::time::Instant::now();
+            let pos = (mouse.column, mouse.row);
+            let is_double_click = app
+                .last_click_time
+                .map(|t| now.duration_since(t) < std::time::Duration::from_millis(300))
+                .unwrap_or(false)
+                && app.last_click_pos == Some(pos);
+
+            if is_double_click {
+                // Double-click in repos pane opens the action menu
+                if matches!(app.focus, Focus::Repos) {
+                    app.open_action_menu();
+                }
+            } else {
+                handle_mouse_click(app, mouse);
+            }
+
+            app.last_click_time = Some(now);
+            app.last_click_pos = Some(pos);
+        }
+        MouseEventKind::ScrollUp => {
+            if matches!(app.mode, AppMode::ActionMenu) {
+                app.menu_previous();
+            } else {
+                app.previous();
+                app.reload_history_if_open();
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if matches!(app.mode, AppMode::ActionMenu) {
+                app.menu_next();
+            } else {
+                app.next();
+                app.reload_history_if_open();
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Determine which pane a mouse click landed on and set focus accordingly.
+/// Also updates the selection index if clicking in the repos table.
+fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
+    // Only handle clicks in Normal or History mode (not during popups)
+    if !matches!(app.mode, AppMode::Normal | AppMode::History) {
+        return;
+    }
+
+    // Use the cached pane areas from the last draw call
+    let Some(areas) = &app.cached_pane_areas else {
+        return;
+    };
+
+    let click = (mouse.column, mouse.row);
+
+    // Check each visible pane in priority order
+    if let Some(detail_area) = &areas.detail {
+        if in_rect(click, *detail_area) {
+            app.focus = Focus::Detail;
+            // Also select the file under the mouse, if any
+            if let Some(row) = detail_row_under_mouse(app, mouse, *detail_area) {
+                app.detail_selected = row;
+                app.detail_scroll = 0; // reset scroll so selection is visible
+            }
+            return;
+        }
+    }
+
+    if let Some(history_area) = &areas.history {
+        if in_rect(click, *history_area) {
+            app.focus = Focus::History;
+            // Also select the commit/change under the mouse, if any
+            if let Some(row) = history_row_under_mouse(app, mouse, *history_area) {
+                app.history_selected = row;
+                app.history_scroll = 0;
+            }
+            return;
+        }
+    }
+
+    if let Some(log_area) = &areas.log {
+        if in_rect(click, *log_area) {
+            app.focus = Focus::Log;
+            return;
+        }
+    }
+
+    if in_rect(click, areas.repos) {
+        app.focus = Focus::Repos;
+        // If clicking in the repos table, also update the selection
+        if let Some(selected_row) = row_under_mouse(app, mouse, areas.repos) {
+            app.selected = selected_row;
+            app.detail_selected = 0;
+            app.detail_scroll = 0;
+        }
+    }
+}
+
+/// Returns true if (col, row) is inside the given rect.
+fn in_rect((col, row): (u16, u16), rect: ratatui::layout::Rect) -> bool {
+    col >= rect.x && col < rect.x + rect.width && row >= rect.y && row < rect.y + rect.height
+}
+
+/// Given a mouse click in the repos table area, return the row index (0-based)
+/// that corresponds to the click, or None if the click is on a border/header.
+fn row_under_mouse(
+    app: &App,
+    mouse: &MouseEvent,
+    table_area: ratatui::layout::Rect,
+) -> Option<usize> {
+    // The table block has borders (1 on each side) and a header row with
+    // bottom_margin(1) — visually the header occupies 2 lines (content + margin).
+    // Inner area starts at table_area.y + 1 (top border).
+    // First data row: y + 1 (border) + 1 (header) + 1 (bottom_margin) = y + 3.
+    let inner_top = table_area.y + 3;
+    let inner_bottom = table_area.y + table_area.height - 1; // -1 for bottom border
+    let row = mouse.row;
+
+    if row < inner_top || row >= inner_bottom {
+        return None;
+    }
+
+    let row_index = (row - inner_top) as usize;
+
+    // Account for table_offset (scrolled rows)
+    let offset_row = row_index + app.table_offset;
+
+    // Clamp to available repos
+    if offset_row < app.repos.len() {
+        Some(offset_row)
+    } else {
+        None
+    }
+}
+
+/// Given a mouse click in the Status/Detail pane area, return the file index
+/// (0-based in the full file list) under the mouse, or None.
+fn detail_row_under_mouse(
+    app: &App,
+    mouse: &MouseEvent,
+    pane_area: ratatui::layout::Rect,
+) -> Option<usize> {
+    // The block has borders (1 on each side) and no header row.
+    // Inner area starts at pane_area.y + 1 (top border).
+    let inner_top = pane_area.y + 1;
+    let inner_bottom = pane_area.y + pane_area.height - 1; // -1 for bottom border
+    let row = mouse.row;
+
+    if row < inner_top || row >= inner_bottom {
+        return None;
+    }
+
+    let row_index = (row - inner_top) as usize;
+    let files = app.selected_files();
+    let offset_row = row_index;
+
+    if offset_row < files.len() {
+        Some(offset_row)
+    } else {
+        None
+    }
+}
+
+/// Given a mouse click in the History pane area, return the flat row index
+/// (0-based across commits + file sub-rows) under the mouse, or None.
+fn history_row_under_mouse(
+    app: &App,
+    mouse: &MouseEvent,
+    pane_area: ratatui::layout::Rect,
+) -> Option<usize> {
+    // The block has borders (1 on each side) and no header row.
+    // Inner area starts at pane_area.y + 1 (top border).
+    let inner_top = pane_area.y + 1;
+    let inner_bottom = pane_area.y + pane_area.height - 1;
+    let row = mouse.row;
+
+    if row < inner_top || row >= inner_bottom {
+        return None;
+    }
+
+    let row_index = (row - inner_top) as usize;
+    let offset_row = row_index;
+
+    if offset_row < app.history.len() {
+        Some(offset_row)
+    } else {
+        None
+    }
+}
+
+pub fn menu_item_under_mouse(
+    app: &App,
+    mouse: &MouseEvent,
+    terminal_area: ratatui::layout::Rect,
+) -> Option<usize> {
+    // Mirror the geometry used in draw_action_menu:
+    // height = menu_items.len() + 4 (title + top/bottom borders + blank line at bottom)
+    let height = (app.menu_items.len() as u16 + 4).min(terminal_area.height);
+    let area = ui::centered_rect(40, height, terminal_area);
+    let (col, row) = (mouse.column, mouse.row);
+
+    // Check if click is inside the menu area
+    if col < area.x || col >= area.x + area.width || row < area.y || row >= area.y + area.height {
+        return None;
+    }
+
+    // Content starts after the border (1 line top border)
+    let inner_top = area.y + 1;
+    let inner_bottom = area.y + area.height - 1; // -1 for bottom border
+
+    if row < inner_top || row >= inner_bottom {
+        return None;
+    }
+
+    let item_index = (row - inner_top) as usize;
+    if item_index >= app.menu_items.len() {
+        return None;
+    }
+
+    Some(item_index)
 }
 
 fn handle_normal_key(

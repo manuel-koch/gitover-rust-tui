@@ -179,6 +179,13 @@ pub struct App {
     pub history_selected: usize,
     /// Scroll offset (top visible row) for the history pane.
     pub history_scroll: usize,
+    /// Cached pane areas from last draw call — used for mouse click detection.
+    /// This is populated at the start of each draw() call.
+    pub cached_pane_areas: Option<crate::ui::PaneAreas>,
+    /// Timestamp of the last left-click, for double-click detection.
+    pub last_click_time: Option<Instant>,
+    /// Position of the last left-click, for double-click detection.
+    pub last_click_pos: Option<(u16, u16)>,
 }
 
 /// Maximum number of log lines retained.
@@ -236,6 +243,9 @@ impl App {
             history_filter: HistoryFilter::Full,
             history_selected: 0,
             history_scroll: 0,
+            cached_pane_areas: None,
+            last_click_time: None,
+            last_click_pos: None,
         }
     }
 

@@ -48,8 +48,13 @@ Done tasks are check-marked when implemented.
 
 ## UX Mouse Interaction
 
-- [ ] Click on pane gives focus to that pane
-- [ ] Mouse wheel moves cursor up/down in current focused pane
+- [x] Click on pane gives focus to that pane
+- [x] Mouse wheel moves cursor up/down in current focused pane
+- [x] Click inside "Status" pane selects the file under mouse
+- [x] Click inside "History" pane selects the commit/change under mouse
+- [x] Double click on "Repositories" open the action menu for current repo
+- [x] Click on action menu entry executes selected action
+- [x] If action menu is open, click outside the menu closes the menu ( like pressing "esc" key )
 
 ## Git History Pane
 
