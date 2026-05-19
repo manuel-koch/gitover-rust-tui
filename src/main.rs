@@ -152,7 +152,7 @@ where
                 AppMode::Normal => {
                     if let Event::Key(key) = &ev {
                         if app.show_history && app.focus == app::Focus::History {
-                            handle_history_key(app, op_tx, key.code);
+                            handle_history_key(app, op_tx, key.code, key.modifiers);
                         } else {
                             handle_normal_key(app, dirty_rx, op_tx, key.code, key.modifiers);
                         }
@@ -191,11 +191,7 @@ where
                 }
                 AppMode::History => {
                     if let Event::Key(key) = &ev {
-                        if app.focus == app::Focus::Repos {
-                            handle_normal_key(app, dirty_rx, op_tx, key.code, key.modifiers);
-                        } else {
-                            handle_history_key(app, op_tx, key.code);
-                        }
+                        handle_history_key(app, op_tx, key.code, key.modifiers);
                     }
                 }
             }
@@ -729,7 +725,19 @@ fn refresh_single_repo(app: &mut App, path: &str) {
     app.last_refreshed = Some(Instant::now());
 }
 
-fn handle_history_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
+fn handle_history_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    // Alt-f: fetch all tracked repos (global shortcut, works from any pane)
+    if modifiers.contains(KeyModifiers::ALT) && key == KeyCode::Char('f') {
+        app.reset_auto_fetch_timer();
+        launch_all_fetch(app, op_tx);
+        return;
+    }
+
     match key {
         KeyCode::Char('h') => app.close_history(),
         KeyCode::Tab => app.cycle_focus(),

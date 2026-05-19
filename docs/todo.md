@@ -6,7 +6,11 @@ Done tasks are check-marked when implemented.
 
 ## Bugs
 
-- [ ]
+- [x] Stage / Unstage a file with git doesn't trigger file watcher.
+- [x] "Repositories" & "History" pane are open, "Repositories" has focus, pressing "h" moves focus to "History" pane instead of closing it.
+      When "Status" has focus, when pressing "h" it closes "History" pane immediately.
+- [x] "Repositories", "Status" & "History" panes are open, "Repositories" has focus, pressing "alt-f"
+      doesn't trigger fetching all repos.
 
 ## Config & Repo Management
 
