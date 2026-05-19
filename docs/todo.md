@@ -39,8 +39,8 @@ Done tasks are check-marked when implemented.
 - [x] Allow shift-tab to reverse focus cycle direction, moving focus to the previous focused pane.
 - [x] If horizontal space is too small, hide common keybinding hints for "tab", "↑↓", "PgUp/Dn".
 - [x] In footer, re-group keybindings in the following order: "A", "D", "r", "Alt-f", "s", "h", "l", "c", "Enter".
-- [ ] In "Repositories" action menu, the keybinding for "History" shows "H", but actually "h" is implemented.
-      Fix the displayed keybinding to "h".
+- [x] In "Repositories" action menu, the keybinding for "History" shows "H", but actually "h" is implemented.
+       Fix the displayed keybinding to "h".
 - [ ] Add keybinding of "enter" to "Output Log" pane, to show an action menu
   - [ ] Add action menu entry "Copy log output" ( without a keybinding ) to copy whole content of "Output Log" into clipboard.
 - [ ] Save state of panes, to reopen them when the app starts

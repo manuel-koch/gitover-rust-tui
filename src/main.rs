@@ -649,7 +649,7 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
             app.close_menu();
             app.open_delete_branch_select();
         }
-        'H' => {
+        'h' => {
             app.close_menu();
             app.open_history(app::HistoryFilter::Full);
         }

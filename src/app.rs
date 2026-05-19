@@ -642,7 +642,7 @@ impl App {
             });
             items.push(MenuItem {
                 label: "Commit history".into(),
-                key: 'H',
+                key: 'h',
             });
             if let Some(upstream) = &repo.upstream {
                 items.push(MenuItem {
