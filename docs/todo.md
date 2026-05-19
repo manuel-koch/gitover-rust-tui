@@ -6,7 +6,9 @@ Done tasks are check-marked when implemented.
 
 ## Bugs
 
-- [ ]
+- [x] Truncating / hiding the keybindings when the terminal is too small doesn't work as expected.
+      Given a small terminal width, I see those keybindings that should have been hidden and
+      the last keybinding for "checkout" is truncated to "chec".
 
 ## Config & Repo Management
 

@@ -791,35 +791,46 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
     let t = app.theme();
     let mut spans: Vec<Span<'static>> = Vec::new();
 
-    // Navigation hints — hidden when terminal is too narrow
-    if area.width >= 110 {
-        spans.push(Span::styled("Tab", Style::default().fg(t.help_key)));
-        spans.push(Span::raw(" focus  "));
-        spans.push(Span::styled("↑↓", Style::default().fg(t.help_key)));
-        spans.push(Span::raw(" nav  "));
-        spans.push(Span::styled("PgUp/Dn", Style::default().fg(t.help_key)));
-        spans.push(Span::raw(" fast  "));
-    }
+    // Navigation hints — shown only when the full help text fits.
+    // Built first so we can measure both sections together.
+    let nav: [Span<'static>; 6] = [
+        Span::styled("Tab", Style::default().fg(t.help_key)),
+        Span::raw(" focus  "),
+        Span::styled("↑↓", Style::default().fg(t.help_key)),
+        Span::raw(" nav  "),
+        Span::styled("PgUp/Dn", Style::default().fg(t.help_key)),
+        Span::raw(" fast  "),
+    ];
+    let nav_width: usize = nav.iter().map(|s| s.width()).sum();
 
     // Action keys in grouped order: A, D, r, Alt-f, s, h, l, c, Enter
-    spans.push(Span::styled("A", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" add  "));
-    spans.push(Span::styled("D", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" remove  "));
-    spans.push(Span::styled("r", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" refresh  "));
-    spans.push(Span::styled("Alt-f", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" fetch all  "));
-    spans.push(Span::styled("s", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" status  "));
-    spans.push(Span::styled("h", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" history  "));
-    spans.push(Span::styled("l", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" log  "));
-    spans.push(Span::styled("c", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" checkout  "));
-    spans.push(Span::styled("Enter", Style::default().fg(t.help_key)));
-    spans.push(Span::raw(" actions"));
+    let actions: [Span<'static>; 18] = [
+        Span::styled("A", Style::default().fg(t.help_key)),
+        Span::raw(" add  "),
+        Span::styled("D", Style::default().fg(t.help_key)),
+        Span::raw(" remove  "),
+        Span::styled("r", Style::default().fg(t.help_key)),
+        Span::raw(" refresh  "),
+        Span::styled("Alt-f", Style::default().fg(t.help_key)),
+        Span::raw(" fetch all  "),
+        Span::styled("s", Style::default().fg(t.help_key)),
+        Span::raw(" status  "),
+        Span::styled("h", Style::default().fg(t.help_key)),
+        Span::raw(" history  "),
+        Span::styled("l", Style::default().fg(t.help_key)),
+        Span::raw(" log  "),
+        Span::styled("c", Style::default().fg(t.help_key)),
+        Span::raw(" checkout  "),
+        Span::styled("Enter", Style::default().fg(t.help_key)),
+        Span::raw(" actions"),
+    ];
+    let actions_width: usize = actions.iter().map(|s| s.width()).sum();
+
+    // Only include nav hints if everything fits without clipping
+    if (nav_width + actions_width) as u16 <= area.width {
+        spans.extend(nav);
+    }
+    spans.extend(actions);
 
     let help = Line::from(spans);
     frame.render_widget(Paragraph::new(help), area);
