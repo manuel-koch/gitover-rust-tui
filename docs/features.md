@@ -11,7 +11,7 @@
 - `general.git`: override the path to the git executable
 - `general.auto_fetch_interval`: interval in seconds for automatic background fetch of all repos
   (default: 600 = 10 minutes; set to 0 to disable automatic fetch)
-- Persisted app state (repo list, recent repos) stored at `~/.config/gitover/state.yaml`
+- Persisted app state (repo list, recent repos, pane visibility) stored at `~/.config/gitover/state.yaml`
 
 ## Repository Management
 
@@ -125,7 +125,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 |-----|--------|
 | `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows; clamps at list boundaries, no wrap |
-| `Tab` | Cycle focus between Repositories / Status Details / Output Log / Git History panes |
+| `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / Output Log / Git History / Diff panes |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
 | `Enter` | Open per-repo action menu |
@@ -150,7 +150,8 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Loading spinner in header while repos are being scanned
 - Refresh timestamp shown right-aligned in the header bar
 - Auto-fetch countdown shown right-aligned in the header bar (e.g. "fetching all in 30s"; hidden when auto-fetch is disabled)
-- Single-line help bar at the bottom showing active key bindings
+- Single-line help bar at the bottom showing active key bindings; keybinding hints for navigation
+  (`Tab`, `↑↓`, `PgUp`/`PgDn`) are hidden when horizontal space is too small
 - Confirmation dialogs for destructive actions (remove repo, force push)
 - File picker popup for adding repos
   - `↑`/`↓` navigate in list

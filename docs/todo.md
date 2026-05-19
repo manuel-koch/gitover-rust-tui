@@ -6,13 +6,11 @@ Done tasks are check-marked when implemented.
 
 ## Bugs
 
-- [x] Change branch outside the app doesn't result in refresh of repositories to display
-      the new data of repository ( i.e. current branch still displayed the former branch ).
-      Likely an issue of the watcher implementation.
+- [ ]
 
 ## Config & Repo Management
 
-- [x] Save state of panes, to reopen them when the app starts
+- [ ]
 
 ## Git Status Columns
 
@@ -41,13 +39,6 @@ Done tasks are check-marked when implemented.
       Closing the "Branches" pane updates "History" pane with commits from current repos current branch.
 
 ## UX Polish
-
-- [x] Allow shift-tab to reverse focus cycle direction, moving focus to the previous focused pane.
-- [x] If horizontal space is too small, hide common keybinding hints for "tab", "↑↓", "PgUp/Dn".
-- [x] In footer, re-group keybindings in the following order: "A", "D", "r", "Alt-f", "s",
-      "h", "l", "c", "Enter".
-- [x] In "Repositories" action menu, the keybinding for "History" shows "H",
-      but actually "h" is implemented. Fix the displayed keybinding to "h" too.
 
 ---
 
