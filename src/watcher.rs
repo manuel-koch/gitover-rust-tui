@@ -240,6 +240,14 @@ fn is_relevant_git_path(path: &Path, git_dir: &Path) -> bool {
         return false;
     }
 
+    // The index file is the primary signal for stage/unstage operations.
+    // git writes a new index via rename(index.lock → index), so we must
+    // treat it as always relevant to ensure the debounce fires.
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if filename == "index" {
+        return true;
+    }
+
     // Everything else inside .git IS relevant:
     // HEAD, ORIG_HEAD, MERGE_HEAD, CHERRY_PICK_HEAD, index,
     // refs/, rebase-merge/, rebase-apply/, config, etc.
