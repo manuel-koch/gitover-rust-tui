@@ -6,11 +6,7 @@ Done tasks are check-marked when implemented.
 
 ## Bugs
 
-- [x] Stage / Unstage a file with git doesn't trigger file watcher.
-- [x] "Repositories" & "History" pane are open, "Repositories" has focus, pressing "h" moves focus to "History" pane instead of closing it.
-      When "Status" has focus, when pressing "h" it closes "History" pane immediately.
-- [x] "Repositories", "Status" & "History" panes are open, "Repositories" has focus, pressing "alt-f"
-      doesn't trigger fetching all repos.
+- [ ]
 
 ## Config & Repo Management
 
@@ -45,16 +41,13 @@ Done tasks are check-marked when implemented.
 - [ ] In footer, re-group keybindings in the following order: "A", "D", "r", "Alt-f", "s", "h", "l", "c", "Enter".
 - [ ] In "Repositories" action menu, the keybinding for "History" shows "H", but actually "h" is implemented.
       Fix the displayed keybinding to "h".
-
+- [ ] Add keybinding of "enter" to "Output Log" pane, to show an action menu
+  - [ ] Add action menu entry "Copy log output" ( without a keybinding ) to copy whole content of "Output Log" into clipboard.
+- [ ] Save state of panes, to reopen them when the app starts
+  
 ## UX Mouse Interaction
 
-- [x] Click on pane gives focus to that pane
-- [x] Mouse wheel moves cursor up/down in current focused pane
-- [x] Click inside "Status" pane selects the file under mouse
-- [x] Click inside "History" pane selects the commit/change under mouse
-- [x] Double click on "Repositories" open the action menu for current repo
-- [x] Click on action menu entry executes selected action
-- [x] If action menu is open, click outside the menu closes the menu ( like pressing "esc" key )
+- [ ]
 
 ## Git History Pane
 

@@ -159,6 +159,16 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - `Space` selects current directory as repo to add
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
 
+## Mouse Interaction
+
+- Left-click on a pane sets focus to that pane
+- Mouse wheel scrolls the content of the currently focused pane
+- Left-click inside the Status Details pane selects the file under the cursor
+- Left-click inside the History pane selects the commit/change under the cursor
+- Double-click on a repository row opens the per-repo action menu (same as `Enter`)
+- Left-click on an action menu entry executes the selected action
+- Clicking outside the action menu dismisses it, same as pressing `Esc`
+
 ## Branch Information (per repo, available for future use)
 
 - Full list of local branches
