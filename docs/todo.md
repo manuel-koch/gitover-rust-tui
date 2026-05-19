@@ -36,7 +36,7 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [ ] Allow shift-tab to reverse focus cycle direction, moving focus to the previous focused pane.
+- [x] Allow shift-tab to reverse focus cycle direction, moving focus to the previous focused pane.
 - [ ] If horizontal space is too small, hide common keybinding hints for "tab", "↑↓", "PgUp/Dn".
 - [ ] In footer, re-group keybindings in the following order: "A", "D", "r", "Alt-f", "s", "h", "l", "c", "Enter".
 - [ ] In "Repositories" action menu, the keybinding for "History" shows "H", but actually "h" is implemented.

@@ -477,6 +477,7 @@ fn handle_normal_key(
 
     match key {
         KeyCode::Tab => app.cycle_focus(),
+        KeyCode::BackTab => app.cycle_focus_reverse(),
         KeyCode::Down => {
             app.next();
             app.reload_history_if_open();
@@ -997,6 +998,7 @@ fn handle_history_key(
     match key {
         KeyCode::Char('h') => app.close_history(),
         KeyCode::Tab => app.cycle_focus(),
+        KeyCode::BackTab => app.cycle_focus_reverse(),
         KeyCode::Down => app.next(),
         KeyCode::Up => app.previous(),
         KeyCode::PageDown => app.next_page(),

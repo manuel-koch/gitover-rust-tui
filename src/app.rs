@@ -348,6 +348,29 @@ impl App {
         self.focus = order[(idx + 1) % order.len()];
     }
 
+    /// Cycle the keyboard focus to the previous visible pane.
+    /// Reverse order of `cycle_focus`: Log -> History -> Detail -> Repos.
+    pub fn cycle_focus_reverse(&mut self) {
+        let mut order: Vec<Focus> = vec![Focus::Repos];
+        if self.show_detail {
+            order.push(Focus::Detail);
+        }
+        if self.show_history {
+            order.push(Focus::History);
+        }
+        if self.show_log {
+            order.push(Focus::Log);
+        }
+
+        if order.len() < 2 {
+            self.focus = Focus::Repos;
+            return;
+        }
+        let idx = order.iter().position(|f| *f == self.focus).unwrap_or(0);
+        // Reverse: (idx + len - 1) % len
+        self.focus = order[(idx + order.len() - 1) % order.len()];
+    }
+
     /// Move down by `PAGE_STEP` rows in the currently focused pane.
     /// Clamps at the last item — does not wrap around.
     pub fn next_page(&mut self) {
