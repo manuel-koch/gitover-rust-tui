@@ -120,6 +120,27 @@ fn state_remove_nonexistent_is_noop() {
 }
 
 #[test]
+fn state_pane_visibility_round_trip() {
+    let mut state = State::default();
+    // Defaults should be false
+    assert!(!state.show_file_status);
+    assert!(!state.show_log);
+    assert!(!state.show_history);
+
+    // Set pane visibility
+    state.show_file_status = true;
+    state.show_log = true;
+    state.show_history = true;
+
+    let yaml = serde_yaml::to_string(&state).expect("serialize");
+    let loaded: State = serde_yaml::from_str(&yaml).expect("deserialize");
+
+    assert!(loaded.show_file_status);
+    assert!(loaded.show_log);
+    assert!(loaded.show_history);
+}
+
+#[test]
 fn state_max_recent_capped_at_20() {
     let mut state = State::default();
     for i in 0..25 {

@@ -25,6 +25,15 @@ pub struct State {
     /// Recently used repos (path + display name).  Capped at 20 entries.
     #[serde(default)]
     pub recent: Vec<RecentRepo>,
+    /// Whether the File Status pane was open on last exit.
+    #[serde(default)]
+    pub show_file_status: bool,
+    /// Whether the Output Log pane was open on last exit.
+    #[serde(default)]
+    pub show_log: bool,
+    /// Whether the History pane was open on last exit.
+    #[serde(default)]
+    pub show_history: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +67,9 @@ impl State {
                 .into_iter()
                 .filter(|r| std::path::Path::new(&r.path).is_dir())
                 .collect(),
+            show_file_status: state.show_file_status,
+            show_log: state.show_log,
+            show_history: state.show_history,
         })
     }
 

@@ -295,13 +295,13 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
     let click = (mouse.column, mouse.row);
 
     // Check each visible pane in priority order
-    if let Some(detail_area) = &areas.detail {
-        if in_rect(click, *detail_area) {
-            app.focus = Focus::Detail;
+    if let Some(file_status_area) = &areas.file_status {
+        if in_rect(click, *file_status_area) {
+            app.focus = Focus::FileStatus;
             // Also select the file under the mouse, if any
-            if let Some(row) = detail_row_under_mouse(app, mouse, *detail_area) {
-                app.detail_selected = row;
-                app.detail_scroll = 0; // reset scroll so selection is visible
+            if let Some(row) = file_status_row_under_mouse(app, mouse, *file_status_area) {
+                app.file_status_selected = row;
+                app.file_status_scroll = 0; // reset scroll so selection is visible
             }
             return;
         }
@@ -331,8 +331,8 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
         // If clicking in the repos table, also update the selection
         if let Some(selected_row) = row_under_mouse(app, mouse, areas.repos) {
             app.selected = selected_row;
-            app.detail_selected = 0;
-            app.detail_scroll = 0;
+            app.file_status_selected = 0;
+            app.file_status_scroll = 0;
         }
     }
 }
@@ -374,9 +374,9 @@ fn row_under_mouse(
     }
 }
 
-/// Given a mouse click in the Status/Detail pane area, return the file index
+/// Given a mouse click in the File Status pane area, return the file index
 /// (0-based in the full file list) under the mouse, or None.
-fn detail_row_under_mouse(
+fn file_status_row_under_mouse(
     app: &App,
     mouse: &MouseEvent,
     pane_area: ratatui::layout::Rect,
@@ -497,7 +497,7 @@ fn handle_normal_key(
         KeyCode::Char('r') => refresh_repos(app),
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),
-        KeyCode::Char('s') => app.toggle_detail(),
+        KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
         // Enter opens the per-repo action menu
         KeyCode::Enter => app.open_action_menu(),
@@ -1004,7 +1004,7 @@ fn handle_history_key(
         KeyCode::PageDown => app.next_page(),
         KeyCode::PageUp => app.previous_page(),
         // Global keys that must work from any pane
-        KeyCode::Char('s') => app.toggle_detail(),
+        KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
         KeyCode::Char('r') => refresh_repos(app),
         KeyCode::Char('T') => app.next_theme(),

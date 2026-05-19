@@ -10,7 +10,7 @@ Done tasks are check-marked when implemented.
 
 ## Config & Repo Management
 
-- [ ]
+- [x] Save state of panes, to reopen them when the app starts
 
 ## Git Status Columns
 
@@ -43,8 +43,6 @@ Done tasks are check-marked when implemented.
        Fix the displayed keybinding to "h".
 - [ ] Add keybinding of "enter" to "Output Log" pane, to show an action menu
   - [ ] Add action menu entry "Copy log output" ( without a keybinding ) to copy whole content of "Output Log" into clipboard.
-- [ ] Save state of panes, to reopen them when the app starts
-  
 ## UX Mouse Interaction
 
 - [ ]

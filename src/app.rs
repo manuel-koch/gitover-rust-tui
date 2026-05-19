@@ -53,11 +53,11 @@ pub struct LogLine {
 }
 
 /// Which pane currently has keyboard focus. Tab cycles through the visible
-/// panes (Repos is always visible; Detail/Log only when their panel is open).
+/// panes (Repos is always visible; FileStatus/Log only when their panel is open).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
     Repos,
-    Detail,
+    FileStatus,
     Log,
     History,
 }
@@ -122,8 +122,8 @@ pub struct App {
     pub operations: HashMap<String, RepoOperation>,
     /// Timestamped log lines from git command output.
     pub log: Vec<LogLine>,
-    /// Whether the detail panel (per-file status) is shown.
-    pub show_detail: bool,
+    /// Whether the File Status pane is shown.
+    pub show_file_status: bool,
     /// Whether the output log panel is shown.
     pub show_log: bool,
     /// Top row of the repo table viewport (for scrolling).
@@ -132,10 +132,10 @@ pub struct App {
     pub spinner_tick: u64,
     /// Currently focused pane (Tab cycles through visible panes).
     pub focus: Focus,
-    /// Selected row inside the detail panel (per-file list).
-    pub detail_selected: usize,
-    /// Scroll offset (top row) of the detail panel.
-    pub detail_scroll: usize,
+    /// Selected row inside the File Status pane (per-file list).
+    pub file_status_selected: usize,
+    /// Scroll offset (top row) of the File Status pane.
+    pub file_status_scroll: usize,
     /// Scroll offset of the log panel, measured in lines **back from the tail**.
     /// 0  = show the most-recent entries (tail).
     /// N  = show the view starting N lines before the tail.
@@ -201,6 +201,9 @@ impl App {
         let interval = config.general.auto_fetch_interval();
 
         let state = State::load();
+        let show_file_status = state.show_file_status;
+        let show_log = state.show_log;
+        let show_history = state.show_history;
         let recent_repos = state
             .recent
             .iter()
@@ -220,13 +223,13 @@ impl App {
             scanning: false,
             operations: HashMap::new(),
             log: Vec::new(),
-            show_detail: false,
-            show_log: false,
+            show_file_status,
+            show_log,
             table_offset: 0,
             spinner_tick: 0,
             focus: Focus::Repos,
-            detail_selected: 0,
-            detail_scroll: 0,
+            file_status_selected: 0,
+            file_status_scroll: 0,
             log_offset: 0,
             log_follow: true,
             next_auto_fetch: Some(Instant::now() + interval),
@@ -238,7 +241,7 @@ impl App {
             branch_to_delete: String::new(),
             theme_idx: 0,
             history: Vec::new(),
-            show_history: false,
+            show_history,
             history_repo_path: String::new(),
             history_filter: HistoryFilter::Full,
             history_selected: 0,
@@ -260,14 +263,14 @@ impl App {
                     if self.selected < last {
                         self.selected += 1;
                     }
-                    self.detail_selected = 0;
-                    self.detail_scroll = 0;
+                    self.file_status_selected = 0;
+                    self.file_status_scroll = 0;
                 }
             }
-            Focus::Detail => {
+            Focus::FileStatus => {
                 let n = self.selected_files().len();
-                if n > 0 && self.detail_selected + 1 < n {
-                    self.detail_selected += 1;
+                if n > 0 && self.file_status_selected + 1 < n {
+                    self.file_status_selected += 1;
                 }
             }
             Focus::Log => {
@@ -297,13 +300,13 @@ impl App {
                     if self.selected > 0 {
                         self.selected -= 1;
                     }
-                    self.detail_selected = 0;
-                    self.detail_scroll = 0;
+                    self.file_status_selected = 0;
+                    self.file_status_scroll = 0;
                 }
             }
-            Focus::Detail => {
-                if self.detail_selected > 0 {
-                    self.detail_selected -= 1;
+            Focus::FileStatus => {
+                if self.file_status_selected > 0 {
+                    self.file_status_selected -= 1;
                 }
             }
             Focus::Log => {
@@ -324,12 +327,12 @@ impl App {
     }
 
     /// Cycle the keyboard focus to the next visible pane.
-    /// Order is fixed: Repos -> Detail -> History -> Log (only shown panes are included).
+    /// Order is fixed: Repos -> FileStatus -> History -> Log (only shown panes are included).
     pub fn cycle_focus(&mut self) {
         let mut order: Vec<Focus> = vec![Focus::Repos];
         // Detail is shown before History and Log in the layout, so tab to it first if enabled
-        if self.show_detail {
-            order.push(Focus::Detail);
+        if self.show_file_status {
+            order.push(Focus::FileStatus);
         }
         // History pane is rendered before Log
         if self.show_history {
@@ -349,11 +352,11 @@ impl App {
     }
 
     /// Cycle the keyboard focus to the previous visible pane.
-    /// Reverse order of `cycle_focus`: Log -> History -> Detail -> Repos.
+    /// Reverse order of `cycle_focus`: Log -> History -> FileStatus -> Repos.
     pub fn cycle_focus_reverse(&mut self) {
         let mut order: Vec<Focus> = vec![Focus::Repos];
-        if self.show_detail {
-            order.push(Focus::Detail);
+        if self.show_file_status {
+            order.push(Focus::FileStatus);
         }
         if self.show_history {
             order.push(Focus::History);
@@ -379,14 +382,14 @@ impl App {
                 if !self.repos.is_empty() {
                     let last = self.repos.len() - 1;
                     self.selected = (self.selected + PAGE_STEP).min(last);
-                    self.detail_selected = 0;
-                    self.detail_scroll = 0;
+                    self.file_status_selected = 0;
+                    self.file_status_scroll = 0;
                 }
             }
-            Focus::Detail => {
+            Focus::FileStatus => {
                 let n = self.selected_files().len();
                 if n > 0 {
-                    self.detail_selected = (self.detail_selected + PAGE_STEP).min(n - 1);
+                    self.file_status_selected = (self.file_status_selected + PAGE_STEP).min(n - 1);
                 }
             }
             Focus::Log => {
@@ -411,11 +414,11 @@ impl App {
         match self.focus {
             Focus::Repos => {
                 self.selected = self.selected.saturating_sub(PAGE_STEP);
-                self.detail_selected = 0;
-                self.detail_scroll = 0;
+                self.file_status_selected = 0;
+                self.file_status_scroll = 0;
             }
-            Focus::Detail => {
-                self.detail_selected = self.detail_selected.saturating_sub(PAGE_STEP);
+            Focus::FileStatus => {
+                self.file_status_selected = self.file_status_selected.saturating_sub(PAGE_STEP);
             }
             Focus::Log => {
                 // Page away from tail (back in history).
@@ -811,6 +814,7 @@ impl App {
         self.history_scroll = 0;
         self.show_history = true;
         self.focus = Focus::History;
+        self.save_pane_state();
         self.restore_base_mode();
     }
 
@@ -820,6 +824,7 @@ impl App {
         if self.focus == Focus::History {
             self.focus = Focus::Repos;
         }
+        self.save_pane_state();
         self.restore_base_mode();
     }
 
@@ -896,17 +901,18 @@ impl App {
         // No adjustment needed — offset 0 always shows the current tail.
     }
 
-    pub fn toggle_detail(&mut self) {
-        self.show_detail = !self.show_detail;
-        if self.show_detail {
-            self.detail_selected = 0;
-            self.detail_scroll = 0;
-            self.focus = Focus::Detail;
+    pub fn toggle_file_status(&mut self) {
+        self.show_file_status = !self.show_file_status;
+        if self.show_file_status {
+            self.file_status_selected = 0;
+            self.file_status_scroll = 0;
+            self.focus = Focus::FileStatus;
         } else {
-            if self.focus == Focus::Detail {
+            if self.focus == Focus::FileStatus {
                 self.focus = Focus::Repos;
             }
         }
+        self.save_pane_state();
     }
 
     pub fn toggle_log(&mut self) {
@@ -918,6 +924,17 @@ impl App {
             self.focus = Focus::Log;
         } else if self.focus == Focus::Log {
             self.focus = Focus::Repos;
+        }
+        self.save_pane_state();
+    }
+
+    /// Sync current pane visibility to persisted state and save.
+    fn save_pane_state(&mut self) {
+        self.state.show_file_status = self.show_file_status;
+        self.state.show_log = self.show_log;
+        self.state.show_history = self.show_history;
+        if let Err(e) = self.state.save() {
+            self.log(format!("failed to save pane state: {e}"));
         }
     }
 
@@ -933,7 +950,7 @@ impl App {
     }
 
     /// Return the per-file changes of the currently-selected repo (for the
-    /// detail panel). Empty when no repo is selected or the repo errored.
+    /// File Status pane). Empty when no repo is selected or the repo errored.
     pub fn selected_files(&self) -> &[crate::git::FileEntry] {
         match self.repos.get(self.selected) {
             Some(r) => &r.files,
@@ -942,7 +959,7 @@ impl App {
     }
 
     /// Convenience: the kinds present in the selected repo (used to colour
-    /// the detail header).
+    /// the File Status header).
     #[allow(dead_code)]
     pub fn selected_file_kinds(&self) -> Vec<FileStatusKind> {
         let mut kinds: Vec<FileStatusKind> = Vec::new();

@@ -31,7 +31,7 @@ pub struct PaneAreas {
     pub terminal: Rect,
     pub header: Rect,
     pub repos: Rect,
-    pub detail: Option<Rect>,
+    pub file_status: Option<Rect>,
     pub history: Option<Rect>,
     pub log: Option<Rect>,
     pub help_bar: Rect,
@@ -44,7 +44,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     let fixed_height: u16 = 4;
     let total_available = total.height.saturating_sub(fixed_height);
 
-    let open_panes = [app.show_detail, app.show_history, app.show_log]
+    let open_panes = [app.show_file_status, app.show_history, app.show_log]
         .into_iter()
         .filter(|&p| p)
         .count();
@@ -58,7 +58,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     constraints.push(Constraint::Length(3));
     constraints.push(Constraint::Length(repo_height));
 
-    if app.show_detail {
+    if app.show_file_status {
         constraints.push(Constraint::Length(pane_height));
     }
     if app.show_history {
@@ -80,9 +80,9 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     let repos = chunks[idx];
     idx += 1;
 
-    let mut detail = None;
-    if app.show_detail {
-        detail = Some(chunks[idx]);
+    let mut file_status = None;
+    if app.show_file_status {
+        file_status = Some(chunks[idx]);
         idx += 1;
     }
 
@@ -104,7 +104,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
         terminal: total,
         header,
         repos,
-        detail,
+        file_status,
         history,
         log,
         help_bar,
@@ -119,8 +119,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let fixed_height: u16 = 4; // header 3 + help bar 1 always present
     let total_available = frame.area().height.saturating_sub(fixed_height);
 
-    // Count open optional panes (Status, History, Log).
-    let open_panes = [app.show_detail, app.show_history, app.show_log]
+    // Count open optional panes (File Status, History, Log).
+    let open_panes = [app.show_file_status, app.show_history, app.show_log]
         .into_iter()
         .filter(|&p| p)
         .count();
@@ -133,12 +133,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let repo_height = base_share + remainder;
     let pane_height = base_share;
 
-    // Build constraints in fixed order: header / table / detail / history / log / help bar
+    // Build constraints in fixed order: header / table / file status / history / log / help bar
     let mut constraints: Vec<Constraint> = Vec::new();
     constraints.push(Constraint::Length(3)); // header
     constraints.push(Constraint::Length(repo_height)); // Repositories table — gets all extra space
 
-    if app.show_detail {
+    if app.show_file_status {
         constraints.push(Constraint::Length(pane_height));
     }
     if app.show_history {
@@ -162,9 +162,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_repo_table(frame, chunks[idx], app);
     idx += 1;
 
-    // Optional panes in fixed order: Status -> History -> Log
-    if app.show_detail {
-        draw_detail_panel(frame, chunks[idx], app);
+    // Optional panes in fixed order: File Status -> History -> Log
+    if app.show_file_status {
+        draw_file_status_panel(frame, chunks[idx], app);
         idx += 1;
     }
     if app.show_history {
@@ -489,25 +489,25 @@ fn build_activity_cell(
     }
 }
 
-// ── Detail panel ──────────────────────────────────────────────────────────
+// ── File Status panel ────────────────────────────────────────────────────────
 
 #[allow(dead_code)]
-/// Decide how tall the detail panel should be (clamped to a sensible range).
-fn detail_panel_height(app: &App) -> u16 {
+/// Decide how tall the file status panel should be (clamped to a sensible range).
+fn file_status_panel_height(app: &App) -> u16 {
     let count = app.selected_files().len();
     // 2 border lines + 1 header line + N file lines, clamp 5..=15
     let h = 2 + 1 + count as u16;
     h.clamp(5, 15)
 }
 
-fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let theme = app.theme();
     let title = match app.repos.get(app.selected) {
-        Some(repo) => format!(" Status Details — {} ", repo.path),
-        None => " Status Details ".to_string(),
+        Some(repo) => format!(" File Status — {} ", repo.path),
+        None => " File Status ".to_string(),
     };
 
-    let focused = app.focus == Focus::Detail;
+    let focused = app.focus == Focus::FileStatus;
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
@@ -521,14 +521,14 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     {
         let file_count = app.selected_files().len();
         if visible > 0 && file_count > 0 {
-            if app.detail_selected < app.detail_scroll {
-                app.detail_scroll = app.detail_selected;
-            } else if app.detail_selected >= app.detail_scroll + visible {
-                app.detail_scroll = app.detail_selected + 1 - visible;
+            if app.file_status_selected < app.file_status_scroll {
+                app.file_status_scroll = app.file_status_selected;
+            } else if app.file_status_selected >= app.file_status_scroll + visible {
+                app.file_status_scroll = app.file_status_selected + 1 - visible;
             }
             let max_scroll = file_count.saturating_sub(visible);
-            if app.detail_scroll > max_scroll {
-                app.detail_scroll = max_scroll;
+            if app.file_status_scroll > max_scroll {
+                app.file_status_scroll = max_scroll;
             }
         }
     }
@@ -547,11 +547,11 @@ fn draw_detail_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let lines: Vec<Line<'static>> = files
         .iter()
         .enumerate()
-        .skip(app.detail_scroll)
+        .skip(app.file_status_scroll)
         .take(visible)
         .map(|(i, f)| {
             let colour = theme.file_status_colour(&f.status);
-            let selected = focused && i == app.detail_selected;
+            let selected = focused && i == app.file_status_selected;
             let base_style = if selected {
                 Style::default()
                     .fg(theme.selection_fg)
