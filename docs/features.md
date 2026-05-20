@@ -81,6 +81,21 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 - Scrolls when file count exceeds panel height; cursor always stays visible
 - Tab focus moves to this pane when opened; Tab cycles back to Repositories
 
+## Per-file Actions
+
+Pressing `Enter` or double-clicking a file in the Status Details pane opens the per-file action menu.
+Available actions depend on the file's current git status:
+
+| File status | Actions |
+|-------------|---------|
+| Staged | **Unstage file** — `git reset -- <path>` |
+| Modified | **Stage file** — `git add -- <path>`; **Revert file** — `git checkout -- <path>` |
+| Deleted | **Stage deletion** — `git add -- <path>`; **Revert file** — `git checkout -- <path>` |
+| Conflict | **Revert file** — `git reset -- <path>` followed by `git checkout -- <path>` |
+| Untracked | **Stage file** — `git add -- <path>`; **Discard file** — deletes the file from disk |
+
+Dismiss the menu with `Esc` or by clicking outside it.
+
 ## Output Log Pane
 
 - Toggle with `l`
@@ -115,6 +130,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 ## Real-time Updates
 
 - File system watcher detects changes and refreshes the affected repo instantly
+  - Watches the entire working tree: any file creation, modification, or deletion triggers a refresh
   - Git-aware filter: watches relevant `.git/` files (HEAD, refs, index, COMMIT_EDITMSG, rebase state, etc.) while ignoring noisy internals (objects, pack files, etc.)
   - 500 ms debounce prevents spurious updates during rapid saves
 - Wake-from-sleep detection: if a tick gap exceeds 3 s the system likely woke from sleep; a full refresh fires to catch missed events
@@ -131,7 +147,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 | `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / Output Log / Git History / Diff panes |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
-| `Enter` | Open per-repo action menu |
+| `Enter` | Open per-repo action menu (Repositories pane); open per-file action menu (Status Details pane); open log action menu (Output Log pane) |
 | `f` | Fetch selected repo (shortcut, no menu needed) |
 | `p` | Pull selected repo (shortcut, no menu needed) |
 | `P` | Push selected repo (shortcut, no menu needed) |
@@ -150,6 +166,7 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Four-pane layout (vertical): Repositories / Status Details / Output Log / Git History
 - Status Details, Output Log, and Git History are optional; shown only when toggled open
 - Focused pane highlighted with cyan border; unfocused panes use dark-gray border
+- App version shown in the header title (e.g. `Git Repository Overview  v0.1.0`)
 - Loading spinner in header while repos are being scanned
 - Refresh timestamp shown right-aligned in the header bar
 - Auto-fetch countdown shown right-aligned in the header bar (e.g. "fetching all in 30s"; hidden when auto-fetch is disabled)
@@ -170,6 +187,7 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Left-click inside the Status Details pane selects the file under the cursor
 - Left-click inside the History pane selects the commit/change under the cursor
 - Double-click on a repository row opens the per-repo action menu (same as `Enter`)
+- Double-click on a file row in the Status Details pane opens the per-file action menu (same as `Enter`)
 - Left-click on an action menu entry executes the selected action
 - Clicking outside the action menu dismisses it, same as pressing `Esc`
 
@@ -179,6 +197,20 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Remote branches not yet checked out locally
 - Local branches already merged into the trunk branch
 
+## Release Info
+
+The binary embeds build metadata at compile time via `build.rs`:
+
+- **Version**: taken from `Cargo.toml` (`CARGO_PKG_VERSION`)
+- **Git commit**: short hash of HEAD at build time (`GIT_SHORT_HASH`)
+- **Build timestamp**: UTC date/time captured when `cargo build` runs (`BUILD_TIMESTAMP`)
+
+Running `gitover --version` (or `-V`) prints this info and exits immediately without starting the TUI:
+
+```
+gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
+```
+
 ## Tooling
 
 - `Makefile` at the project root with the following targets:
@@ -186,3 +218,4 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - `make format` — runs `cargo fmt`
   - `make build-and-run` — builds and launches the app via `cargo run`
   - `make test` — runs all unit and integration tests via `cargo test`
+  - `make release` — builds an optimized release binary (`target/release/gitover`)

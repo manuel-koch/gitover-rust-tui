@@ -6,12 +6,7 @@ Done tasks are check-marked when implemented.
 
 ## Bugs
 
-- [x] Truncating / hiding the keybindings when the terminal is too small doesn't work as expected.
-      Given a small terminal width, I see those keybindings that should have been hidden and
-      the last keybinding for "checkout" is truncated to "chec".
-- [x] "Repositories" pane -> double-click repo -> click on checkout-action
-      -> click on a branch entry in the branch popup menu doesn't checkout that branch.
-- [x] Modifying files doesn't result in watcher trigger to refresh repo info
+- [ ]
 
 ## Config & Repo Management
 
@@ -56,12 +51,8 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [x] Add keybinding of "enter" to "Output Log" pane, to show an action menu
-  - [x] Add action menu entry "Copy log output" ( without a keybinding )
-        to copy whole content of "Output Log" into clipboard.
-  - [x] After logs have been copied to clipboard, show a popup message
-        with notice "Log output copied to clipboard!", auto hide the popup after 2sec.
-  
+- [ ]
+
 ## UX Mouse Interaction
 
 - [ ]
@@ -82,13 +73,7 @@ Done tasks are check-marked when implemented.
 
 ## Per-file Actions
 
-- [x] Available per-file-actions are shown in a poup-menu for the current selected file
-      when enter key is hit or file is double-clicked
-  - [x] Stage file: run `git add -- <path>` from the changed-files detail panel
-  - [x] Unstage file: run `git reset -- <path>` from the changed-files detail panel
-  - [x] Revert file: run `git checkout -- <path>` to discard working-tree changes
-        Handle merge-conflict case: `git reset -- <path>` first, then `git checkout -- <path>`
-  - [x] Discard untracked file: delete the file from disk
+- [ ]
 
 ## Per-file Diff
 
@@ -107,8 +92,4 @@ Done tasks are check-marked when implemented.
 
 ## Documentation & Release
 
-- [x] Add make target to build executable for release
-- [x] Include release info into build artifact: build timestamp, version, git commit short-hash
-  - [x] Show version in title of app
-  - [x] Print build timestamp, version & git commit short-hash in terminal
-        when app is run with "--version" commandline argument and immediately exit.
+- [ ]
