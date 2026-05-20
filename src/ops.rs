@@ -37,6 +37,18 @@ pub enum OpRequest {
     },
     CreateBranch(String),
     DeleteBranch(String),
+    /// Stage a file: `git add -- <path>` (path relative to repo root).
+    StageFile(String),
+    /// Unstage a file: `git reset -- <path>` (path relative to repo root).
+    UnstageFile(String),
+    /// Revert working-tree changes: `git checkout -- <path>`.
+    /// For conflict files, runs `git reset -- <path>` first.
+    RevertFile {
+        file_path: String,
+        is_conflict: bool,
+    },
+    /// Delete an untracked file from disk (path relative to repo root).
+    DiscardFile(String),
 }
 
 impl OpRequest {
@@ -49,6 +61,10 @@ impl OpRequest {
             OpRequest::CheckoutBranch { .. } => "checkout",
             OpRequest::CreateBranch(_) => "create branch",
             OpRequest::DeleteBranch(_) => "delete branch",
+            OpRequest::StageFile(_) => "stage file",
+            OpRequest::UnstageFile(_) => "unstage file",
+            OpRequest::RevertFile { .. } => "revert file",
+            OpRequest::DiscardFile(_) => "discard file",
         }
     }
 }
@@ -125,6 +141,41 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
 
         OpRequest::DeleteBranch(name) => {
             run_git(git_bin, repo_path, &["branch", "-D", name], &mut lines)
+        }
+
+        OpRequest::StageFile(path) => run_git(git_bin, repo_path, &["add", "--", path], &mut lines),
+
+        OpRequest::UnstageFile(path) => {
+            run_git(git_bin, repo_path, &["reset", "--", path], &mut lines)
+        }
+
+        OpRequest::RevertFile {
+            file_path,
+            is_conflict,
+        } => {
+            if *is_conflict {
+                run_git(git_bin, repo_path, &["reset", "--", file_path], &mut lines);
+            }
+            run_git(
+                git_bin,
+                repo_path,
+                &["checkout", "--", file_path],
+                &mut lines,
+            )
+        }
+
+        OpRequest::DiscardFile(path) => {
+            let abs = std::path::PathBuf::from(repo_path).join(path);
+            match std::fs::remove_file(&abs) {
+                Ok(()) => {
+                    lines.push(format!("deleted {path}"));
+                    true
+                }
+                Err(e) => {
+                    lines.push(format!("error deleting {path}: {e}"));
+                    false
+                }
+            }
         }
     };
 

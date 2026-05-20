@@ -11,7 +11,8 @@ Done tasks are check-marked when implemented.
       the last keybinding for "checkout" is truncated to "chec".
 - [x] "Repositories" pane -> double-click repo -> click on checkout-action
       -> click on a branch entry in the branch popup menu doesn't checkout that branch.
- 
+- [ ] Modifying files doesn't result in watcher trigger to refresh repo info
+
 ## Config & Repo Management
 
 - [ ] Add repo commands as a list of mappings to configuration
@@ -81,13 +82,13 @@ Done tasks are check-marked when implemented.
 
 ## Per-file Actions
 
-- [ ] Available per-file-actions are shown in a poup-menu for the current selected file
+- [x] Available per-file-actions are shown in a poup-menu for the current selected file
       when enter key is hit or file is double-clicked
-  - [ ] Stage file: run `git add -- <path>` from the changed-files detail panel
-  - [ ] Unstage file: run `git reset -- <path>` from the changed-files detail panel
-  - [ ] Revert file: run `git checkout -- <path>` to discard working-tree changes
+  - [x] Stage file: run `git add -- <path>` from the changed-files detail panel
+  - [x] Unstage file: run `git reset -- <path>` from the changed-files detail panel
+  - [x] Revert file: run `git checkout -- <path>` to discard working-tree changes
         Handle merge-conflict case: `git reset -- <path>` first, then `git checkout -- <path>`
-  - [ ] Discard untracked file: delete the file from disk
+  - [x] Discard untracked file: delete the file from disk
 
 ## Per-file Diff
 

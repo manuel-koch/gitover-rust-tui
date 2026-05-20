@@ -212,6 +212,11 @@ where
                         handle_log_menu_key(app, op_tx, key.code);
                     }
                 }
+                AppMode::FileActionMenu => {
+                    if let Event::Key(key) = &ev {
+                        handle_file_menu_key(app, op_tx, key.code);
+                    }
+                }
                 AppMode::PopupMessage => {
                     // Any key dismisses the popup immediately
                     if let Event::Key(_) = &ev {
@@ -242,7 +247,7 @@ fn handle_mouse_event(
             // ActionMenu mode:
             // - click on item executes it
             // - click outside closes menu
-            if matches!(app.mode, AppMode::ActionMenu) {
+            if matches!(app.mode, AppMode::ActionMenu | AppMode::FileActionMenu) {
                 let terminal_area = app
                     .cached_pane_areas
                     .as_ref()
@@ -250,7 +255,11 @@ fn handle_mouse_event(
                     .unwrap_or_default();
                 if let Some(item_idx) = menu_item_under_mouse(app, mouse, terminal_area) {
                     if let Some(item) = app.menu_items.get(item_idx).cloned() {
-                        dispatch_menu_action(app, op_tx, item.key);
+                        if matches!(app.mode, AppMode::FileActionMenu) {
+                            dispatch_file_menu_action(app, op_tx, item.key);
+                        } else {
+                            dispatch_menu_action(app, op_tx, item.key);
+                        }
                     }
                 } else {
                     // Click outside menu closes it
@@ -323,9 +332,10 @@ fn handle_mouse_event(
                 && app.last_click_pos == Some(pos);
 
             if is_double_click {
-                // Double-click in repos pane opens the action menu
                 if matches!(app.focus, Focus::Repos) {
-                    app.open_action_menu();
+                    app.open_repo_action_menu();
+                } else if matches!(app.focus, Focus::FileStatus) {
+                    app.open_file_action_menu();
                 }
             } else {
                 handle_mouse_click(app, mouse);
@@ -511,8 +521,13 @@ pub fn menu_item_under_mouse(
 ) -> Option<usize> {
     // Mirror the geometry used in draw_action_menu:
     // height = menu_items.len() + 4 (title + top/bottom borders + blank line at bottom)
+    let width = if matches!(app.mode, AppMode::FileActionMenu) {
+        66
+    } else {
+        40
+    };
     let height = (app.menu_items.len() as u16 + 4).min(terminal_area.height);
-    let area = ui::centered_rect(40, height, terminal_area);
+    let area = ui::top_centered_rect(width, height, 3, terminal_area);
     let (col, row) = (mouse.column, mouse.row);
 
     // Check if click is inside the menu area
@@ -578,8 +593,10 @@ fn handle_normal_key(
         KeyCode::Enter => {
             if app.focus == Focus::Log && app.show_log {
                 app.open_log_action_menu();
+            } else if app.focus == Focus::FileStatus && app.show_file_status {
+                app.open_file_action_menu();
             } else {
-                app.open_action_menu();
+                app.open_repo_action_menu();
             }
         }
         // Direct shortcuts (bypass menu)
@@ -792,6 +809,63 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
             if !branch.is_empty() {
                 app.open_history(app::HistoryFilter::BehindOf(branch));
             }
+        }
+        _ => {}
+    }
+}
+
+fn handle_file_menu_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
+    match key {
+        KeyCode::Down => app.menu_next(),
+        KeyCode::Up => app.menu_previous(),
+        KeyCode::Esc => app.close_menu(),
+        KeyCode::Enter => {
+            if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {
+                dispatch_file_menu_action(app, op_tx, item.key);
+            }
+        }
+        k => {
+            if let KeyCode::Char(c) = k {
+                dispatch_file_menu_action(app, op_tx, c);
+            }
+        }
+    }
+}
+
+fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: char) {
+    let files = app.selected_files().to_vec();
+    let file = match files.get(app.file_status_selected) {
+        Some(f) => f.clone(),
+        None => {
+            app.close_menu();
+            return;
+        }
+    };
+
+    match key {
+        's' => {
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::StageFile(file.path));
+        }
+        'u' => {
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::UnstageFile(file.path));
+        }
+        'r' => {
+            let is_conflict = file.status == git::FileStatusKind::Conflict;
+            app.close_menu();
+            launch_op(
+                app,
+                op_tx,
+                OpRequest::RevertFile {
+                    file_path: file.path,
+                    is_conflict,
+                },
+            );
+        }
+        'd' => {
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::DiscardFile(file.path));
         }
         _ => {}
     }
@@ -1095,6 +1169,15 @@ fn handle_history_key(
         KeyCode::Up => app.previous(),
         KeyCode::PageDown => app.next_page(),
         KeyCode::PageUp => app.previous_page(),
+        KeyCode::Enter => {
+            if app.focus == Focus::Log && app.show_log {
+                app.open_log_action_menu();
+            } else if app.focus == Focus::FileStatus && app.show_file_status {
+                app.open_file_action_menu();
+            } else if app.focus == Focus::Repos {
+                app.open_repo_action_menu();
+            }
+        }
         // Global keys that must work from any pane
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),

@@ -85,6 +85,8 @@ pub enum AppMode {
     History,
     /// Log action menu (Enter on Output Log pane).
     LogActionMenu,
+    /// Per-file action menu (Enter or double-click on a file in the File Status pane).
+    FileActionMenu,
     /// Transient popup message that auto-dismisses after a timeout.
     PopupMessage,
 }
@@ -613,7 +615,7 @@ impl App {
 
     /// Open the per-repo action menu for the selected repo.
     /// Builds the item list based on current repo state.
-    pub fn open_action_menu(&mut self) {
+    pub fn open_repo_action_menu(&mut self) {
         if self.repos.is_empty() {
             return;
         }
@@ -701,6 +703,76 @@ impl App {
 
     pub fn close_menu(&mut self) {
         self.restore_base_mode();
+    }
+
+    // ── File action menu ──────────────────────────────────────────────────────
+
+    /// Return the currently selected file entry in the File Status pane, if any.
+    pub fn selected_file_entry(&self) -> Option<&crate::git::FileEntry> {
+        self.selected_files().get(self.file_status_selected)
+    }
+
+    /// Open the per-file action menu for the currently selected file.
+    /// Menu items are built based on the file's status.
+    pub fn open_file_action_menu(&mut self) {
+        let file_status = match self
+            .selected_files()
+            .get(self.file_status_selected)
+            .map(|f| f.status.clone())
+        {
+            Some(s) => s,
+            None => return,
+        };
+
+        let mut items = Vec::new();
+        match file_status {
+            FileStatusKind::Staged => {
+                items.push(MenuItem {
+                    label: "Unstage file".into(),
+                    key: 'u',
+                });
+            }
+            FileStatusKind::Modified => {
+                items.push(MenuItem {
+                    label: "Stage file".into(),
+                    key: 's',
+                });
+                items.push(MenuItem {
+                    label: "Revert file".into(),
+                    key: 'r',
+                });
+            }
+            FileStatusKind::Deleted => {
+                items.push(MenuItem {
+                    label: "Stage deletion".into(),
+                    key: 's',
+                });
+                items.push(MenuItem {
+                    label: "Revert file".into(),
+                    key: 'r',
+                });
+            }
+            FileStatusKind::Conflict => {
+                items.push(MenuItem {
+                    label: "Revert file".into(),
+                    key: 'r',
+                });
+            }
+            FileStatusKind::Untracked => {
+                items.push(MenuItem {
+                    label: "Stage file".into(),
+                    key: 's',
+                });
+                items.push(MenuItem {
+                    label: "Discard file".into(),
+                    key: 'd',
+                });
+            }
+        }
+
+        self.menu_items = items;
+        self.menu_selected = 0;
+        self.mode = AppMode::FileActionMenu;
     }
 
     /// Open the log action menu for the Output Log pane.

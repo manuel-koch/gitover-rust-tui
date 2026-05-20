@@ -185,7 +185,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == AppMode::ConfirmRemove {
         draw_confirm_remove(frame, app);
     }
-    if app.mode == AppMode::ActionMenu || app.mode == AppMode::LogActionMenu {
+    if matches!(
+        app.mode,
+        AppMode::ActionMenu | AppMode::LogActionMenu | AppMode::FileActionMenu
+    ) {
         draw_action_menu(frame, app);
     }
     if app.mode == AppMode::BranchSelect {
@@ -957,6 +960,14 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
     let t = app.theme();
     let title = match app.mode {
         AppMode::LogActionMenu => " Output Log ".to_string(),
+        AppMode::FileActionMenu => {
+            let file_name = app
+                .selected_files()
+                .get(app.file_status_selected)
+                .map(|f| f.path.split('/').next_back().unwrap_or(&f.path).to_string())
+                .unwrap_or_default();
+            format!(" File Actions — {file_name} ")
+        }
         _ => {
             let repo_name = app
                 .repos
@@ -966,8 +977,13 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
             format!(" Actions — {repo_name} ")
         }
     };
+    let width = if app.mode == AppMode::FileActionMenu {
+        80
+    } else {
+        50
+    };
     let height = (app.menu_items.len() as u16 + 4).min(frame.area().height);
-    let area = centered_rect(40, height, frame.area());
+    let area = top_centered_rect(width, height, 3, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -1212,6 +1228,21 @@ fn draw_popup_message(frame: &mut Frame, app: &mut App) {
         .style(Style::default().fg(t.popup_target))
         .alignment(ratatui::layout::Alignment::Center);
     frame.render_widget(para, text_area);
+}
+
+/// Like `centered_rect` but anchors the popup's top edge at `top_offset` rows from `area.y`
+/// instead of deriving the y position from the popup height.
+pub fn top_centered_rect(percent_x: u16, height: u16, top_offset: u16, area: Rect) -> Rect {
+    let popup_width = area.width * percent_x / 100;
+    let x = area.x + (area.width.saturating_sub(popup_width)) / 2;
+    let y = area.y + top_offset;
+    let max_height = area.height.saturating_sub(top_offset);
+    Rect {
+        x,
+        y,
+        width: popup_width,
+        height: height.min(max_height),
+    }
 }
 
 pub fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
