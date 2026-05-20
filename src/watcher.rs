@@ -342,12 +342,6 @@ fn is_relevant_worktree_path(
         return false;
     }
 
-    // Skip directory-level events: only file content changes matter.
-    // (notify may emit events for the parent dir when a file inside changes.)
-    if path.is_dir() {
-        return false;
-    }
-
     // Skip git-ignored files
     if let Some(r) = repo {
         if r.is_path_ignored(path).unwrap_or(false) {

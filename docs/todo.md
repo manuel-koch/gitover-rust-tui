@@ -11,7 +11,7 @@ Done tasks are check-marked when implemented.
       the last keybinding for "checkout" is truncated to "chec".
 - [x] "Repositories" pane -> double-click repo -> click on checkout-action
       -> click on a branch entry in the branch popup menu doesn't checkout that branch.
-- [ ] Modifying files doesn't result in watcher trigger to refresh repo info
+- [x] Modifying files doesn't result in watcher trigger to refresh repo info
 
 ## Config & Repo Management
 
