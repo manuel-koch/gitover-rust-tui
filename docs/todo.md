@@ -9,7 +9,7 @@ Done tasks are check-marked when implemented.
 - [x] Truncating / hiding the keybindings when the terminal is too small doesn't work as expected.
       Given a small terminal width, I see those keybindings that should have been hidden and
       the last keybinding for "checkout" is truncated to "chec".
-- [ ] "Repositories" pane -> double-click repo -> click on checkout-action
+- [x] "Repositories" pane -> double-click repo -> click on checkout-action
       -> click on a branch entry in the branch popup menu doesn't checkout that branch.
  
 ## Config & Repo Management
@@ -89,7 +89,7 @@ Done tasks are check-marked when implemented.
         Handle merge-conflict case: `git reset -- <path>` first, then `git checkout -- <path>`
   - [ ] Discard untracked file: delete the file from disk
 
----
+## Per-file Diff
 
 - [ ] Keybinding "d" toggle visibility of sub "Diff" pane within "Status" pane, but don't give focus to it yet
   - [ ] "Diff" pane has 50% horizontal size of parent "Status" and is right aligned

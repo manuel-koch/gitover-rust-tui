@@ -239,7 +239,9 @@ fn handle_mouse_event(
 ) {
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            // ActionMenu mode: click on item executes, click outside closes
+            // ActionMenu mode:
+            // - click on item executes it
+            // - click outside closes menu
             if matches!(app.mode, AppMode::ActionMenu) {
                 let terminal_area = app
                     .cached_pane_areas
@@ -253,6 +255,61 @@ fn handle_mouse_event(
                 } else {
                     // Click outside menu closes it
                     app.close_menu();
+                }
+                return;
+            }
+
+            // BranchSelect popup: click on a branch entry to select and checkout.
+            if matches!(app.mode, AppMode::BranchSelect) {
+                // Determine the popup geometry similar to draw_branch_select.
+                let term_area = app
+                    .cached_pane_areas
+                    .as_ref()
+                    .map(|a| a.terminal)
+                    .unwrap_or_default();
+                // Height calculation matches UI.
+                let height = (app.branch_items.len() as u16 + 4)
+                    .clamp(5, 20)
+                    .min(term_area.height);
+                let popup = ui::centered_rect(55, height, term_area);
+                let inner = ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title("")
+                    .inner(popup);
+                // If click inside the inner rect, determine which row.
+                if mouse.column >= inner.x
+                    && mouse.column < inner.x + inner.width
+                    && mouse.row >= inner.y
+                    && mouse.row < inner.y + inner.height
+                {
+                    let row_offset = (mouse.row - inner.y) as usize;
+                    // Visible rows start at inner.y, no header.
+                    // Determine start index as UI does.
+                    let visible = inner.height as usize;
+                    let start = if app.branch_selected >= visible {
+                        app.branch_selected + 1 - visible
+                    } else {
+                        0
+                    };
+                    let idx = start + row_offset;
+                    if idx < app.branch_items.len() {
+                        app.branch_selected = idx;
+                    }
+                    // Perform checkout of the selected branch.
+                    if let Some(item) = app.selected_branch_item().cloned() {
+                        app.close_branch_select();
+                        launch_op(
+                            app,
+                            op_tx,
+                            OpRequest::CheckoutBranch {
+                                name: item.name,
+                                is_remote: item.is_remote,
+                            },
+                        );
+                    }
+                } else {
+                    // Click outside popup just closes it.
+                    app.close_branch_select();
                 }
                 return;
             }
