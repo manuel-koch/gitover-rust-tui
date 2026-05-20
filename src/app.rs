@@ -83,6 +83,10 @@ pub enum AppMode {
     ConfirmDeleteBranch,
     /// Commit history pane (h key).
     History,
+    /// Log action menu (Enter on Output Log pane).
+    LogActionMenu,
+    /// Transient popup message that auto-dismisses after a timeout.
+    PopupMessage,
 }
 
 /// One entry in the action menu.
@@ -186,6 +190,10 @@ pub struct App {
     pub last_click_time: Option<Instant>,
     /// Position of the last left-click, for double-click detection.
     pub last_click_pos: Option<(u16, u16)>,
+    /// Active popup message to display ( PopupMessage mode ).
+    pub popup_message: Option<String>,
+    /// Timestamp when the popup was shown (for auto-dismissal).
+    pub popup_show_time: Option<Instant>,
 }
 
 /// Maximum number of log lines retained.
@@ -249,6 +257,8 @@ impl App {
             cached_pane_areas: None,
             last_click_time: None,
             last_click_pos: None,
+            popup_message: None,
+            popup_show_time: None,
         }
     }
 
@@ -691,6 +701,45 @@ impl App {
 
     pub fn close_menu(&mut self) {
         self.restore_base_mode();
+    }
+
+    /// Open the log action menu for the Output Log pane.
+    pub fn open_log_action_menu(&mut self) {
+        self.menu_items = vec![MenuItem {
+            label: "Copy log output".into(),
+            key: ' ', // no direct shortcut key
+        }];
+        self.menu_selected = 0;
+        self.mode = AppMode::LogActionMenu;
+    }
+
+    /// Copy the entire Output Log content to the system clipboard.
+    /// Also shows a transient popup notification.
+    pub fn copy_log_to_clipboard(&mut self) {
+        let text: String = self
+            .log
+            .iter()
+            .map(|l| format!("[{}] {}", l.timestamp, l.text))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(text);
+        }
+        // Show popup notification
+        self.popup_message = Some("Log output copied to clipboard!".into());
+        self.popup_show_time = Some(Instant::now());
+        self.mode = AppMode::PopupMessage;
+    }
+
+    /// Check if the popup message should auto-dismiss (2 seconds timeout).
+    pub fn check_popup_timeout(&mut self) {
+        if let (Some(show_time), Some(_msg)) = (self.popup_show_time, &self.popup_message) {
+            if show_time.elapsed().as_secs() >= 2 {
+                self.popup_message = None;
+                self.popup_show_time = None;
+                self.restore_base_mode();
+            }
+        }
     }
 
     // ── Branch select ─────────────────────────────────────────────────────────

@@ -185,7 +185,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == AppMode::ConfirmRemove {
         draw_confirm_remove(frame, app);
     }
-    if app.mode == AppMode::ActionMenu {
+    if app.mode == AppMode::ActionMenu || app.mode == AppMode::LogActionMenu {
         draw_action_menu(frame, app);
     }
     if app.mode == AppMode::BranchSelect {
@@ -199,6 +199,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     if app.mode == AppMode::ConfirmDeleteBranch {
         draw_branch_select(frame, app, true);
+    }
+    if app.mode == AppMode::PopupMessage {
+        draw_popup_message(frame, app);
     }
 }
 
@@ -952,12 +955,17 @@ fn draw_confirm_remove(frame: &mut Frame, app: &App) {
 
 fn draw_action_menu(frame: &mut Frame, app: &App) {
     let t = app.theme();
-    let repo_name = app
-        .repos
-        .get(app.selected)
-        .map(|r| r.path.split('/').next_back().unwrap_or(&r.path).to_string())
-        .unwrap_or_default();
-    let title = format!(" Actions — {repo_name} ");
+    let title = match app.mode {
+        AppMode::LogActionMenu => " Output Log ".to_string(),
+        _ => {
+            let repo_name = app
+                .repos
+                .get(app.selected)
+                .map(|r| r.path.split('/').next_back().unwrap_or(&r.path).to_string())
+                .unwrap_or_default();
+            format!(" Actions — {repo_name} ")
+        }
+    };
     let height = (app.menu_items.len() as u16 + 4).min(frame.area().height);
     let area = centered_rect(40, height, frame.area());
     frame.render_widget(Clear, area);
@@ -1167,6 +1175,43 @@ fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
         ])),
         chunks[3],
     );
+}
+
+/// Draw a transient popup message (toast notification) that auto-dismisses.
+fn draw_popup_message(frame: &mut Frame, app: &mut App) {
+    let Some(ref msg) = app.popup_message else {
+        return;
+    };
+    let t = app.theme();
+    let area = frame.area();
+
+    // Calculate popup size based on message content
+    let msg_len = msg.len() as u16;
+    let width = (msg_len + 4).clamp(30, area.width.saturating_sub(4));
+    let height: u16 = 5; // Fixed height for the popup box
+
+    let popup = centered_rect((width * 100 / area.width).max(30), height, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Notification ")
+        .border_style(Style::default().fg(t.popup_border));
+    let inner = block.inner(popup);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
+
+    // Center the message text vertically and horizontally
+    let text_area = Rect {
+        x: inner.x,
+        y: inner.y + inner.height / 2 - 1,
+        width: inner.width,
+        height: 3,
+    };
+
+    let para = Paragraph::new(msg.clone())
+        .style(Style::default().fg(t.popup_target))
+        .alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(para, text_area);
 }
 
 pub fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {

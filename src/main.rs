@@ -134,6 +134,11 @@ where
             app.reset_auto_fetch_timer();
             launch_all_fetch(app, op_tx);
         }
+
+        // Check if popup message should auto-dismiss
+        if matches!(app.mode, AppMode::PopupMessage) {
+            app.check_popup_timeout();
+        }
         last_tick = Instant::now();
 
         app.spinner_tick = app.spinner_tick.wrapping_add(1);
@@ -200,6 +205,19 @@ where
                 AppMode::History => {
                     if let Event::Key(key) = &ev {
                         handle_history_key(app, op_tx, key.code, key.modifiers);
+                    }
+                }
+                AppMode::LogActionMenu => {
+                    if let Event::Key(key) = &ev {
+                        handle_log_menu_key(app, op_tx, key.code);
+                    }
+                }
+                AppMode::PopupMessage => {
+                    // Any key dismisses the popup immediately
+                    if let Event::Key(_) = &ev {
+                        app.popup_message = None;
+                        app.popup_show_time = None;
+                        app.restore_base_mode();
                     }
                 }
             }
@@ -499,8 +517,14 @@ fn handle_normal_key(
         KeyCode::Char('D') => app.request_remove_selected(),
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
-        // Enter opens the per-repo action menu
-        KeyCode::Enter => app.open_action_menu(),
+        // Enter opens context-sensitive action menu
+        KeyCode::Enter => {
+            if app.focus == Focus::Log && app.show_log {
+                app.open_log_action_menu();
+            } else {
+                app.open_action_menu();
+            }
+        }
         // Direct shortcuts (bypass menu)
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
@@ -616,6 +640,17 @@ fn handle_menu_key(
                 dispatch_menu_action(app, op_tx, c);
             }
         }
+    }
+}
+
+/// Handle key events for the log action menu.
+fn handle_log_menu_key(app: &mut App, _op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
+    match key {
+        KeyCode::Down => app.menu_next(),
+        KeyCode::Up => app.menu_previous(),
+        KeyCode::Esc => app.close_menu(),
+        KeyCode::Enter => app.copy_log_to_clipboard(), // copy_log_to_clipboard sets mode to PopupMessage
+        _ => {}
     }
 }
 

@@ -9,10 +9,23 @@ Done tasks are check-marked when implemented.
 - [x] Truncating / hiding the keybindings when the terminal is too small doesn't work as expected.
       Given a small terminal width, I see those keybindings that should have been hidden and
       the last keybinding for "checkout" is truncated to "chec".
-
+- [ ] "Repositories" pane -> double-click repo -> click on checkout-action
+      -> click on a branch entry in the branch popup menu doesn't checkout that branch.
+ 
 ## Config & Repo Management
 
-- [ ]
+- [ ] Add repo commands as a list of mappings to configuration
+  - [ ] Every repo command has key "name" that holds a string that describes the tool name.
+  - [ ] Every repo command has key "cmd" that holds a string that is the commandline
+        of the tool.
+  - [ ] "cmd" supports variables like $VAR that are interpolated when the command gets executed
+    - [ ] Variable $ROOT: the git root path
+    - [ ] Variable $BRANCH: the current git branch
+  - [ ] Repo commands are executed with current-working-directory in the git root of
+        current repository.
+  - [ ] Output of run repo command is append to the app output log.
+  - [ ] Repositories action menu contains the repo commands ( at the end of the list, separated
+        from the built-in actions via a separator line "-------" )
 
 ## Git Status Columns
 
@@ -42,12 +55,12 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
----
-
-- [ ] Add keybinding of "enter" to "Output Log" pane, to show an action menu
-  - [ ] Add action menu entry "Copy log output" ( without a keybinding ) to copy whole content
-        of "Output Log" into clipboard.
-
+- [x] Add keybinding of "enter" to "Output Log" pane, to show an action menu
+  - [x] Add action menu entry "Copy log output" ( without a keybinding )
+        to copy whole content of "Output Log" into clipboard.
+  - [x] After logs have been copied to clipboard, show a popup message
+        with notice "Log output copied to clipboard!", auto hide the popup after 2sec.
+  
 ## UX Mouse Interaction
 
 - [ ]
@@ -68,7 +81,8 @@ Done tasks are check-marked when implemented.
 
 ## Per-file Actions
 
-- [ ] Available per-file-actions are shown in a poup-menu for the current selected file when enter key is hit
+- [ ] Available per-file-actions are shown in a poup-menu for the current selected file
+      when enter key is hit or file is double-clicked
   - [ ] Stage file: run `git add -- <path>` from the changed-files detail panel
   - [ ] Unstage file: run `git reset -- <path>` from the changed-files detail panel
   - [ ] Revert file: run `git checkout -- <path>` to discard working-tree changes
@@ -92,4 +106,8 @@ Done tasks are check-marked when implemented.
 
 ## Documentation & Release
 
-- [ ]
+- [ ] Add make target to build executable for release
+- [ ] Include release info into build artifact: build timestamp, version, git commit short-hash
+  - [ ] Show version in title of app
+  - [ ] Print build timestamp, version & git commit short-hash in terminal
+        when app is run with "--version" commandline argument and immediately exit.

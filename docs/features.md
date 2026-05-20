@@ -89,6 +89,9 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 - When pane is not focused, always shows the tail (latest entries)
 - User can scroll up into history; scrolling back to tail re-enables auto-follow
 - Automatically shown when a git operation fails, so error output is immediately visible
+- Pressing `Enter` when the Output Log pane has focus opens the log action menu
+  - Menu entry "Copy log output" copies the entire log content to system clipboard
+  - After copying, shows a transient popup notification "Log output copied to clipboard!" that auto-dismisses after 2 seconds
 
 ## Git History Pane
 
