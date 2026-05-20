@@ -237,7 +237,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
 
     // Left side: title + optional scanning spinner.
     let mut left_spans: Vec<Span<'static>> = vec![Span::styled(
-        "Gitover - Git Repository Monitor",
+        "Git Repository Overview",
         Style::default()
             .fg(theme.title)
             .add_modifier(Modifier::BOLD),
