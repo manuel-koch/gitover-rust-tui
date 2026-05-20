@@ -240,7 +240,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
 
     // Left side: title + optional scanning spinner.
     let mut left_spans: Vec<Span<'static>> = vec![Span::styled(
-        "Git Repository Overview",
+        concat!("Git Repository Overview (v", env!("CARGO_PKG_VERSION"), ")"),
         Style::default()
             .fg(theme.title)
             .add_modifier(Modifier::BOLD),

@@ -1,4 +1,4 @@
-.PHONY: lint format build-and-run test
+.PHONY: lint format build-and-run test release
 
 ## lint: Run cargo check/clippy and report all warnings
 lint:
@@ -16,3 +16,7 @@ build-and-run:
 ## test: Run all unit and integration tests
 test:
 	cargo test
+
+## release: Build optimized release binary (output: target/release/gitover)
+release:
+	cargo build --release

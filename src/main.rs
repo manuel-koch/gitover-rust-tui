@@ -49,6 +49,16 @@ const TICK: Duration = Duration::from_millis(200);
 const WAKE_THRESHOLD: Duration = Duration::from_secs(3);
 
 fn main() -> Result<()> {
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!(
+            "gitover v{} (commit {}, built {})",
+            env!("CARGO_PKG_VERSION"),
+            env!("GIT_SHORT_HASH"),
+            env!("BUILD_TIMESTAMP"),
+        );
+        return Ok(());
+    }
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;

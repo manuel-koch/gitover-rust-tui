@@ -107,8 +107,8 @@ Done tasks are check-marked when implemented.
 
 ## Documentation & Release
 
-- [ ] Add make target to build executable for release
-- [ ] Include release info into build artifact: build timestamp, version, git commit short-hash
-  - [ ] Show version in title of app
-  - [ ] Print build timestamp, version & git commit short-hash in terminal
+- [x] Add make target to build executable for release
+- [x] Include release info into build artifact: build timestamp, version, git commit short-hash
+  - [x] Show version in title of app
+  - [x] Print build timestamp, version & git commit short-hash in terminal
         when app is run with "--version" commandline argument and immediately exit.
