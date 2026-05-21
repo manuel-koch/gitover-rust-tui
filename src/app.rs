@@ -18,6 +18,7 @@ use crate::git::{CommitEntry, FileStatusKind, RepoStatus};
 use crate::state::State;
 use ratatui_explorer::FileExplorer;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::Instant;
 
 /// What kind of git operation is currently running for a repo.
@@ -149,12 +150,10 @@ pub struct App {
     pub mode: AppMode,
     /// File explorer widget used in FilePicker mode.
     pub file_explorer: Option<FileExplorer>,
-    /// Recent repos loaded from state (path, display-name).
-    pub recent_repos: Vec<(String, String)>,
     /// Loaded application configuration.
     #[allow(dead_code)]
     pub config: Config,
-    /// Persisted state (repo list, recents).
+    /// Persisted state (repo list, pane visibility).
     pub state: State,
 
     // ── UX Polish ─────────────────────────────────────────────────────────────
@@ -247,19 +246,26 @@ const HISTORY_COMMIT_LIMIT: usize = 200;
 
 impl App {
     pub fn new() -> Self {
-        let config = Config::load();
+        Self::new_with_overrides(None, None)
+    }
+
+    /// Create the app, optionally overriding the config and/or state file paths
+    /// (from `--config` / `--state` CLI flags).
+    pub fn new_with_overrides(config_path: Option<PathBuf>, state_path: Option<PathBuf>) -> Self {
+        let config = match config_path {
+            Some(p) => Config::load_from(&p),
+            None => Config::load(),
+        };
         let config_clone = config.clone();
         let interval = config.general.auto_fetch_interval();
 
-        let state = State::load();
+        let state = match state_path {
+            Some(p) => State::load_from_path(p),
+            None => State::load(),
+        };
         let show_file_status = state.show_file_status;
         let show_log = state.show_log;
         let show_history = state.show_history;
-        let recent_repos = state
-            .recent
-            .iter()
-            .map(|r| (r.path.clone(), r.name.clone()))
-            .collect();
 
         App {
             repos: Vec::new(),
@@ -268,7 +274,6 @@ impl App {
             last_refreshed: None,
             mode: AppMode::Normal,
             file_explorer: None,
-            recent_repos,
             config: config_clone,
             state,
             scanning: false,
@@ -517,7 +522,9 @@ impl App {
 
     /// Open the file-picker popup, starting at $HOME (or cwd as fallback).
     pub fn enter_pick_mode(&mut self) {
-        let start_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let start_dir = std::env::current_dir().unwrap_or_else(|_| {
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+        });
 
         let mut explorer = match FileExplorer::new() {
             Ok(e) => e,
@@ -538,7 +545,6 @@ impl App {
             .with_highlight_symbol("> ");
         explorer.set_theme(explorer_theme);
 
-        // Navigate to home dir
         let _ = explorer.set_cwd(start_dir);
 
         // Show only directories (not plain files — we're picking a repo root)

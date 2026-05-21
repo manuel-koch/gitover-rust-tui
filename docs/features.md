@@ -5,9 +5,19 @@
 - Rust-based terminal UI application
 - Tracks multiple git repositories simultaneously
 
+## CLI options/flags
+
+| Flag | Description |
+|------|-------------|
+| `--version` | Show version & built info and exit |
+| `--config <path>` | Override the config file location (skips CWD-walk and global fallback) |
+| `--state <path>` | Override the state file location (skips CWD-walk and global fallback); file is created on first save if absent |
+
 ## Configuration
 
-- Config file: `~/.config/gitover/config.yaml` (optional; missing file is valid)
+- Config file lookup: searches for `gitover.config.yaml` starting from the current working directory
+  and walking up to the filesystem root; falls back to `~/.config/gitover/config.yaml` if not found.
+  Missing file is valid — default config is used.
 - `general.git`: override the path to the git executable
 - `general.auto_fetch_interval`: interval in seconds for automatic background fetch of all repos
   (default: 600 = 10 minutes; set to 0 to disable automatic fetch)
@@ -15,7 +25,12 @@
   - `repo_commands[].name`: Description of the command, will be shown in action menu
   - `repo_commands[].cmd`: The command line to be executed, supports variable expansion like `$ROOT` ( repo git root path ), `$BRANCH` ( current git branch name )
   - `repo_commands[].background`: Boolean flag whether the `cmd` should be executed in background
-- Persisted app state (repo list, recent repos, pane visibility) stored at `~/.config/gitover/state.yaml`
+- Persisted app state (repo list, pane visibility):
+  - State file lookup: searches for `gitover.state.yaml` starting from CWD and walking up to root;
+    falls back to `~/.config/gitover/state.yaml` if not found.
+  - Relative paths in the state file are resolved against the directory containing the state file.
+  - When saving, repo paths that are under the state file's directory are stored as relative paths,
+    keeping per-project state files portable.
 
 ## Repository Management
 
@@ -26,10 +41,9 @@
   - `Space` confirms the current directory as the repo to add — this allows adding a
     child repo even when its parent directory is itself a git repo
   - Auto-discovers and adds git submodules when a repo is added
-  - Recently-used repos are offered for quick re-add
 - Remove a repository from the app ( not from disk ! ) with `D`; shows a confirmation dialog before removing
 - Repo list is kept sorted by absolute path
-- Repo list and recents are persisted across sessions
+- Repo list is persisted across sessions
 - Invalid or missing repo paths are shown inline as error rows instead of being silently dropped
 
 ## Repository Table

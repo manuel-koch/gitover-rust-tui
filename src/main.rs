@@ -49,7 +49,9 @@ const TICK: Duration = Duration::from_millis(200);
 const WAKE_THRESHOLD: Duration = Duration::from_secs(3);
 
 fn main() -> Result<()> {
-    if std::env::args().any(|a| a == "--version" || a == "-V") {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--version" || a == "-V") {
         println!(
             "gitover v{} (commit {}, built {})",
             env!("CARGO_PKG_VERSION"),
@@ -59,22 +61,25 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    let config_override = parse_path_flag(&args, "--config");
+    let state_override = parse_path_flag(&args, "--state");
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new();
+    let mut app = App::new_with_overrides(config_override, state_override);
 
-    // Load repos from persisted state; fall back to cwd if state is empty
+    // On first launch (empty state), seed the repo list with CWD if it is a git repo.
     if app.state.repos.is_empty() {
-        let cwd = std::env::current_dir()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-        app.state.add_repo(&cwd);
-        let _ = app.state.save();
+        if let Ok(cwd) = std::env::current_dir() {
+            if git2::Repository::open(&cwd).is_ok() {
+                app.state.add_repo(&cwd.to_string_lossy());
+                let _ = app.state.save();
+            }
+        }
     }
 
     refresh_repos(&mut app);
@@ -1181,14 +1186,6 @@ fn add_repo_to_app(
 
         *dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
     }
-
-    // Refresh recents list in app
-    app.recent_repos = app
-        .state
-        .recent
-        .iter()
-        .map(|r| (r.path.clone(), r.name.clone()))
-        .collect();
 }
 
 fn refresh_repos(app: &mut App) {
@@ -1224,6 +1221,17 @@ fn refresh_repos(app: &mut App) {
     }
 }
 
+/// Return the value after `flag` in `args`, or `None` if not present / no value follows.
+fn parse_path_flag(args: &[String], flag: &str) -> Option<std::path::PathBuf> {
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        if a == flag {
+            return iter.next().map(std::path::PathBuf::from);
+        }
+    }
+    None
+}
+
 fn refresh_single_repo(app: &mut App, path: &str) {
     if let Some(repo) = app.repos.iter_mut().find(|r| r.path == path) {
         match git::get_repo_status(path) {
@@ -1232,6 +1240,74 @@ fn refresh_single_repo(app: &mut App, path: &str) {
         }
     }
     app.last_refreshed = Some(Instant::now());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_path_flag;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parse_path_flag_returns_value_after_flag() {
+        let args = &[
+            "gitover".to_string(),
+            "--config".to_string(),
+            "/etc/my.yaml".to_string(),
+        ];
+        assert_eq!(
+            parse_path_flag(args, "--config"),
+            Some(PathBuf::from("/etc/my.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_path_flag_not_present_returns_none() {
+        let args = &["gitover".to_string(), "--version".to_string()];
+        assert_eq!(parse_path_flag(args, "--config"), None);
+        assert_eq!(parse_path_flag(args, "--state"), None);
+    }
+
+    #[test]
+    fn parse_path_flag_missing_value_returns_none() {
+        // Flag is the last arg — no value follows it.
+        let args = &["gitover".to_string(), "--config".to_string()];
+        assert_eq!(parse_path_flag(args, "--config"), None);
+    }
+
+    #[test]
+    fn parse_path_flag_both_flags_present() {
+        let args = &[
+            "gitover".to_string(),
+            "--config".to_string(),
+            "/cfg.yaml".to_string(),
+            "--state".to_string(),
+            "/state.yaml".to_string(),
+        ];
+        assert_eq!(
+            parse_path_flag(args, "--config"),
+            Some(PathBuf::from("/cfg.yaml"))
+        );
+        assert_eq!(
+            parse_path_flag(args, "--state"),
+            Some(PathBuf::from("/state.yaml"))
+        );
+    }
+
+    #[test]
+    fn parse_path_flag_returns_first_occurrence() {
+        // Only the first occurrence of the flag is used.
+        let args = &[
+            "gitover".to_string(),
+            "--config".to_string(),
+            "/first.yaml".to_string(),
+            "--config".to_string(),
+            "/second.yaml".to_string(),
+        ];
+        assert_eq!(
+            parse_path_flag(args, "--config"),
+            Some(PathBuf::from("/first.yaml"))
+        );
+    }
 }
 
 fn handle_history_key(

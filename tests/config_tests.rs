@@ -2,6 +2,7 @@
 use gitover::config::Config;
 use gitover::state::State;
 use std::fs;
+use std::path::PathBuf;
 use tempfile::tempdir;
 
 // ── Config tests ──────────────────────────────────────────────────────────────
@@ -85,16 +86,6 @@ fn state_repos_sorted_on_add() {
 }
 
 #[test]
-fn state_recents_populated_on_add() {
-    let mut state = State::default();
-    state.add_repo("/tmp/my-repo");
-
-    assert_eq!(state.recent.len(), 1);
-    assert_eq!(state.recent[0].path, "/tmp/my-repo");
-    assert_eq!(state.recent[0].name, "my-repo");
-}
-
-#[test]
 fn state_save_and_load_round_trip() {
     let tmp = tempdir().unwrap();
     // We test YAML serialisation by writing to a temp file and reading back.
@@ -140,24 +131,120 @@ fn state_pane_visibility_round_trip() {
     assert!(loaded.show_history);
 }
 
+// ── State::load_from_path (--state CLI override) ──────────────────────────────
+
 #[test]
-fn state_max_recent_capped_at_20() {
-    let mut state = State::default();
-    for i in 0..25 {
-        // Use paths that exist on any system (or don't — add_repo only checks
-        // path validity when loading from disk, not in add_repo itself)
-        let path = format!("/tmp/fake-repo-{i:02}");
-        // Manually push to bypass the is_dir check that's only in add_repo_path
-        state.repos.push(path.clone());
-        // Call add_recent indirectly by inserting into recent list
-        state.recent.push(gitover::state::RecentRepo {
-            path,
-            name: format!("fake-repo-{i:02}"),
-        });
-    }
-    // Truncate to cap
-    if state.recent.len() > 20 {
-        state.recent.truncate(20);
-    }
-    assert_eq!(state.recent.len(), 20);
+fn state_load_from_path_nonexistent_returns_default_with_given_path() {
+    let tmp = tempdir().unwrap();
+    let state_path = tmp.path().join("custom.yaml");
+    // File does not exist yet.
+    let state = State::load_from_path(state_path.clone());
+    assert!(state.repos.is_empty());
+    assert_eq!(state.path, state_path);
+}
+
+#[test]
+fn state_load_from_path_reads_explicit_file() {
+    let tmp = tempdir().unwrap();
+    let repo_dir = tmp.path().join("my-repo");
+    fs::create_dir_all(&repo_dir).unwrap();
+    let state_path = tmp.path().join("state.yaml");
+    // Write a state file with an absolute path.
+    let yaml = format!("repos:\n  - {}\n", repo_dir.display());
+    fs::write(&state_path, &yaml).unwrap();
+
+    let state = State::load_from_path(state_path.clone());
+    assert_eq!(state.repos.len(), 1);
+    assert_eq!(state.repos[0], repo_dir.to_string_lossy().as_ref());
+    assert_eq!(state.path, state_path);
+}
+
+#[test]
+fn state_load_from_path_resolves_relative_paths() {
+    let tmp = tempdir().unwrap();
+    let repo_dir = tmp.path().join("my-repo");
+    fs::create_dir_all(&repo_dir).unwrap();
+    let state_path = tmp.path().join("state.yaml");
+    // State file stores a relative path.
+    fs::write(&state_path, "repos:\n  - my-repo\n").unwrap();
+
+    let state = State::load_from_path(state_path);
+    assert_eq!(state.repos.len(), 1);
+    assert_eq!(state.repos[0], repo_dir.to_string_lossy().as_ref());
+}
+
+#[test]
+fn state_load_from_path_absolute_paths_kept_as_is() {
+    let tmp = tempdir().unwrap();
+    let repo_dir = tmp.path().join("abs-repo");
+    fs::create_dir_all(&repo_dir).unwrap();
+    // State file stored elsewhere but the path in it is absolute.
+    let other_tmp = tempdir().unwrap();
+    let state_path = other_tmp.path().join("state.yaml");
+    let yaml = format!("repos:\n  - {}\n", repo_dir.display());
+    fs::write(&state_path, &yaml).unwrap();
+
+    let state = State::load_from_path(state_path);
+    assert_eq!(state.repos[0], repo_dir.to_string_lossy().as_ref());
+}
+
+#[test]
+fn state_save_to_explicit_path_stores_relative_paths() {
+    let tmp = tempdir().unwrap();
+    let repo_dir = tmp.path().join("project");
+    fs::create_dir_all(&repo_dir).unwrap();
+    let state_path = tmp.path().join("state.yaml");
+
+    let mut state = State::load_from_path(state_path.clone());
+    state.add_repo(&repo_dir.to_string_lossy());
+    state.save().unwrap();
+
+    let content = fs::read_to_string(&state_path).unwrap();
+    // Stored path should be the relative name only, not the full prefix.
+    assert!(content.contains("project"), "relative name should appear");
+    assert!(
+        !content.contains(&tmp.path().to_string_lossy().as_ref()),
+        "absolute prefix should not appear in saved YAML"
+    );
+}
+
+#[test]
+fn state_save_load_round_trip_with_explicit_path() {
+    let tmp = tempdir().unwrap();
+    let repo_dir = tmp.path().join("round-trip-repo");
+    fs::create_dir_all(&repo_dir).unwrap();
+    let state_path = tmp.path().join("mystate.yaml");
+
+    let mut state = State::load_from_path(state_path.clone());
+    state.add_repo(&repo_dir.to_string_lossy());
+    state.show_log = true;
+    state.save().unwrap();
+
+    let loaded = State::load_from_path(state_path);
+    assert_eq!(loaded.repos.len(), 1);
+    assert_eq!(loaded.repos[0], repo_dir.to_string_lossy().as_ref());
+    assert!(loaded.show_log);
+}
+
+// ── Config load_from (--config CLI override) ──────────────────────────────────
+
+#[test]
+fn config_load_from_explicit_path_overrides_defaults() {
+    let tmp = tempdir().unwrap();
+    let cfg_path = tmp.path().join("override.yaml");
+    fs::write(
+        &cfg_path,
+        "general:\n  git: /custom/bin/git\n  auto_fetch_interval: 120\n",
+    )
+    .unwrap();
+    let cfg = Config::load_from(&cfg_path);
+    assert_eq!(cfg.general.git.as_deref(), Some("/custom/bin/git"));
+    assert_eq!(cfg.general.auto_fetch_interval, Some(120));
+}
+
+#[test]
+fn config_load_from_nonexistent_explicit_path_returns_default() {
+    let path = PathBuf::from("/nonexistent/path/to/config.yaml");
+    let cfg = Config::load_from(&path);
+    assert!(cfg.general.git.is_none());
 }

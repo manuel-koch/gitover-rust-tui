@@ -14,17 +14,14 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// Persisted application state saved to `~/.config/gitover/state.yaml`.
-#[derive(Debug, Default, Serialize, Deserialize)]
+/// Persisted application state saved to `gitover.state.yaml`.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct State {
     /// Ordered list of currently-tracked repository paths.
     #[serde(default)]
     pub repos: Vec<String>,
-    /// Recently used repos (path + display name).  Capped at 20 entries.
-    #[serde(default)]
-    pub recent: Vec<RecentRepo>,
     /// Whether the File Status pane was open on last exit.
     #[serde(default)]
     pub show_file_status: bool,
@@ -34,53 +31,82 @@ pub struct State {
     /// Whether the History pane was open on last exit.
     #[serde(default)]
     pub show_history: bool,
+    /// Where this state was loaded from and will be saved to.
+    #[serde(skip)]
+    pub path: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RecentRepo {
-    pub path: String,
-    pub name: String,
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            repos: Vec::new(),
+            show_file_status: false,
+            show_log: false,
+            show_history: false,
+            path: global_state_path(),
+        }
+    }
 }
-
-const MAX_RECENT: usize = 20;
 
 impl State {
     pub fn load() -> Self {
-        Self::try_load().unwrap_or_default()
+        let path = find_state_path();
+        Self::try_load_from(&path).unwrap_or_else(|_| State {
+            path,
+            ..Default::default()
+        })
     }
 
-    fn try_load() -> Result<Self> {
-        let path = state_path();
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        let state: State = serde_yaml::from_str(&content)
+    /// Load state from an explicit path (e.g. from `--state` CLI override).
+    /// If the file does not exist, returns a default state that will save to `path`.
+    pub fn load_from_path(path: PathBuf) -> Self {
+        Self::try_load_from(&path).unwrap_or_else(|_| State {
+            path,
+            ..Default::default()
+        })
+    }
+
+    fn try_load_from(path: &Path) -> Result<Self> {
+        let content =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let raw: State = serde_yaml::from_str(&content)
             .with_context(|| format!("parsing {}", path.display()))?;
-        // Drop entries whose paths no longer exist
+        let base_dir = path.parent().unwrap_or(Path::new("."));
+        let repos = raw
+            .repos
+            .into_iter()
+            .map(|p| resolve_path(&p, base_dir))
+            .filter(|p| Path::new(p).is_dir())
+            .collect();
         Ok(State {
-            repos: state
-                .repos
-                .into_iter()
-                .filter(|p| std::path::Path::new(p).is_dir())
-                .collect(),
-            recent: state
-                .recent
-                .into_iter()
-                .filter(|r| std::path::Path::new(&r.path).is_dir())
-                .collect(),
-            show_file_status: state.show_file_status,
-            show_log: state.show_log,
-            show_history: state.show_history,
+            repos,
+            show_file_status: raw.show_file_status,
+            show_log: raw.show_log,
+            show_history: raw.show_history,
+            path: path.to_path_buf(),
         })
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = state_path();
+        let path = &self.path;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating {}", parent.display()))?;
         }
-        let content = serde_yaml::to_string(self)?;
-        std::fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
+        let base_dir = path.parent().unwrap_or(Path::new("."));
+        let saveable = State {
+            repos: self
+                .repos
+                .iter()
+                .map(|p| make_relative(p, base_dir))
+                .collect(),
+            show_file_status: self.show_file_status,
+            show_log: self.show_log,
+            show_history: self.show_history,
+            path: PathBuf::new(),
+        };
+        let content = serde_yaml::to_string(&saveable)?;
+        std::fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
     }
 
@@ -92,7 +118,6 @@ impl State {
         }
         self.repos.push(path.to_string());
         self.repos.sort_by_key(|p| p.to_lowercase());
-        self.add_recent(path);
         true
     }
 
@@ -100,32 +125,51 @@ impl State {
     pub fn remove_repo(&mut self, path: &str) {
         self.repos.retain(|p| p != path);
     }
-
-    /// Record a path as recently used.
-    fn add_recent(&mut self, path: &str) {
-        if self.recent.iter().any(|r| r.path == path) {
-            return;
-        }
-        let name = std::path::Path::new(path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(path)
-            .to_string();
-        self.recent.push(RecentRepo {
-            path: path.to_string(),
-            name,
-        });
-        self.recent.sort_by_key(|r| r.path.to_lowercase());
-        if self.recent.len() > MAX_RECENT {
-            self.recent.truncate(MAX_RECENT);
-        }
-    }
 }
 
-fn state_path() -> PathBuf {
+/// Walk from CWD up to the root looking for `gitover.state.yaml`.
+/// Falls back to `~/.config/gitover/state.yaml` if none is found.
+pub fn find_state_path() -> PathBuf {
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut dir: &Path = &cwd;
+        loop {
+            let candidate = dir.join("gitover.state.yaml");
+            if candidate.exists() {
+                return candidate;
+            }
+            match dir.parent() {
+                Some(p) => dir = p,
+                None => break,
+            }
+        }
+    }
+    global_state_path()
+}
+
+fn global_state_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home)
         .join(".config")
         .join("gitover")
         .join("state.yaml")
+}
+
+/// If `raw` is a relative path, resolve it against `base_dir`; otherwise return as-is.
+fn resolve_path(raw: &str, base_dir: &Path) -> String {
+    let p = Path::new(raw);
+    if p.is_absolute() {
+        raw.to_string()
+    } else {
+        base_dir.join(p).to_string_lossy().into_owned()
+    }
+}
+
+/// If `abs` is under `base_dir`, strip the prefix and return the relative form;
+/// otherwise return `abs` unchanged.
+fn make_relative(abs: &str, base_dir: &Path) -> String {
+    let p = Path::new(abs);
+    match p.strip_prefix(base_dir) {
+        Ok(rel) => rel.to_string_lossy().into_owned(),
+        Err(_) => abs.to_string(),
+    }
 }

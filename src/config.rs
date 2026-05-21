@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// A custom command that can be run against the selected repository.
@@ -30,7 +30,7 @@ pub struct RepoCommand {
     pub background: bool,
 }
 
-/// Application configuration loaded from `~/.config/gitover/config.yaml`.
+/// Application configuration loaded from `gitover.config.yaml` (CWD-local or global).
 #[derive(Debug, Default, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct Config {
@@ -63,15 +63,15 @@ impl GeneralConfig {
 }
 
 impl Config {
-    /// Load config from `~/.config/gitover/config.yaml`.
-    /// Returns a default (empty) config if the file does not exist or cannot
-    /// be parsed, so a missing config is always a valid state.
+    /// Load config by searching for `gitover.config.yaml` from CWD upward,
+    /// falling back to `~/.config/gitover/config.yaml`.
+    /// Returns a default (empty) config if no file is found or parsing fails.
     pub fn load() -> Self {
-        Self::load_from(&config_path())
+        Self::load_from(&find_config_path())
     }
 
     /// Load config from an explicit path. Useful for tests.
-    pub fn load_from(path: &std::path::Path) -> Self {
+    pub fn load_from(path: &Path) -> Self {
         match std::fs::read_to_string(path) {
             Ok(content) => match serde_yaml::from_str::<Config>(&content) {
                 Ok(cfg) => cfg,
@@ -85,8 +85,26 @@ impl Config {
     }
 }
 
-/// Returns the canonical config file path: `~/.config/gitover/config.yaml`.
-pub fn config_path() -> PathBuf {
+/// Walk from CWD up to the root looking for `gitover.config.yaml`.
+/// Falls back to `~/.config/gitover/config.yaml` if none is found.
+pub fn find_config_path() -> PathBuf {
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut dir: &Path = &cwd;
+        loop {
+            let candidate = dir.join("gitover.config.yaml");
+            if candidate.exists() {
+                return candidate;
+            }
+            match dir.parent() {
+                Some(p) => dir = p,
+                None => break,
+            }
+        }
+    }
+    global_config_path()
+}
+
+fn global_config_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home)
         .join(".config")
