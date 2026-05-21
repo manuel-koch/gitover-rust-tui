@@ -18,6 +18,8 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 - Persistent repo list and recent-repo history across sessions
 - Config file for custom git path
 
+![screenshot](screenshot.jpg)
+
 ## Build & Install
 
 Requirements: Rust toolchain (stable, 1.70+)
@@ -45,7 +47,6 @@ Or build executable locally from the remote git repo and install it
 ```shell
 cargo install --git https://github.com/manuel-koch/gitover-rust-tui
 ```
-
 
 ## Configuration
 
