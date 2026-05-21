@@ -64,6 +64,9 @@ echo "# Beta"            > "$SANDBOX/repo-02/README.md"
 echo "hello world"       > "$SANDBOX/repo-02/hello.txt"
 echo "to be deleted"     > "$SANDBOX/repo-02/remove-me.txt"
 echo "original content"  > "$SANDBOX/repo-02/config.txt"
+printf "line one\nline two\nline three\nline four\nline six\nline seven\nline eight\nline nine\n" > "$SANDBOX/repo-02/notes.txt"
+printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde' \
+    > "$SANDBOX/repo-02/image.png"                              # binary file (initial)
 commit                     "$SANDBOX/repo-02" "initial commit"
 # produce each status kind
 echo "modified"            >> "$SANDBOX/repo-02/hello.txt"   # M – modified
@@ -71,6 +74,9 @@ rm                            "$SANDBOX/repo-02/remove-me.txt" # D – deleted
 echo "staged change"       >> "$SANDBOX/repo-02/config.txt"
 git -C "$SANDBOX/repo-02"  add config.txt                      # S – staged
 echo "brand new file"      >  "$SANDBOX/repo-02/new-file.txt"  # U – untracked
+printf "line one\nline three\nline four\nline nine\nline ten\n" > "$SANDBOX/repo-02/notes.txt"  # M – line removed
+printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02\x00\x00\x00\x02\x08\x02\x00\x00\x00\x90wS\xde' \
+    > "$SANDBOX/repo-02/image.png"                              # M – binary modified
 
 # ── repo-03: 3 commits ahead of upstream ───────────────────────────────────
 # Shows:  ↑3 ↓0 in the upstream column; trunk column in sync
