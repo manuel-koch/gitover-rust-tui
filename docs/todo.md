@@ -77,14 +77,7 @@ Done tasks are check-marked when implemented.
 
 ## Configuration
 
-- [x] Search for `gitover.config.yaml` in current working directory or any parent directory to locate configuration
-- [x] If no configuration is found, fallback to `~/.config/gitover/config.yaml`
-- [x] Search for `gitover.state.yaml` in current working directory or any parent directory to locate/save state
-- [x] If no state is found, fallback to `~/.config/gitover/state.yaml`
-- [x] relative paths in state are resolved using the directory of the state file
-- [x] preserve relative paths in state file when saving current state back
-- [x] command line option "--config <path>" to override where configuration is loaded
-- [x] command line option "--state <path>" to override where state is loaded/saved
+- [ ]
 
 ## Documentation & Release
 

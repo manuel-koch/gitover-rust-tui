@@ -34,17 +34,23 @@
 
 ## Repository Management
 
-- Add a repository with `A`; opens a directory-browser to choose the repo root
+- Add a repository with `A`; opens a directory-browser starting at the current working directory
   - `↑`/`↓` navigate the directory list
   - `→` / `Enter` navigates into the selected directory
   - `←` / `Backspace` goes to the parent directory
   - `Space` confirms the current directory as the repo to add — this allows adding a
     child repo even when its parent directory is itself a git repo
+  - Hint bar at the bottom of the picker progressively hides navigation groups when the
+    terminal is too narrow, always keeping the `Space` / `Esc` hints visible
   - Auto-discovers and adds git submodules when a repo is added
+  - Newly added repo is immediately selected in the Repositories pane
 - Remove a repository from the app ( not from disk ! ) with `D`; shows a confirmation dialog before removing
 - Repo list is kept sorted by absolute path
 - Repo list is persisted across sessions
-- Invalid or missing repo paths are shown inline as error rows instead of being silently dropped
+- On first launch with an empty state file, the current working directory is automatically
+  added as a tracked repo if it is a git repository
+- Invalid or missing repo paths are shown as error rows: repo name in the first column,
+  full error message spanning all remaining columns
 
 ## Repository Table
 
@@ -65,6 +71,8 @@ Each tracked repository is shown as a table row with:
     - `origin/develop`
     - `origin/master`
 - Column widths are distributed so branch/upstream/trunk columns are wider than status
+- Scroll indicators (▲ / ▼) appear at the top-right / bottom-right of the table when the
+  repo list overflows the visible area
 
 ## Git Operations
 
@@ -80,7 +88,7 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `c` | Checkout Branch — shows a list of local and remote branches; auto-stashes dirty changes before checkout, pops stash afterwards |
 | `n` | Create New Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
 | `x` | Delete Branch — shows list of local branches (excluding current); runs `git branch -D <name>` |
-| `H` | Commit History — opens the history pane for the selected repo (full log) |
+| `h` | Commit History — opens the history pane for the selected repo (full log) |
 | `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
 | `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
 
@@ -171,7 +179,7 @@ Dismiss the menu with `Esc` or by clicking outside it.
 |-----|--------|
 | `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows in focused pane or action menu; clamps at list boundaries, no wrap |
-| `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / Output Log / Git History / Diff panes |
+| `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / History / Output Log panes |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
 | `Enter` | Open per-repo action menu (Repositories pane); open per-file action menu (Status Details pane); open log action menu (Output Log pane) |
@@ -232,9 +240,9 @@ The binary embeds build metadata at compile time via `build.rs`:
 - **Git commit**: short hash of HEAD at build time (`GIT_SHORT_HASH`)
 - **Build timestamp**: UTC date/time captured when `cargo build` runs (`BUILD_TIMESTAMP`)
 
-Running `gitover --version` (or `-V`) prints this info and exits immediately without starting the TUI:
+Running `gitover --version` (or `-V`) prints this info and exits immediately without starting the TUI.
 
-```
+```text
 gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
 ```
 
@@ -243,6 +251,25 @@ gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
 - `Makefile` at the project root with the following targets:
   - `make lint` — runs `cargo clippy`
   - `make format` — runs `cargo fmt`
+  - `make build` — builds a debug binary via `cargo build`
   - `make build-and-run` — builds and launches the app via `cargo run`
   - `make test` — runs all unit and integration tests via `cargo test`
   - `make release` — builds an optimized release binary (`target/release/gitover`)
+  - `make install` — builds an optimized release binary and installs it into `~/.cargo/bin`
+- `create-sandbox-repos.sh` at the project root creates a set of demo git repositories
+  that exercise every major gitover display state:
+  | Repo | What it demonstrates |
+  |------|----------------------|
+  | `repo-01` | Clean repo, fully in sync with upstream (↑0 ↓0) |
+  | `repo-02` | Staged + modified + deleted + untracked files (S/M/D/U counts) |
+  | `repo-03` | 3 commits ahead of upstream (↑3 ↓0) |
+  | `repo-04` | 2 commits behind upstream (↑0 ↓2) |
+  | `repo-05` | Feature branch, 2 commits ahead of trunk (↑2 ↓0 trunk) |
+  | `repo-06` | Detached HEAD (`detached <sha8>` in Branch column) |
+  | `repo-07` | Active merge conflict (C count in Status column) |
+
+  Usage: `./create-sandbox-repos.sh [<base-dir>]`
+  Omitting `<base-dir>` creates repos in a fresh `mktemp` directory so they live
+  outside the project tree (avoids editor "dubious ownership" warnings).
+  Re-running the script wipes and recreates all repos cleanly.
+  After running, add the printed paths to gitover with the `A` key.
