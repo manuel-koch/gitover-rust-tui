@@ -319,13 +319,13 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
         )
     })
     .collect();
-    let table_header = Row::new(header_cells).height(1).bottom_margin(1);
+    let table_header = Row::new(header_cells).height(1);
 
     let spinner = app.spinner_frame().to_string();
 
     let rows = app.repos.iter().map(|repo| {
-        if let Some(err) = &repo.error {
-            return build_error_row(repo, err, theme);
+        if repo.error.is_some() {
+            return build_error_row(repo, theme);
         }
 
         let name = repo.path.split('/').next_back().unwrap_or(&repo.path);
@@ -381,13 +381,45 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     // subsequent ticks render the same window. ratatui's Table widget rewrites
     // the offset in-place when the selection moves outside the viewport.
     app.table_offset = table_state.offset();
+
+    draw_error_overlays(frame, area, app);
+
+    // Scroll indicators: ▲ top-right when rows above, ▼ bottom-right when rows below.
+    let has_more_above = app.table_offset > 0;
+    let has_more_below = app.table_offset + visible_rows < app.repos.len();
+    let t = app.theme();
+    let inner_x = area.x + 1;
+    let inner_y = area.y + 1;
+    let inner_w = area.width.saturating_sub(2);
+    let inner_h = area.height.saturating_sub(2);
+    if has_more_above && inner_w > 2 {
+        frame.render_widget(
+            Paragraph::new(Span::styled("▲ ", Style::default().fg(t.help_key))),
+            Rect {
+                x: inner_x + inner_w - 2,
+                y: inner_y + 1,
+                width: 2,
+                height: 1,
+            },
+        );
+    }
+    if has_more_below && inner_h > 1 && inner_w > 2 {
+        frame.render_widget(
+            Paragraph::new(Span::styled("▼ ", Style::default().fg(t.help_key))),
+            Rect {
+                x: inner_x + inner_w - 2,
+                y: inner_y + inner_h - 1,
+                width: 2,
+                height: 1,
+            },
+        );
+    }
 }
 
 /// How many data rows fit in the table area (subtract borders + header).
 fn table_visible_rows(area: Rect) -> usize {
-    // 2 lines for top/bottom border, 1 for header row, 1 for the header
-    // bottom_margin spacer.
-    let h = area.height as i32 - 2 - 1 - 1;
+    // 2 lines for top/bottom border, 1 for header row.
+    let h = area.height as i32 - 2 - 1;
     h.max(0) as usize
 }
 
@@ -409,19 +441,94 @@ fn clamp_offset(app: &mut App, visible: usize) {
 }
 
 /// Inline-error row for repos that failed to scan / have invalid paths.
-fn build_error_row(repo: &RepoStatus, err: &str, theme: &crate::theme::Theme) -> Row<'static> {
+/// Only the repo name is placed in col 0; the error message is rendered as a
+/// full-width overlay by `draw_error_overlays` so it can use all remaining
+/// horizontal space instead of being clipped to a single narrow column.
+fn build_error_row(repo: &RepoStatus, theme: &crate::theme::Theme) -> Row<'static> {
     let name = repo.path.split('/').next_back().unwrap_or(&repo.path);
     Row::new(vec![
         Cell::from(name.to_string()).style(Style::default().fg(theme.error)),
-        Cell::from("—").style(Style::default().fg(theme.placeholder)),
-        Cell::from(Span::styled(
-            format!("⚠ {err}"),
-            Style::default().fg(theme.error),
-        )),
-        Cell::from("—").style(Style::default().fg(theme.placeholder)),
-        Cell::from("—").style(Style::default().fg(theme.placeholder)),
-        Cell::from("—").style(Style::default().fg(theme.placeholder)),
+        Cell::from(""),
+        Cell::from(""),
+        Cell::from(""),
+        Cell::from(""),
+        Cell::from(""),
     ])
+}
+
+/// Overdraw the error message for every visible error row, starting right after
+/// the repo-name column and spanning to the right edge of the table.
+///
+/// This runs after the table has been rendered so the table's selection-highlight
+/// (Modifier::REVERSED) is already written into the buffer; we reproduce the same
+/// modifier for our spans so the highlighting looks uniform across the whole row.
+fn draw_error_overlays(frame: &mut Frame, area: Rect, app: &App) {
+    let theme = app.theme();
+
+    let inner_x = area.x + 1;
+    let inner_y = area.y + 1;
+    let inner_w = area.width.saturating_sub(2);
+    let inner_h = area.height.saturating_sub(2);
+    if inner_w < 4 || inner_h < 3 {
+        return;
+    }
+
+    // Data rows start after the header row (1).
+    let data_y = inner_y + 1;
+    let visible = inner_h.saturating_sub(1) as usize;
+
+    // The table uses highlight_symbol "> " (2 chars).  Col 0 is Fill(3) out of
+    // the 21 total fill units; the highlight symbol width is subtracted first.
+    let highlight_w: u16 = 2;
+    let col_space = inner_w.saturating_sub(highlight_w);
+    let col0_w = (u32::from(col_space) * 3 / 21) as u16;
+
+    let err_x = inner_x + highlight_w + col0_w;
+    let err_w = inner_w.saturating_sub(highlight_w + col0_w);
+    if err_w == 0 {
+        return;
+    }
+
+    for (i, repo) in app.repos.iter().enumerate() {
+        if i < app.table_offset {
+            continue;
+        }
+        let row_i = i - app.table_offset;
+        if row_i >= visible {
+            break;
+        }
+        let Some(err) = &repo.error else { continue };
+
+        let y = data_y + row_i as u16;
+        let modifier = if i == app.selected {
+            Modifier::REVERSED
+        } else {
+            Modifier::empty()
+        };
+
+        let line = Line::from(vec![
+            Span::styled(
+                "⚠ ",
+                Style::default()
+                    .fg(theme.placeholder)
+                    .add_modifier(modifier),
+            ),
+            Span::styled(
+                err.to_string(),
+                Style::default().fg(theme.error).add_modifier(modifier),
+            ),
+        ]);
+
+        frame.render_widget(
+            Paragraph::new(line),
+            Rect {
+                x: err_x,
+                y,
+                width: err_w,
+                height: 1,
+            },
+        );
+    }
 }
 
 fn build_status_spans(repo: &RepoStatus, theme: &crate::theme::Theme) -> Line<'static> {
