@@ -35,7 +35,7 @@ Merge finished todo tasks with the features document:
     If needed check if the new feature belongs to a new section/heading within the documents
     to group features by topics.
   - if in doubt if a task matches a feature, ask the user how to proceed, provide proposal what you think would fit best.
-- Don't add explicit features that would stem from task that have subject of tests or fixing bugs
+- Don't add explicit features that would stem from task that have subject of tests / refactoring / housekeeping or fixing bugs
 - Remove finished task from todo when merged with feature document
 - Don't remove empty todo sections - we might add new tasks to it, add a placeholder "- [ ]" task if neccessary.
 
