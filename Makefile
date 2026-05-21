@@ -1,22 +1,26 @@
-.PHONY: lint format build-and-run test release
+.PHONY: lint format build-and-run test release install
 
-## lint: Run cargo check/clippy and report all warnings
+# Run cargo check/clippy and report all warnings
 lint:
 	cargo check
 	cargo clippy
 
-## format: Run cargo fmt to enforce consistent formatting
+# Run cargo fmt to enforce consistent formatting
 format:
 	cargo fmt
 
-## build-and-run: Build the app and launch it
+# Build debug binary and launch it
 build-and-run:
 	cargo run
 
-## test: Run all unit and integration tests
+# Run all unit and integration tests
 test:
 	cargo test
 
-## release: Build optimized release binary (output: target/release/gitover)
+# Build optimized release binary (output: target/release/gitover)
 release:
 	cargo build --release
+
+# Build optimized release binary and install it `~/.cargo/bin`
+install:
+	cargo install --path .

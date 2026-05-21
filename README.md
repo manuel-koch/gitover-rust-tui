@@ -40,6 +40,13 @@ Or run directly without installing:
 cargo run --release
 ```
 
+Or build executable locally from the remote git repo and install it
+
+```shell
+cargo install --git https://github.com/manuel-koch/gitover-rust-tui
+```
+
+
 ## Configuration
 
 Gitover reads its config from `~/.config/gitover/config.yaml`.
