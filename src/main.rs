@@ -1167,6 +1167,11 @@ fn add_repo_to_app(
         app.repos.push(status);
         app.sort_repos();
 
+        // Select the newly added repo in the Repositories pane.
+        if let Some(idx) = app.repos.iter().position(|r| r.path == new_path) {
+            app.selected = idx;
+        }
+
         // Discover and add submodules
         if let Ok(repo) = git2::Repository::open(new_path) {
             if let Ok(submodules) = repo.submodules() {
