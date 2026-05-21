@@ -62,20 +62,7 @@ Done tasks are check-marked when implemented.
 
 ## Status-File / Commit-History-File Diff
 
-- [x] Keybinding "d" toggle visibility of sub "Diff" pane,
-      but don't give focus to it yet
-  - [x] "Diff" pane has 50% horizontal size of vertical width
-        and is right aligned to "Status" and "History" panes ( they get smaller when 
-        diff is visible ).
-  - [x] "Diff" pane shows diff ( against its predecessor ) of current selected file
-        from "Status" or "History" pane ( most recent focused pane )
-        in "patch" format.
-    - [x] Truncate huge diffs, only show first 1MB of diff text, add truncation indicator "...diff truncated"
-          as last line if the displayed diff content was truncated.
-  - [x] Moving cursor in "Status" file list or "History" file list or switching
-        focus between panes, triggers refresh of "Diff" pane content.
-  - [x] Keybinding "tab" and "shift-tab" cycles includes the "Diff" pane when
-        cycling thru panes.
+- [ ]
 
 ## Testing & Quality
 

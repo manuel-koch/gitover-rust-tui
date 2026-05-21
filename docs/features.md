@@ -114,6 +114,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 - Lists each changed file with a single-letter status code (C/S/M/D/U) in its status colour followed by the file path
 - Files sorted by priority: Conflict → Staged → Modified → Deleted → Untracked, then alphabetically within each group
 - Scrolls when file count exceeds panel height; cursor always stays visible
+- Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area; coloured with focused/unfocused border colour
 - Tab focus moves to this pane when opened; Tab cycles back to Repositories
 
 ## Per-file Actions
@@ -139,6 +140,7 @@ Dismiss the menu with `Esc` or by clicking outside it.
 - When pane is not focused, always shows the tail (latest entries)
 - User can scroll up into history; scrolling back to tail re-enables auto-follow
 - Automatically shown when a git operation fails, so error output is immediately visible
+- Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area
 - Pressing `Enter` when the Output Log pane has focus opens the log action menu
   - Menu entry "Copy log output" copies the entire log content to system clipboard
   - After copying, shows a transient popup notification "Log output copied to clipboard!" that auto-dismisses after 2 seconds
@@ -146,21 +148,43 @@ Dismiss the menu with `Esc` or by clicking outside it.
 ## Git History Pane
 
 - Toggle with `h`; also opened via action menu entries `H` / `u` / `U` / `t` / `T`
-- Title shows repo name and active filter (e.g. "ahead of origin/main")
+- Title shows pane name, commit position indicator, and active filter — e.g. `Commit History [3/42]` or `Commit History [3/42] (ahead of origin/main)`
 - Displays commit history for the current branch, newest commit first, up to 200 commits
-- Table columns: short hash (8 chars, yellow) | timestamp (YYYY-MM-DD HH:MM:SS local, gray) | author (cyan, up to 20 chars) | commit message (first line)
-  - Column widths are distributed: author column sized to the widest name in the loaded history; summary takes all remaining space
-- Each commit row is followed by file sub-rows indented in the summary column:
-  - Format: `  <change-identifier> <path>`
+- Two-column table layout: short hash (8 chars, yellow) | rest of row as a single styled line
+  - Rest of row: timestamp (YYYY-MM-DD HH:MM:SS local, gray) · author (cyan, up to 20 chars, padded) · commit message (first line)
+- Each commit row is followed by file sub-rows aligned with the timestamp column:
+  - Format: `<change-identifier>  <path>` (two spaces between code and path)
   - A = added (blue), M = modified (green), D = deleted (red), R = renamed (yellow)
 - `↑`/`↓` and `PgUp`/`PgDn` scroll through commits and file rows
-- Commit counter shown top-right of the pane (e.g. `3/47`) based on commit index, not flat row index
+- Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area; coloured with focused/unfocused border colour
 - History reloads automatically when the selected repo changes while the pane is open
 - History reloads automatically after a git operation completes on the shown repo
 - Filtered views available from the action menu:
   - Ahead of upstream / trunk — commits in HEAD not yet in the remote ref
   - Behind upstream / trunk — commits in the remote ref not yet merged locally
 - `h` closes the pane; `Tab` cycles focus between panes without closing it
+
+## Diff Pane
+
+- Toggle with `d`; visibility is persisted in the state file across sessions
+- Occupies the right half of the combined Status Details + History vertical area; those panes shrink to the left half when the Diff pane is open
+- Title shows `Diff — <filename>` for the file currently being diffed
+- Content sources:
+  - When focus is on Status Details: shows `git diff HEAD -- <file>` for the selected file
+  - When focus is on History and a file sub-row is selected: shows `git show --format="" <hash> -- <file>`
+  - Untracked files: shows raw file content instead of a patch diff
+  - Binary files: shows `<binary file>`
+- Diff is shown in patch format with syntax colouring:
+  - Added lines (`+`) — green
+  - Removed lines (`−`) — red
+  - Hunk headers (`@@`) — cyan/author colour
+  - File header lines (`diff`, `index`, `+++`, `---`, `Binary`) — gray
+- Content is truncated at 1 MB; a `...diff truncated` line is appended when cut
+- Diff content refreshes automatically when cursor moves in Status Details or History, or when focus switches between those panes
+- While the Diff pane itself has focus, scroll position is preserved (no content reload on navigation keys)
+- `↑`/`↓` and `PgUp`/`PgDn` scroll the diff when Diff pane has focus; mouse wheel also scrolls
+- Scroll indicators (▲ / ▼) appear when diff content overflows above or below the visible area
+- `Tab` / `Shift-Tab` cycles focus to/from the Diff pane like any other pane
 
 ## Real-time Updates
 
@@ -179,7 +203,7 @@ Dismiss the menu with `Esc` or by clicking outside it.
 |-----|--------|
 | `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows in focused pane or action menu; clamps at list boundaries, no wrap |
-| `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / History / Output Log panes |
+| `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / History / Diff / Output Log panes |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
 | `Enter` | Open per-repo action menu (Repositories pane); open per-file action menu (Status Details pane); open log action menu (Output Log pane) |
@@ -188,19 +212,23 @@ Dismiss the menu with `Esc` or by clicking outside it.
 | `P` | Push selected repo (shortcut, no menu needed) |
 | `c` | Checkout branch on selected repo (shortcut, no menu needed) |
 | `h` | Toggle Git History pane |
+| `d` | Toggle Diff pane |
 | `Alt-f` | Fetch all tracked repos in parallel |
 | `s` | Toggle Status Details pane |
 | `l` | Toggle Output Log pane |
 | `r` | Refresh all repositories |
+| `T` | Cycle to next UI theme |
 | `Ctrl-C` | Quit (works in all modes) |
 
 In the action menu, `Esc` dismisses the menu without taking any action.
 
 ## User Interface
 
-- Four-pane layout (vertical): Repositories / Status Details / Output Log / Git History
-- Status Details, Output Log, and Git History are optional; shown only when toggled open
-- Focused pane highlighted with cyan border; unfocused panes use dark-gray border
+- Layout (vertical): Repositories / Status Details / Git History / Output Log
+  - Status Details, Output Log, and Git History are optional; shown only when toggled open
+  - When the Diff pane is open it occupies the right half of the combined Status Details + History area
+- Focused pane highlighted with focused border colour; unfocused panes use unfocused border colour
+- Scroll indicators (▲ / ▼) in all scrollable panes use focused/unfocused border colours to match the pane border
 - App version shown in the header title (e.g. `Git Repository Overview  v0.1.0`)
 - Loading spinner in header while repos are being scanned
 - Refresh timestamp shown right-aligned in the header bar
@@ -214,13 +242,15 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - `←`/`Backspace` go to parent
   - `Space` selects current directory as repo to add
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
+- Multiple built-in themes selectable at runtime with `T`
 
 ## Mouse Interaction
 
 - Left-click on a pane sets focus to that pane
 - Mouse wheel scrolls the content of the currently focused pane
-- Left-click inside the Status Details pane selects the file under the cursor
-- Left-click inside the History pane selects the commit/change under the cursor
+- Left-click inside the Status Details pane selects the file under the cursor; scroll position is preserved
+- Left-click inside the History pane selects the commit/change under the cursor; scroll position is preserved
+- Left-click inside the Diff pane sets focus to the Diff pane
 - Double-click on a repository row opens the per-repo action menu (same as `Enter`)
 - Double-click on a file row in the Status Details pane opens the per-file action menu (same as `Enter`)
 - Left-click on an action menu entry executes the selected action
@@ -262,7 +292,7 @@ gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
   | Repo | What it demonstrates |
   |------|----------------------|
   | `repo-01` | Clean repo, fully in sync with upstream (↑0 ↓0) |
-  | `repo-02` | Staged + modified + deleted + untracked files (S/M/D/U counts) |
+  | `repo-02` | Staged + modified + deleted + untracked files (S/M/D/U counts); includes a binary file (modified) and a text file with a removed line |
   | `repo-03` | 3 commits ahead of upstream (↑3 ↓0) |
   | `repo-04` | 2 commits behind upstream (↑0 ↓2) |
   | `repo-05` | Feature branch, 2 commits ahead of trunk (↑2 ↓0 trunk) |
