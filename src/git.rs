@@ -587,35 +587,25 @@ pub fn get_file_diff(repo_path: &str, file_path: &str, git_bin: &str) -> Result<
 
 /// Get the patch-format diff of `file_path` as changed by the commit identified by
 /// `short_hash`, diffed against the commit's first parent.
-pub fn get_commit_file_diff(repo_path: &str, short_hash: &str, file_path: &str) -> Result<String> {
-    let repo = Repository::open(repo_path)?;
-    let obj = repo.revparse_single(short_hash)?;
-    let commit = obj.peel_to_commit()?;
-    let tree = commit.tree()?;
-    let parent_tree = commit.parents().next().and_then(|p| p.tree().ok());
-    let mut opts = git2::DiffOptions::new();
-    opts.pathspec(file_path);
-    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
-    patch_text_from_diff(&diff)
-}
-
-fn patch_text_from_diff(diff: &git2::Diff) -> Result<String> {
-    let mut text = String::new();
-    let mut truncated = false;
-    let _ = diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        if text.len() >= DIFF_TRUNCATION_LIMIT {
-            truncated = true;
-            return false;
-        }
-        if let Ok(s) = std::str::from_utf8(line.content()) {
-            text.push_str(s);
-        }
-        true
-    });
-    if truncated {
-        text.push_str("\n...diff truncated");
-    }
-    Ok(text)
+/// Equivalent to `git show --format="" <hash> -- <file>`.
+pub fn get_commit_file_diff(
+    repo_path: &str,
+    short_hash: &str,
+    file_path: &str,
+    git_bin: &str,
+) -> Result<String> {
+    let output = std::process::Command::new(git_bin)
+        .args([
+            "-C",
+            repo_path,
+            "show",
+            "--format=",
+            short_hash,
+            "--",
+            file_path,
+        ])
+        .output()?;
+    truncate_text(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Return local branches that are fully merged into the trunk branch.

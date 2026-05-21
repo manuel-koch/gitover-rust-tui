@@ -1189,8 +1189,14 @@ impl App {
             Some(f) => f,
             None => return String::new(),
         };
-        crate::git::get_commit_file_diff(&self.history_repo_path, &commit.short_hash, &file.path)
-            .unwrap_or_default()
+        let git_bin = self.config.general.git.as_deref().unwrap_or("git");
+        crate::git::get_commit_file_diff(
+            &self.history_repo_path,
+            &commit.short_hash,
+            &file.path,
+            git_bin,
+        )
+        .unwrap_or_default()
     }
 
     pub fn toggle_file_status(&mut self) {
