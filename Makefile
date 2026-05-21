@@ -9,6 +9,10 @@ lint:
 format:
 	cargo fmt
 
+# Build debug binary (output: target/debug/gitover)
+build:
+	cargo build
+
 # Build debug binary and launch it
 build-and-run:
 	cargo run
