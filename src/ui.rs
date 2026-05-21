@@ -48,6 +48,8 @@ pub struct PaneAreas {
     pub terminal: Rect,
     pub header: Rect,
     pub repos: Rect,
+    /// Set when the Branches pane is visible (occupies the same area as repos).
+    pub branches: Option<Rect>,
     pub file_status: Option<Rect>,
     pub history: Option<Rect>,
     pub log: Option<Rect>,
@@ -61,7 +63,8 @@ pub struct PaneAreas {
 pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     let total_available = total.height.saturating_sub(FIXED_PANE_HEIGHT);
 
-    let open_panes = [app.show_file_status, app.show_history, app.show_log]
+    let show_file_status = app.show_file_status && !app.show_branches;
+    let open_panes = [show_file_status, app.show_history, app.show_log]
         .into_iter()
         .filter(|&p| p)
         .count();
@@ -75,7 +78,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     constraints.push(Constraint::Length(HEADER_HEIGHT));
     constraints.push(Constraint::Length(repo_height));
 
-    if app.show_file_status {
+    if show_file_status {
         constraints.push(Constraint::Length(pane_height));
     }
     if app.show_history {
@@ -98,7 +101,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     idx += 1;
 
     let mut file_status: Option<Rect> = None;
-    if app.show_file_status {
+    if show_file_status {
         file_status = Some(chunks[idx]);
         idx += 1;
     }
@@ -142,10 +145,13 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
         });
     }
 
+    let branches = if app.show_branches { Some(repos) } else { None };
+
     PaneAreas {
         terminal: total,
         header,
         repos,
+        branches,
         file_status,
         history,
         log,
@@ -162,7 +168,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let total_available = frame.area().height.saturating_sub(FIXED_PANE_HEIGHT);
 
     // Count open optional panes (File Status, History, Log).
-    let open_panes = [app.show_file_status, app.show_history, app.show_log]
+    let show_file_status = app.show_file_status && !app.show_branches;
+    let open_panes = [show_file_status, app.show_history, app.show_log]
         .into_iter()
         .filter(|&p| p)
         .count();
@@ -176,7 +183,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let mut constraints: Vec<Constraint> = Vec::new();
     constraints.push(Constraint::Length(HEADER_HEIGHT));
     constraints.push(Constraint::Length(repo_height));
-    if app.show_file_status {
+    if show_file_status {
         constraints.push(Constraint::Length(pane_height));
     }
     if app.show_history {
@@ -199,7 +206,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     idx += 1;
 
     let mut file_status_area: Option<Rect> = None;
-    if app.show_file_status {
+    if show_file_status {
         file_status_area = Some(chunks[idx]);
         idx += 1;
     }
@@ -244,7 +251,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     draw_header(frame, header_area, app);
-    draw_repo_table(frame, repos_area, app);
+    if app.show_branches {
+        draw_branches_panel(frame, repos_area, app);
+    } else {
+        draw_repo_table(frame, repos_area, app);
+    }
     if let Some(area) = file_status_area {
         draw_file_status_panel(frame, area, app);
     }
@@ -267,7 +278,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     if matches!(
         app.mode,
-        AppMode::ActionMenu | AppMode::LogActionMenu | AppMode::FileActionMenu
+        AppMode::ActionMenu
+            | AppMode::LogActionMenu
+            | AppMode::FileActionMenu
+            | AppMode::BranchActionMenu
     ) {
         draw_action_menu(frame, app);
     }
@@ -433,7 +447,11 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
             .title("Repositories")
             .border_style(focus_border_style(app.focus == Focus::Repos, app.theme())),
     )
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .row_highlight_style(
+        Style::default()
+            .bg(theme.selection_row_bg)
+            .add_modifier(Modifier::BOLD),
+    )
     .highlight_symbol("> ");
 
     // Scrolling: clamp the table_offset so the selected row stays visible.
@@ -610,23 +628,23 @@ fn draw_error_overlays(frame: &mut Frame, area: Rect, app: &App) {
         let Some(err) = &repo.error else { continue };
 
         let y = data_y + row_i as u16;
-        let modifier = if i == app.selected {
-            Modifier::REVERSED
+        let (warn_style, err_style) = if i == app.selected {
+            (
+                Style::default()
+                    .fg(theme.placeholder)
+                    .bg(theme.selection_row_bg),
+                Style::default().fg(theme.error).bg(theme.selection_row_bg),
+            )
         } else {
-            Modifier::empty()
+            (
+                Style::default().fg(theme.placeholder),
+                Style::default().fg(theme.error),
+            )
         };
 
         let line = Line::from(vec![
-            Span::styled(
-                "⚠ ",
-                Style::default()
-                    .fg(theme.placeholder)
-                    .add_modifier(modifier),
-            ),
-            Span::styled(
-                err.to_string(),
-                Style::default().fg(theme.error).add_modifier(modifier),
-            ),
+            Span::styled("⚠ ", warn_style),
+            Span::styled(err.to_string(), err_style),
         ]);
 
         frame.render_widget(
@@ -727,6 +745,167 @@ fn build_activity_cell(
     }
 }
 
+// ── Branches panel ───────────────────────────────────────────────────────────
+
+fn draw_branches_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+    let t = app.theme();
+    let focused = app.focus == Focus::Branches;
+
+    let repo_path = app
+        .repos
+        .get(app.selected)
+        .map(|r| r.path.as_str())
+        .unwrap_or("");
+    let title = format!(" Branches — {repo_path} ");
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(focus_border_style(focused, t));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if app.branch_info_list.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                "no branches found",
+                Style::default().fg(t.placeholder),
+            )),
+            inner,
+        );
+        return;
+    }
+
+    let visible = inner.height.saturating_sub(1) as usize; // -1 for header row
+    let n = app.branch_info_list.len();
+
+    // Clamp scroll so selected row stays in viewport.
+    if app.branches_pane_selected < app.branches_pane_scroll {
+        app.branches_pane_scroll = app.branches_pane_selected;
+    } else if app.branches_pane_selected >= app.branches_pane_scroll + visible {
+        app.branches_pane_scroll = app.branches_pane_selected + 1 - visible;
+    }
+    let max_scroll = n.saturating_sub(visible);
+    if app.branches_pane_scroll > max_scroll {
+        app.branches_pane_scroll = max_scroll;
+    }
+
+    let rows: Vec<Row<'static>> = app
+        .branch_info_list
+        .iter()
+        .enumerate()
+        .skip(app.branches_pane_scroll)
+        .take(visible)
+        .map(|(i, branch)| {
+            let selected = focused && i == app.branches_pane_selected;
+            let row_style = if selected {
+                Style::default()
+                    .bg(t.selection_row_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+
+            let marker = if branch.is_current {
+                "* "
+            } else if branch.is_remote_only {
+                "⇡ "
+            } else {
+                "  "
+            };
+            let name_style = if branch.is_current {
+                Style::default().fg(t.branch).add_modifier(Modifier::BOLD)
+            } else if branch.is_remote_only {
+                Style::default().fg(t.branch_remote)
+            } else {
+                Style::default()
+            };
+
+            let upstream_text = if branch.is_remote_only {
+                "remote only".to_string()
+            } else {
+                match &branch.upstream {
+                    None => "-".to_string(),
+                    Some(ab) => format!("↑{} ↓{} {}", ab.ahead, ab.behind, ab.branch),
+                }
+            };
+            let upstream_style = if branch.is_remote_only {
+                Style::default().fg(t.placeholder)
+            } else {
+                match &branch.upstream {
+                    Some(ab) if ab.ahead > 0 || ab.behind > 0 => {
+                        Style::default().fg(t.sync_warning)
+                    }
+                    Some(_) => Style::default().fg(t.sync_ok),
+                    None => Style::default().fg(t.placeholder),
+                }
+            };
+
+            let trunk_text = match &branch.trunk {
+                None => "-".to_string(),
+                Some(ab) => format!("↑{} ↓{} {}", ab.ahead, ab.behind, ab.branch),
+            };
+            let trunk_style = match &branch.trunk {
+                Some(ab) if ab.behind > 0 => Style::default().fg(t.trunk_behind),
+                Some(ab) if ab.ahead > 0 => Style::default().fg(t.sync_warning),
+                Some(_) => Style::default().fg(t.sync_ok),
+                None => Style::default().fg(t.placeholder),
+            };
+
+            Row::new(vec![
+                Cell::from(format!("{}{}", marker, branch.name)).style(name_style),
+                Cell::from(upstream_text).style(upstream_style),
+                Cell::from(trunk_text).style(trunk_style),
+            ])
+            .style(row_style)
+        })
+        .collect();
+
+    let header = Row::new(vec![
+        Cell::from("Branch").style(
+            Style::default()
+                .fg(t.table_header)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("↑↓ Upstream").style(
+            Style::default()
+                .fg(t.table_header)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("↑↓ Trunk").style(
+            Style::default()
+                .fg(t.table_header)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ])
+    .height(1);
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Fill(4),
+            Constraint::Fill(5),
+            Constraint::Fill(5),
+        ],
+    )
+    .header(header);
+    frame.render_widget(table, inner);
+
+    let indicators_area = Rect {
+        y: inner.y + 1,
+        height: inner.height.saturating_sub(1),
+        ..inner
+    };
+    draw_scroll_indicators(
+        frame,
+        indicators_area,
+        app.branches_pane_scroll > 0,
+        app.branches_pane_scroll + visible < n,
+        focused,
+        t,
+    );
+}
+
 // ── File Status panel ────────────────────────────────────────────────────────
 
 #[allow(dead_code)]
@@ -782,6 +961,7 @@ fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
+    let line_width = inner.width as usize;
     let lines: Vec<Line<'static>> = files
         .iter()
         .enumerate()
@@ -790,24 +970,25 @@ fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|(i, f)| {
             let colour = theme.file_status_colour(&f.status);
             let selected = focused && i == app.file_status_selected;
-            let base_style = if selected {
+            let line_style = if selected {
                 Style::default()
-                    .fg(theme.selection_fg)
-                    .bg(colour)
+                    .bg(theme.selection_row_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
-            let code_style = if selected {
-                base_style
-            } else {
-                Style::default().fg(colour).add_modifier(Modifier::BOLD)
-            };
+            let code = format!(" {} ", f.status.code());
+            let content_len = code.len() + 1 + f.path.len();
+            let pad = " ".repeat(line_width.saturating_sub(content_len));
             Line::from(vec![
-                Span::styled(format!(" {} ", f.status.code()), code_style),
+                Span::styled(
+                    code,
+                    Style::default().fg(colour).add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(" "),
-                Span::styled(f.path.clone(), base_style),
+                Span::raw(format!("{}{}", f.path, pad)),
             ])
+            .style(line_style)
         })
         .collect();
 
@@ -959,8 +1140,7 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             let selected = flat_idx == app.history_selected;
             let row_style = if selected {
                 Style::default()
-                    .fg(t.selection_fg)
-                    .bg(t.selection_bg)
+                    .bg(t.selection_row_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -997,7 +1177,9 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             if flat_idx >= app.history_scroll {
                 let selected = flat_idx == app.history_selected;
                 let row_style = if selected {
-                    Style::default().fg(t.selection_fg).bg(t.selection_bg)
+                    Style::default()
+                        .bg(t.selection_row_bg)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -1153,8 +1335,8 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
     ];
     let nav_width: usize = nav.iter().map(|s| s.width()).sum();
 
-    // Action keys in grouped order: A, D, r, Alt-f, s, h, l, d, c, Enter
-    let actions: [Span<'static>; 20] = [
+    // Action keys in grouped order: A, D, r, Alt-f, s, b, h, l, d, c, Enter
+    let actions: [Span<'static>; 22] = [
         Span::styled("A", Style::default().fg(t.help_key)),
         Span::raw(" add  "),
         Span::styled("D", Style::default().fg(t.help_key)),
@@ -1165,6 +1347,8 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw(" fetch all  "),
         Span::styled("s", Style::default().fg(t.help_key)),
         Span::raw(" status  "),
+        Span::styled("b", Style::default().fg(t.help_key)),
+        Span::raw(" branches  "),
         Span::styled("h", Style::default().fg(t.help_key)),
         Span::raw(" history  "),
         Span::styled("l", Style::default().fg(t.help_key)),
@@ -1322,6 +1506,14 @@ fn draw_action_menu(frame: &mut Frame, app: &mut App) {
                 .map(|f| f.path.split('/').next_back().unwrap_or(&f.path).to_string())
                 .unwrap_or_default();
             format!(" File Actions — {file_name} ")
+        }
+        AppMode::BranchActionMenu => {
+            let branch_name = app
+                .branch_info_list
+                .get(app.branches_pane_selected)
+                .map(|b| b.name.clone())
+                .unwrap_or_default();
+            format!(" Branch Actions — {branch_name} ")
         }
         _ => {
             let repo_name = app

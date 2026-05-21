@@ -72,6 +72,12 @@ pub enum HistoryFilter {
     /// Commits reachable from the given remote ref but NOT from HEAD
     /// (i.e. remote commits not yet merged locally — "behind" commits).
     BehindOf(String),
+    /// All commits reachable from the named local branch tip.
+    BranchFull(String),
+    /// Commits in the named local branch that are not in the given ref.
+    BranchAheadOf { branch: String, of: String },
+    /// Commits in the given ref that are not in the named local branch.
+    BranchBehindOf { branch: String, of: String },
 }
 
 impl HistoryFilter {
@@ -81,6 +87,9 @@ impl HistoryFilter {
             HistoryFilter::Full => String::new(),
             HistoryFilter::AheadOf(r) => format!("ahead of {r}"),
             HistoryFilter::BehindOf(r) => format!("behind {r}"),
+            HistoryFilter::BranchFull(b) => b.clone(),
+            HistoryFilter::BranchAheadOf { branch, of } => format!("{branch} ahead of {of}"),
+            HistoryFilter::BranchBehindOf { branch, of } => format!("{branch} behind {of}"),
         }
     }
 }
@@ -125,6 +134,46 @@ pub fn get_commit_history(
                 if let Some(head_oid) = head.target() {
                     revwalk.hide(head_oid)?;
                 }
+            }
+        }
+        HistoryFilter::BranchFull(branch_name) => {
+            let oid = repo
+                .find_branch(branch_name, git2::BranchType::Local)
+                .ok()
+                .and_then(|b| b.get().target())
+                .or_else(|| {
+                    repo.find_reference(&format!("refs/remotes/origin/{branch_name}"))
+                        .ok()
+                        .and_then(|r| r.target())
+                });
+            if let Some(oid) = oid {
+                revwalk.push(oid)?;
+            }
+        }
+        HistoryFilter::BranchAheadOf { branch, of } => {
+            let local = repo.find_branch(branch, git2::BranchType::Local)?;
+            if let Some(oid) = local.get().target() {
+                revwalk.push(oid)?;
+            }
+            let hidden = repo
+                .find_reference(&format!("refs/remotes/{of}"))
+                .or_else(|_| repo.find_reference(of));
+            if let Ok(r) = hidden {
+                if let Some(oid) = r.target() {
+                    revwalk.hide(oid)?;
+                }
+            }
+        }
+        HistoryFilter::BranchBehindOf { branch, of } => {
+            let r = repo
+                .find_reference(&format!("refs/remotes/{of}"))
+                .or_else(|_| repo.find_reference(of))?;
+            if let Some(oid) = r.target() {
+                revwalk.push(oid)?;
+            }
+            let local = repo.find_branch(branch, git2::BranchType::Local)?;
+            if let Some(oid) = local.get().target() {
+                revwalk.hide(oid)?;
             }
         }
     }
@@ -500,6 +549,116 @@ fn resolve_trunk_ref(repo: &Repository) -> Option<(git2::Reference<'_>, String)>
     }
 
     None
+}
+
+/// Per-branch info used by the Branches pane.
+#[derive(Debug, Clone)]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_current: bool,
+    /// True when no local branch exists — branch lives only on the remote.
+    pub is_remote_only: bool,
+    pub upstream: Option<AheadBehind>,
+    pub trunk: Option<AheadBehind>,
+}
+
+/// Return all local branches with their ahead/behind counts vs upstream and trunk.
+/// Current branch is listed first, then alphabetically.
+pub fn get_branches_with_ahead_behind(path: &str) -> Result<Vec<BranchInfo>> {
+    let repo = Repository::open(path)?;
+    let trunk_pair = resolve_trunk_ref(&repo);
+    let mut result = Vec::new();
+
+    let branches = repo.branches(Some(git2::BranchType::Local))?;
+    for (branch, _) in branches.flatten() {
+        let name = match branch.name() {
+            Ok(Some(n)) => n.to_string(),
+            _ => continue,
+        };
+        let is_current = branch.is_head();
+        let branch_oid = match branch.get().target() {
+            Some(oid) => oid,
+            None => continue,
+        };
+
+        let upstream = branch.upstream().ok().and_then(|up| {
+            let up_oid = up.get().target()?;
+            let (ahead, behind) = repo.graph_ahead_behind(branch_oid, up_oid).ok()?;
+            let up_name = up.name().ok().flatten().unwrap_or("upstream").to_string();
+            Some(AheadBehind {
+                ahead,
+                behind,
+                branch: up_name,
+            })
+        });
+
+        let trunk = trunk_pair.as_ref().and_then(|(trunk_ref, trunk_name)| {
+            let trunk_oid = trunk_ref.target()?;
+            let (ahead, behind) = repo.graph_ahead_behind(branch_oid, trunk_oid).ok()?;
+            Some(AheadBehind {
+                ahead,
+                behind,
+                branch: trunk_name.clone(),
+            })
+        });
+
+        result.push(BranchInfo {
+            name,
+            is_current,
+            is_remote_only: false,
+            upstream,
+            trunk,
+        });
+    }
+
+    result.sort_by(|a, b| {
+        b.is_current
+            .cmp(&a.is_current)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    // Append remote-only branches (no local counterpart) sorted alphabetically.
+    let local_names: Vec<String> = result.iter().map(|b| b.name.clone()).collect();
+    if let Ok(remote_branches) = repo.branches(Some(git2::BranchType::Remote)) {
+        let mut remote_only: Vec<BranchInfo> = remote_branches
+            .flatten()
+            .filter_map(|(branch, _)| {
+                let full_name = branch.name().ok().flatten()?.to_string();
+                if full_name.ends_with("/HEAD") {
+                    return None;
+                }
+                let short = full_name
+                    .find('/')
+                    .map(|i| &full_name[i + 1..])
+                    .unwrap_or(&full_name)
+                    .to_string();
+                if local_names.iter().any(|l| l == &short) {
+                    return None;
+                }
+                let branch_oid = branch.get().target()?;
+                let trunk = trunk_pair.as_ref().and_then(|(trunk_ref, trunk_name)| {
+                    let trunk_oid = trunk_ref.target()?;
+                    let (ahead, behind) = repo.graph_ahead_behind(branch_oid, trunk_oid).ok()?;
+                    Some(AheadBehind {
+                        ahead,
+                        behind,
+                        branch: trunk_name.clone(),
+                    })
+                });
+                Some(BranchInfo {
+                    name: short,
+                    is_current: false,
+                    is_remote_only: true,
+                    upstream: None,
+                    trunk,
+                })
+            })
+            .collect();
+        remote_only.sort_by(|a, b| a.name.cmp(&b.name));
+        result.extend(remote_only);
+    }
+
+    Ok(result)
 }
 
 /// Return the names of all local branches, sorted alphabetically.

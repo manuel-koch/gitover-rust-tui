@@ -14,7 +14,7 @@
 
 use crate::config::Config;
 pub use crate::git::HistoryFilter;
-use crate::git::{CommitEntry, FileStatusKind, RepoStatus};
+use crate::git::{BranchInfo, CommitEntry, FileStatusKind, RepoStatus};
 use crate::state::State;
 use ratatui_explorer::FileExplorer;
 use std::collections::HashMap;
@@ -58,6 +58,7 @@ pub struct LogLine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
     Repos,
+    Branches,
     FileStatus,
     Log,
     History,
@@ -96,6 +97,8 @@ pub enum AppMode {
     LogActionMenu,
     /// Per-file action menu (Enter or double-click on a file in the File Status pane).
     FileActionMenu,
+    /// Per-branch action menu (Enter on a branch in the Branches pane).
+    BranchActionMenu,
     /// Transient popup message that auto-dismisses after a timeout.
     PopupMessage,
 }
@@ -242,6 +245,18 @@ pub struct App {
     /// Timestamp when the popup was shown (for auto-dismissal).
     pub popup_show_time: Option<Instant>,
 
+    // ── Branches pane ─────────────────────────────────────────────────────────
+    /// Whether the Branches pane is visible (replaces Repositories pane).
+    pub show_branches: bool,
+    /// Branch list for the Branches pane (current repo's local branches).
+    pub branch_info_list: Vec<BranchInfo>,
+    /// Currently highlighted row in the Branches pane.
+    pub branches_pane_selected: usize,
+    /// Scroll offset (top visible row) for the Branches pane.
+    pub branches_pane_scroll: usize,
+    /// True when the History pane is being driven by the Branches pane selection.
+    pub branches_history_active: bool,
+
     // ── Diff pane ─────────────────────────────────────────────────────────────
     /// Whether the Diff pane is visible.
     pub show_diff: bool,
@@ -327,6 +342,11 @@ impl App {
             last_click_pos: None,
             popup_message: None,
             popup_show_time: None,
+            show_branches: false,
+            branch_info_list: Vec::new(),
+            branches_pane_selected: 0,
+            branches_pane_scroll: 0,
+            branches_history_active: false,
             show_diff,
             diff_content: String::new(),
             diff_scroll: 0,
@@ -347,6 +367,12 @@ impl App {
                     }
                     self.file_status_selected = 0;
                     self.file_status_scroll = 0;
+                }
+            }
+            Focus::Branches => {
+                let n = self.branch_info_list.len();
+                if n > 0 && self.branches_pane_selected + 1 < n {
+                    self.branches_pane_selected += 1;
                 }
             }
             Focus::FileStatus => {
@@ -392,6 +418,11 @@ impl App {
                     self.file_status_scroll = 0;
                 }
             }
+            Focus::Branches => {
+                if self.branches_pane_selected > 0 {
+                    self.branches_pane_selected -= 1;
+                }
+            }
             Focus::FileStatus => {
                 if self.file_status_selected > 0 {
                     self.file_status_selected -= 1;
@@ -420,10 +451,14 @@ impl App {
     }
 
     /// Build the ordered list of focusable panes based on what is currently visible.
-    /// Order: Repos → FileStatus → History → Diff → Log.
+    /// Order: Repos/Branches → FileStatus → History → Diff → Log.
     fn focus_order(&self) -> Vec<Focus> {
-        let mut order: Vec<Focus> = vec![Focus::Repos];
-        if self.show_file_status {
+        let mut order: Vec<Focus> = if self.show_branches {
+            vec![Focus::Branches]
+        } else {
+            vec![Focus::Repos]
+        };
+        if self.show_file_status && !self.show_branches {
             order.push(Focus::FileStatus);
         }
         if self.show_history {
@@ -472,6 +507,13 @@ impl App {
                     self.file_status_scroll = 0;
                 }
             }
+            Focus::Branches => {
+                let n = self.branch_info_list.len();
+                if n > 0 {
+                    self.branches_pane_selected =
+                        (self.branches_pane_selected + PAGE_STEP).min(n - 1);
+                }
+            }
             Focus::FileStatus => {
                 let n = self.selected_files().len();
                 if n > 0 {
@@ -508,6 +550,9 @@ impl App {
                 self.selected = self.selected.saturating_sub(PAGE_STEP);
                 self.file_status_selected = 0;
                 self.file_status_scroll = 0;
+            }
+            Focus::Branches => {
+                self.branches_pane_selected = self.branches_pane_selected.saturating_sub(PAGE_STEP);
             }
             Focus::FileStatus => {
                 self.file_status_selected = self.file_status_selected.saturating_sub(PAGE_STEP);
@@ -920,23 +965,16 @@ impl App {
         if self.repos.is_empty() {
             return;
         }
-        let repo = &self.repos[self.selected];
-        let current = &repo.branch;
-        let mut items: Vec<BranchItem> = repo
-            .local_branches
-            .iter()
-            .filter(|b| b.as_str() != current)
+        let path = self.repos[self.selected].path.clone();
+        let branches = crate::git::get_branches_with_ahead_behind(&path).unwrap_or_default();
+        let items: Vec<BranchItem> = branches
+            .into_iter()
+            .filter(|b| !b.is_current)
             .map(|b| BranchItem {
-                name: b.clone(),
-                is_remote: false,
+                name: b.name,
+                is_remote: b.is_remote_only,
             })
             .collect();
-        for rb in &repo.remote_only_branches {
-            items.push(BranchItem {
-                name: rb.clone(),
-                is_remote: true,
-            });
-        }
         self.branch_items = items;
         self.branch_selected = 0;
         self.mode = AppMode::BranchSelect;
@@ -1017,6 +1055,16 @@ impl App {
 
     // ── Git History ───────────────────────────────────────────────────────────
 
+    /// Load commit history into the history pane, resetting scroll and selection.
+    fn load_history(&mut self, path: String, filter: HistoryFilter) {
+        self.history = crate::git::get_commit_history(&path, &filter, HISTORY_COMMIT_LIMIT)
+            .unwrap_or_default();
+        self.history_repo_path = path;
+        self.history_filter = filter;
+        self.history_selected = 0;
+        self.history_scroll = 0;
+    }
+
     /// Open the history pane for the selected repo, loading fresh commit data.
     pub fn open_history(&mut self, filter: HistoryFilter) {
         if self.repos.is_empty() {
@@ -1027,12 +1075,7 @@ impl App {
             return;
         }
         let path = repo.path.clone();
-        self.history = crate::git::get_commit_history(&path, &filter, HISTORY_COMMIT_LIMIT)
-            .unwrap_or_default();
-        self.history_repo_path = path;
-        self.history_filter = filter;
-        self.history_selected = 0;
-        self.history_scroll = 0;
+        self.load_history(path, filter);
         self.show_history = true;
         self.focus = Focus::History;
         self.save_pane_state();
@@ -1076,12 +1119,175 @@ impl App {
         if !self.show_history || self.history_repo_path != repo_path {
             return;
         }
+        if self.show_branches && self.branches_history_active {
+            self.reload_history_from_branches();
+            return;
+        }
         let filter = self.history_filter.clone();
         self.history = crate::git::get_commit_history(repo_path, &filter, HISTORY_COMMIT_LIMIT)
             .unwrap_or_default();
         self.history_selected = 0;
         self.history_scroll = 0;
     }
+    // ── Branches pane ─────────────────────────────────────────────────────────
+
+    /// Open the Branches pane for the selected repo, loading branch info.
+    pub fn open_branches_pane(&mut self) {
+        if self.repos.is_empty() {
+            return;
+        }
+        let repo = &self.repos[self.selected];
+        if repo.error.is_some() {
+            return;
+        }
+        let path = repo.path.clone();
+        self.branch_info_list =
+            crate::git::get_branches_with_ahead_behind(&path).unwrap_or_default();
+        self.branches_pane_selected = self
+            .branch_info_list
+            .iter()
+            .position(|b| b.is_current)
+            .unwrap_or(0);
+        self.branches_pane_scroll = 0;
+        self.show_branches = true;
+        self.focus = Focus::Branches;
+        if self.show_history {
+            self.reload_history_from_branches();
+        }
+        self.restore_base_mode();
+    }
+
+    /// Close the Branches pane, restoring focus to Repos and reverting History.
+    pub fn close_branches_pane(&mut self) {
+        self.show_branches = false;
+        if self.focus == Focus::Branches {
+            self.focus = Focus::Repos;
+        }
+        if self.show_history && self.branches_history_active {
+            let filter = HistoryFilter::Full;
+            if let Some(repo) = self.repos.get(self.selected) {
+                if repo.error.is_none() {
+                    let path = repo.path.clone();
+                    self.load_history(path, filter);
+                }
+            }
+            self.branches_history_active = false;
+        }
+        self.restore_base_mode();
+    }
+
+    /// Reload the branch list for the given repo path if it matches the current repo.
+    pub fn refresh_branches_for_repo(&mut self, repo_path: &str) {
+        if !self.show_branches {
+            return;
+        }
+        let current_path = match self.repos.get(self.selected) {
+            Some(r) => r.path.clone(),
+            None => return,
+        };
+        if current_path != repo_path {
+            return;
+        }
+        self.branch_info_list =
+            crate::git::get_branches_with_ahead_behind(&current_path).unwrap_or_default();
+        let n = self.branch_info_list.len();
+        if n > 0 && self.branches_pane_selected >= n {
+            self.branches_pane_selected = n - 1;
+        }
+    }
+
+    /// Return the currently highlighted BranchInfo, if any.
+    pub fn selected_branch_info(&self) -> Option<&BranchInfo> {
+        self.branch_info_list.get(self.branches_pane_selected)
+    }
+
+    /// Reload the History pane from the currently selected branch in the Branches pane.
+    pub fn reload_history_from_branches(&mut self) {
+        if !self.show_history || !self.show_branches {
+            return;
+        }
+        let branch_name = match self.branch_info_list.get(self.branches_pane_selected) {
+            Some(b) => b.name.clone(),
+            None => return,
+        };
+        let path = match self.repos.get(self.selected) {
+            Some(r) if r.error.is_none() => r.path.clone(),
+            _ => return,
+        };
+        let filter = HistoryFilter::BranchFull(branch_name);
+        self.load_history(path, filter);
+        self.branches_history_active = true;
+    }
+
+    /// Open history with a branch-specific filter (used from branch action menu).
+    /// Shifts keyboard focus to the History pane.
+    pub fn open_history_for_branch(&mut self, filter: HistoryFilter) {
+        if self.repos.is_empty() {
+            return;
+        }
+        let repo = &self.repos[self.selected];
+        if repo.error.is_some() {
+            return;
+        }
+        let path = repo.path.clone();
+        self.load_history(path, filter);
+        self.show_history = true;
+        self.focus = Focus::History;
+        self.branches_history_active = true;
+        self.save_pane_state();
+        self.restore_base_mode();
+    }
+
+    /// Open the per-branch action menu for the currently selected branch.
+    pub fn open_branch_action_menu(&mut self) {
+        let branch = match self.branch_info_list.get(self.branches_pane_selected) {
+            Some(b) => b.clone(),
+            None => return,
+        };
+        let mut items = Vec::new();
+        if !branch.is_current {
+            items.push(MenuItem::item("Checkout", 'c'));
+        }
+        items.push(MenuItem::item("Commit history", 'h'));
+        if let Some(upstream) = &branch.upstream {
+            if upstream.ahead > 0 {
+                items.push(MenuItem::item(
+                    format!("History: ahead of {}", upstream.branch),
+                    'u',
+                ));
+            }
+            if upstream.behind > 0 {
+                items.push(MenuItem::item(
+                    format!("History: behind {}", upstream.branch),
+                    'U',
+                ));
+                items.push(MenuItem::item("Pull (fast-forward)", 'p'));
+            }
+        }
+        let upstream_branch = branch
+            .upstream
+            .as_ref()
+            .map(|u| u.branch.as_str())
+            .unwrap_or("");
+        if let Some(trunk) = &branch.trunk {
+            if trunk.branch != upstream_branch {
+                if trunk.ahead > 0 {
+                    items.push(MenuItem::item(
+                        format!("History: ahead of {}", trunk.branch),
+                        't',
+                    ));
+                }
+                if trunk.behind > 0 {
+                    items.push(MenuItem::item(
+                        format!("History: behind {}", trunk.branch),
+                        'T',
+                    ));
+                }
+            }
+        }
+        self.open_menu(items, AppMode::BranchActionMenu);
+    }
+
     /// Return the total number of visible rows in the history pane:
     /// one row per commit + one row per file delta within each commit.
     pub fn history_row_count(&self) -> usize {

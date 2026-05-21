@@ -22,7 +22,7 @@ mod ui;
 mod watcher;
 
 use anyhow::Result;
-use app::{App, AppMode, Focus};
+use app::{App, AppMode, Focus, HistoryFilter};
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
@@ -125,7 +125,10 @@ where
         // Drain watcher notifications
         loop {
             match dirty_rx.try_recv() {
-                Ok(dirty_path) => refresh_single_repo(app, &dirty_path),
+                Ok(dirty_path) => {
+                    refresh_single_repo(app, &dirty_path);
+                    app.refresh_branches_for_repo(&dirty_path);
+                }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
             }
@@ -233,6 +236,11 @@ where
                         handle_file_menu_key(app, op_tx, key.code);
                     }
                 }
+                AppMode::BranchActionMenu => {
+                    if let Event::Key(key) = &ev {
+                        handle_branch_menu_key(app, op_tx, key.code);
+                    }
+                }
                 AppMode::PopupMessage => {
                     // Any key dismisses the popup immediately
                     if let Event::Key(_) = &ev {
@@ -263,7 +271,10 @@ fn handle_mouse_event(
             // ActionMenu mode:
             // - click on item executes it
             // - click outside closes menu
-            if matches!(app.mode, AppMode::ActionMenu | AppMode::FileActionMenu) {
+            if matches!(
+                app.mode,
+                AppMode::ActionMenu | AppMode::FileActionMenu | AppMode::BranchActionMenu
+            ) {
                 let terminal_area = app
                     .cached_pane_areas
                     .as_ref()
@@ -274,13 +285,14 @@ fn handle_mouse_event(
                         if !item.is_separator {
                             if matches!(app.mode, AppMode::FileActionMenu) {
                                 dispatch_file_menu_action(app, op_tx, item.key);
+                            } else if matches!(app.mode, AppMode::BranchActionMenu) {
+                                dispatch_branch_menu_action(app, op_tx, item.key);
                             } else {
                                 activate_menu_item(app, op_tx, &item);
                             }
                         }
                     }
                 } else {
-                    // Click outside menu closes it
                     app.close_menu();
                 }
                 return;
@@ -325,14 +337,12 @@ fn handle_mouse_event(
                     // Perform checkout of the selected branch.
                     if let Some(item) = app.selected_branch_item().cloned() {
                         app.close_branch_select();
-                        launch_op(
-                            app,
-                            op_tx,
-                            OpRequest::CheckoutBranch {
-                                name: item.name,
-                                is_remote: item.is_remote,
-                            },
-                        );
+                        let (name, is_remote) = if item.is_remote {
+                            (format!("origin/{}", item.name), true)
+                        } else {
+                            (item.name, false)
+                        };
+                        launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
                     }
                 } else {
                     // Click outside popup just closes it.
@@ -438,9 +448,21 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
         }
     }
 
+    if let Some(branches_area) = &areas.branches {
+        if in_rect(click, *branches_area) {
+            app.focus = Focus::Branches;
+            if let Some(row) = branches_row_under_mouse(app, mouse, *branches_area) {
+                if row != app.branches_pane_selected {
+                    app.branches_pane_selected = row;
+                    app.reload_history_from_branches();
+                }
+            }
+            return;
+        }
+    }
+
     if in_rect(click, areas.repos) {
         app.focus = Focus::Repos;
-        // If clicking in the repos table, also update the selection
         if let Some(selected_row) = row_under_mouse(app, mouse, areas.repos) {
             if selected_row != app.selected {
                 app.selected = selected_row;
@@ -479,6 +501,28 @@ fn row_under_mouse(
 
     // Clamp to available repos
     if offset_row < app.repos.len() {
+        Some(offset_row)
+    } else {
+        None
+    }
+}
+
+/// Given a mouse click in the Branches pane, return the branch index under the mouse.
+fn branches_row_under_mouse(
+    app: &App,
+    mouse: &MouseEvent,
+    pane_area: ratatui::layout::Rect,
+) -> Option<usize> {
+    // 1 border + 1 header row = data starts at y + 2.
+    let inner_top = pane_area.y + 2;
+    let inner_bottom = pane_area.y + pane_area.height - 1;
+    let row = mouse.row;
+    if row < inner_top || row >= inner_bottom {
+        return None;
+    }
+    let row_index = (row - inner_top) as usize;
+    let offset_row = row_index + app.branches_pane_scroll;
+    if offset_row < app.branch_info_list.len() {
         Some(offset_row)
     } else {
         None
@@ -603,22 +647,38 @@ fn handle_normal_key(
         }
         KeyCode::Down => {
             app.next();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::Up => {
             app.previous();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::PageDown => {
             app.next_page();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::PageUp => {
             app.previous_page();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::Char('r') => refresh_repos(app),
@@ -627,9 +687,18 @@ fn handle_normal_key(
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
         KeyCode::Char('d') => app.toggle_diff(),
+        KeyCode::Char('b') => {
+            if app.show_branches {
+                app.close_branches_pane();
+            } else {
+                app.open_branches_pane();
+            }
+        }
         // Enter opens context-sensitive action menu
         KeyCode::Enter => {
-            if app.focus == Focus::Log && app.show_log {
+            if app.focus == Focus::Branches {
+                app.open_branch_action_menu();
+            } else if app.focus == Focus::Log && app.show_log {
                 app.open_log_action_menu();
             } else if app.focus == Focus::FileStatus && app.show_file_status {
                 app.open_file_action_menu();
@@ -641,9 +710,30 @@ fn handle_normal_key(
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
-        KeyCode::Char('c') => app.open_branch_select(),
+        KeyCode::Char('c') => {
+            if app.focus == Focus::Branches {
+                // Direct checkout of the selected branch (bypasses dialog)
+                if let Some(b) = app.selected_branch_info().cloned() {
+                    if !b.is_current {
+                        let (name, is_remote) = if b.is_remote_only {
+                            (format!("origin/{}", b.name), true)
+                        } else {
+                            (b.name, false)
+                        };
+                        launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
+                    }
+                }
+            } else {
+                app.open_branch_select();
+            }
+        }
         KeyCode::Char('h') => app.open_history(app::HistoryFilter::Full),
         KeyCode::Char('T') => app.next_theme(),
+        KeyCode::Esc => {
+            if app.focus == Focus::Branches {
+                app.close_branches_pane();
+            }
+        }
         _ => {}
     }
 }
@@ -698,7 +788,7 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
         path.clone(),
         match &request {
             OpRequest::Fetch => app::RepoOperation::Fetching,
-            OpRequest::Pull => app::RepoOperation::Pulling,
+            OpRequest::Pull | OpRequest::PullBranch(_) => app::RepoOperation::Pulling,
             OpRequest::Push | OpRequest::ForcePush => app::RepoOperation::Pushing,
             _ => app::RepoOperation::Fetching,
         },
@@ -767,6 +857,7 @@ fn handle_op_result(
     }
     refresh_single_repo(app, &result.repo_path);
     app.refresh_history_for_repo(&result.repo_path.clone());
+    app.refresh_branches_for_repo(&result.repo_path.clone());
     *dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
 }
 
@@ -982,6 +1073,107 @@ fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpRe
     }
 }
 
+fn handle_branch_menu_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
+    match key {
+        KeyCode::Down => app.menu_next(),
+        KeyCode::Up => app.menu_previous(),
+        KeyCode::PageDown => app.menu_next_page(),
+        KeyCode::PageUp => app.menu_previous_page(),
+        KeyCode::Esc => app.close_menu(),
+        KeyCode::Enter => {
+            if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {
+                if !item.is_separator {
+                    dispatch_branch_menu_action(app, op_tx, item.key);
+                }
+            }
+        }
+        k => {
+            if let KeyCode::Char(c) = k {
+                dispatch_branch_menu_action(app, op_tx, c);
+            }
+        }
+    }
+}
+
+fn dispatch_branch_menu_action(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: char,
+) {
+    let branch = match app
+        .branch_info_list
+        .get(app.branches_pane_selected)
+        .cloned()
+    {
+        Some(b) => b,
+        None => {
+            app.close_menu();
+            return;
+        }
+    };
+
+    match key {
+        'c' => {
+            app.close_menu();
+            let (name, is_remote) = if branch.is_remote_only {
+                (format!("origin/{}", branch.name), true)
+            } else {
+                (branch.name, false)
+            };
+            launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
+        }
+        'h' => {
+            app.close_menu();
+            app.open_history_for_branch(HistoryFilter::BranchFull(branch.name));
+        }
+        'u' => {
+            let of = branch.upstream.map(|u| u.branch).unwrap_or_default();
+            app.close_menu();
+            if !of.is_empty() {
+                app.open_history_for_branch(HistoryFilter::BranchAheadOf {
+                    branch: branch.name,
+                    of,
+                });
+            }
+        }
+        'U' => {
+            let of = branch.upstream.map(|u| u.branch).unwrap_or_default();
+            app.close_menu();
+            if !of.is_empty() {
+                app.open_history_for_branch(HistoryFilter::BranchBehindOf {
+                    branch: branch.name,
+                    of,
+                });
+            }
+        }
+        't' => {
+            let of = branch.trunk.map(|t| t.branch).unwrap_or_default();
+            app.close_menu();
+            if !of.is_empty() {
+                app.open_history_for_branch(HistoryFilter::BranchAheadOf {
+                    branch: branch.name,
+                    of,
+                });
+            }
+        }
+        'T' => {
+            let of = branch.trunk.map(|t| t.branch).unwrap_or_default();
+            app.close_menu();
+            if !of.is_empty() {
+                app.open_history_for_branch(HistoryFilter::BranchBehindOf {
+                    branch: branch.name,
+                    of,
+                });
+            }
+        }
+        'p' => {
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::PullBranch(branch.name));
+        }
+        _ => {}
+    }
+}
+
 fn handle_branch_select_key(
     app: &mut App,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
@@ -994,14 +1186,12 @@ fn handle_branch_select_key(
         KeyCode::Enter => {
             if let Some(item) = app.selected_branch_item().cloned() {
                 app.close_branch_select();
-                launch_op(
-                    app,
-                    op_tx,
-                    OpRequest::CheckoutBranch {
-                        name: item.name,
-                        is_remote: item.is_remote,
-                    },
-                );
+                let (name, is_remote) = if item.is_remote {
+                    (format!("origin/{}", item.name), true)
+                } else {
+                    (item.name, false)
+                };
+                launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
             }
         }
         _ => {}
@@ -1360,26 +1550,44 @@ fn handle_history_key(
         }
         KeyCode::Down => {
             app.next();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::Up => {
             app.previous();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::PageDown => {
             app.next_page();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::PageUp => {
             app.previous_page();
-            app.reload_history_if_open();
+            if app.focus == Focus::Branches {
+                app.reload_history_from_branches();
+            } else {
+                app.reload_history_if_open();
+            }
             app.refresh_diff();
         }
         KeyCode::Enter => {
-            if app.focus == Focus::Log && app.show_log {
+            if app.focus == Focus::Branches {
+                app.open_branch_action_menu();
+            } else if app.focus == Focus::Log && app.show_log {
                 app.open_log_action_menu();
             } else if app.focus == Focus::FileStatus && app.show_file_status {
                 app.open_file_action_menu();
@@ -1391,14 +1599,41 @@ fn handle_history_key(
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
         KeyCode::Char('d') => app.toggle_diff(),
+        KeyCode::Char('b') => {
+            if app.show_branches {
+                app.close_branches_pane();
+            } else {
+                app.open_branches_pane();
+            }
+        }
         KeyCode::Char('r') => refresh_repos(app),
         KeyCode::Char('T') => app.next_theme(),
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),
-        KeyCode::Char('c') => app.open_branch_select(),
+        KeyCode::Char('c') => {
+            if app.focus == Focus::Branches {
+                if let Some(b) = app.selected_branch_info().cloned() {
+                    if !b.is_current {
+                        let (name, is_remote) = if b.is_remote_only {
+                            (format!("origin/{}", b.name), true)
+                        } else {
+                            (b.name, false)
+                        };
+                        launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
+                    }
+                }
+            } else {
+                app.open_branch_select();
+            }
+        }
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
+        KeyCode::Esc => {
+            if app.focus == Focus::Branches {
+                app.close_branches_pane();
+            }
+        }
         _ => {}
     }
 }

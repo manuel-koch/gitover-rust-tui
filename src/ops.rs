@@ -49,6 +49,8 @@ pub enum OpRequest {
     },
     /// Delete an untracked file from disk (path relative to repo root).
     DiscardFile(String),
+    /// Fast-forward pull of a local branch without checking it out.
+    PullBranch(String),
     /// Run a custom shell command from config (already interpolated).
     RunRepoCommand {
         name: String,
@@ -72,6 +74,7 @@ impl OpRequest {
             OpRequest::UnstageFile(_) => "unstage file".into(),
             OpRequest::RevertFile { .. } => "revert file".into(),
             OpRequest::DiscardFile(_) => "discard file".into(),
+            OpRequest::PullBranch(name) => format!("pull branch {name}"),
             OpRequest::RunRepoCommand { name, .. } => name.clone(),
         }
     }
@@ -171,6 +174,18 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
                 &mut lines,
             )
         }
+
+        OpRequest::PullBranch(branch) => run_git(
+            git_bin,
+            repo_path,
+            &[
+                "fetch",
+                "origin",
+                &format!("{branch}:{branch}"),
+                "--update-head-ok",
+            ],
+            &mut lines,
+        ),
 
         OpRequest::DiscardFile(path) => {
             let abs = std::path::PathBuf::from(repo_path).join(path);

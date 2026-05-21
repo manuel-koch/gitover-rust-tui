@@ -43,16 +43,31 @@ done
 echo "Creating demo repos in $SANDBOX …"
 echo ""
 
-# ── repo-01: clean, fully in sync with upstream ────────────────────────────
-# Shows:  clean status, ↑0 ↓0 on both upstream and trunk columns
+# ── repo-01: clean, fully in sync with upstream; 2 remote-only branches ─────
+# Shows:  clean status, ↑0 ↓0 on both upstream and trunk columns,
+#         remote branches feature/login and feature/dashboard not yet checked out
 
-echo "  repo-01 — clean, in sync with upstream"
+echo "  repo-01 — clean, in sync with upstream, 2 remote-only branches"
 git init --bare  "$SANDBOX/repo-01.origin" -b main -q
 git clone        "$SANDBOX/repo-01.origin" "$SANDBOX/repo-01" -q
 identity         "$SANDBOX/repo-01"
 echo "# Alpha" > "$SANDBOX/repo-01/README.md"
 commit           "$SANDBOX/repo-01" "initial commit"
 git -C           "$SANDBOX/repo-01" push origin main -q
+# Push two branches to origin via a temp clone (no local branch in repo-01)
+git clone        "$SANDBOX/repo-01.origin" "$SANDBOX/_tmp" -q
+identity         "$SANDBOX/_tmp"
+git -C           "$SANDBOX/_tmp" checkout -b feature/login -q
+echo "login page" > "$SANDBOX/_tmp/login.txt"
+commit           "$SANDBOX/_tmp" "feat: add login page"
+git -C           "$SANDBOX/_tmp" push origin feature/login -q
+git -C           "$SANDBOX/_tmp" checkout main -q
+git -C           "$SANDBOX/_tmp" checkout -b feature/dashboard -q
+echo "dashboard" > "$SANDBOX/_tmp/dashboard.txt"
+commit           "$SANDBOX/_tmp" "feat: add dashboard"
+git -C           "$SANDBOX/_tmp" push origin feature/dashboard -q
+rm -rf           "$SANDBOX/_tmp"
+git -C           "$SANDBOX/repo-01" fetch -q   # make remote branches visible, no local checkout
 
 # ── repo-02: staged + modified + deleted + untracked ────────────────────────
 # Shows:  S / M / D / U counts in the Status column; no upstream configured
@@ -68,6 +83,36 @@ printf "line one\nline two\nline three\nline four\nline six\nline seven\nline ei
 printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde' \
     > "$SANDBOX/repo-02/image.png"                              # binary file (initial)
 commit                     "$SANDBOX/repo-02" "initial commit"
+# feature/metrics — 3 commits with mixed changes
+git -C "$SANDBOX/repo-02" checkout -b feature/metrics -q
+echo "collect cpu mem io"  >  "$SANDBOX/repo-02/metrics.txt"
+echo "## Metrics"          >> "$SANDBOX/repo-02/README.md"
+commit                        "$SANDBOX/repo-02" "feat: add metrics collector"
+echo "store: file"         >  "$SANDBOX/repo-02/metrics-store.txt"
+echo "flush interval: 10s" >> "$SANDBOX/repo-02/metrics.txt"
+echo "metrics.path=/var/metrics" >> "$SANDBOX/repo-02/config.txt"
+commit                        "$SANDBOX/repo-02" "feat: add metrics storage and config"
+echo "# Metrics"           >  "$SANDBOX/repo-02/metrics-docs.md"
+echo "export format: json" >> "$SANDBOX/repo-02/metrics.txt"
+printf "line one\nline two\nline three\nline four\nline five\n" > "$SANDBOX/repo-02/notes.txt"
+commit                        "$SANDBOX/repo-02" "docs: document metrics module and revise notes"
+git -C "$SANDBOX/repo-02" checkout main -q
+
+# feature/search — 3 commits with mixed changes
+git -C "$SANDBOX/repo-02" checkout -b feature/search -q
+echo "index: inverted"     >  "$SANDBOX/repo-02/search.txt"
+echo "## Search"           >> "$SANDBOX/repo-02/README.md"
+commit                        "$SANDBOX/repo-02" "feat: add search index"
+echo "filter: stopwords"   >  "$SANDBOX/repo-02/search-filters.txt"
+echo "max results: 100"    >> "$SANDBOX/repo-02/search.txt"
+echo "search.cache=true"   >> "$SANDBOX/repo-02/config.txt"
+commit                        "$SANDBOX/repo-02" "feat: add search filters and extend config"
+echo "# Search"            >  "$SANDBOX/repo-02/search-docs.md"
+echo "ranking: bm25"       >> "$SANDBOX/repo-02/search.txt"
+echo "hello from search"   >> "$SANDBOX/repo-02/hello.txt"
+commit                        "$SANDBOX/repo-02" "docs: document search module and update hello"
+git -C "$SANDBOX/repo-02" checkout main -q
+
 # produce each status kind
 echo "modified"            >> "$SANDBOX/repo-02/hello.txt"   # M – modified
 rm                            "$SANDBOX/repo-02/remove-me.txt" # D – deleted
@@ -167,7 +212,7 @@ git -C                "$SANDBOX/repo-07" merge branch-a 2>/dev/null || true
 echo ""
 echo "Done. Add these paths to gitover with the 'A' key:"
 echo ""
-echo "  $SANDBOX/repo-01 : clean, in sync with upstream"
+echo "  $SANDBOX/repo-01 : clean, in sync with upstream; remote branches feature/login + feature/dashboard not checked out"
 echo "  $SANDBOX/repo-02 : S+M+D+U in status column"
 echo "  $SANDBOX/repo-03 : ↑3 ↓0 (3 commits ahead of upstream)"
 echo "  $SANDBOX/repo-04 : ↑0 ↓2 (2 commits behind upstream)"
