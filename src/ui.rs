@@ -24,6 +24,23 @@ use std::time::Instant;
 use crate::app::{App, AppMode, Focus, RepoOperation};
 use crate::git::RepoStatus;
 
+/// Popup width (percent of terminal width) for the repo/log action menu.
+pub const ACTION_MENU_WIDTH_PCT: u16 = 60;
+/// Popup width (percent of terminal width) for the file action menu.
+pub const FILE_ACTION_MENU_WIDTH_PCT: u16 = 80;
+/// Height (rows) of the header panel — used for layout and popup positioning.
+pub const HEADER_HEIGHT: u16 = 3;
+/// Height (rows) of the help bar at the bottom of the screen.
+const HELP_BAR_HEIGHT: u16 = 1;
+/// Total rows consumed by fixed panels (header + help bar).
+const FIXED_PANE_HEIGHT: u16 = HEADER_HEIGHT + HELP_BAR_HEIGHT;
+/// Popup width (percent of terminal width) for branch-select and new-branch dialogs.
+pub const BRANCH_SELECT_WIDTH_PCT: u16 = 80;
+/// Minimum height (rows) for the branch-select popup.
+pub const BRANCH_SELECT_MIN_HEIGHT: u16 = 5;
+/// Maximum height (rows) for the branch-select popup.
+pub const BRANCH_SELECT_MAX_HEIGHT: u16 = 20;
+
 /// Rectangles for each visible pane — used by mouse event handlers in main.rs.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -41,8 +58,7 @@ pub struct PaneAreas {
 /// This mirrors the layout logic in `draw()` so main.rs can use these
 /// rectangles for mouse-click focus detection.
 pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
-    let fixed_height: u16 = 4;
-    let total_available = total.height.saturating_sub(fixed_height);
+    let total_available = total.height.saturating_sub(FIXED_PANE_HEIGHT);
 
     let open_panes = [app.show_file_status, app.show_history, app.show_log]
         .into_iter()
@@ -55,7 +71,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     let pane_height = base_share;
 
     let mut constraints: Vec<Constraint> = Vec::new();
-    constraints.push(Constraint::Length(3));
+    constraints.push(Constraint::Length(HEADER_HEIGHT));
     constraints.push(Constraint::Length(repo_height));
 
     if app.show_file_status {
@@ -67,7 +83,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     if app.show_log {
         constraints.push(Constraint::Length(pane_height));
     }
-    constraints.push(Constraint::Length(1));
+    constraints.push(Constraint::Length(HELP_BAR_HEIGHT));
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -116,8 +132,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     app.cached_pane_areas = Some(pane_areas(app, frame.area()));
 
     // Compute remaining vertical space after fixed-height panels.
-    let fixed_height: u16 = 4; // header 3 + help bar 1 always present
-    let total_available = frame.area().height.saturating_sub(fixed_height);
+    let total_available = frame.area().height.saturating_sub(FIXED_PANE_HEIGHT);
 
     // Count open optional panes (File Status, History, Log).
     let open_panes = [app.show_file_status, app.show_history, app.show_log]
@@ -135,7 +150,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // Build constraints in fixed order: header / table / file status / history / log / help bar
     let mut constraints: Vec<Constraint> = Vec::new();
-    constraints.push(Constraint::Length(3)); // header
+    constraints.push(Constraint::Length(HEADER_HEIGHT)); // header
     constraints.push(Constraint::Length(repo_height)); // Repositories table — gets all extra space
 
     if app.show_file_status {
@@ -147,7 +162,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.show_log {
         constraints.push(Constraint::Length(pane_height));
     }
-    constraints.push(Constraint::Length(1)); // help bar
+    constraints.push(Constraint::Length(HELP_BAR_HEIGHT)); // help bar
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -956,7 +971,7 @@ fn draw_confirm_remove(frame: &mut Frame, app: &App) {
 
 // ── Action menu popup ─────────────────────────────────────────────────────
 
-fn draw_action_menu(frame: &mut Frame, app: &App) {
+fn draw_action_menu(frame: &mut Frame, app: &mut App) {
     let t = app.theme();
     let title = match app.mode {
         AppMode::LogActionMenu => " Output Log ".to_string(),
@@ -978,12 +993,15 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
         }
     };
     let width = if app.mode == AppMode::FileActionMenu {
-        80
+        FILE_ACTION_MENU_WIDTH_PCT
     } else {
-        50
+        ACTION_MENU_WIDTH_PCT
     };
-    let height = (app.menu_items.len() as u16 + 4).min(frame.area().height);
-    let area = top_centered_rect(width, height, 3, frame.area());
+    let n = app.menu_items.len();
+    // Cap height to available screen space; +2 for top/bottom borders.
+    let max_height = frame.area().height.saturating_sub(HEADER_HEIGHT);
+    let height = ((n as u16 + 2).min(max_height)).max(3);
+    let area = top_centered_rect(width, height, HEADER_HEIGHT, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -993,11 +1011,38 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let visible = inner.height as usize;
+
+    // Clamp scroll so menu_selected is always in the viewport.
+    if n > 0 && visible > 0 {
+        if app.menu_selected < app.menu_scroll {
+            app.menu_scroll = app.menu_selected;
+        } else if app.menu_selected >= app.menu_scroll + visible {
+            app.menu_scroll = app.menu_selected + 1 - visible;
+        }
+        let max_scroll = n.saturating_sub(visible);
+        if app.menu_scroll > max_scroll {
+            app.menu_scroll = max_scroll;
+        }
+    }
+
+    let scroll = app.menu_scroll;
+    let has_more_above = scroll > 0;
+    let has_more_below = scroll + visible < n;
+
     let rows: Vec<Row<'_>> = app
         .menu_items
         .iter()
         .enumerate()
+        .skip(scroll)
+        .take(visible)
         .map(|(i, item)| {
+            if item.is_separator {
+                return Row::new(vec![
+                    Cell::from(""),
+                    Cell::from("─────").style(Style::default().fg(t.border_unfocused)),
+                ]);
+            }
             let selected = i == app.menu_selected;
             let style = if selected {
                 Style::default()
@@ -1021,6 +1066,32 @@ fn draw_action_menu(frame: &mut Frame, app: &App) {
     let table = Table::new(rows, [Constraint::Length(4), Constraint::Fill(1)])
         .block(Block::default().borders(Borders::NONE));
     frame.render_widget(table, inner);
+
+    // Overflow indicators: ▲ top-right when scrolled down, ▼ bottom-right when more below.
+    if has_more_above && inner.width > 2 {
+        let ind = Rect {
+            x: inner.x + inner.width - 2,
+            y: inner.y,
+            width: 2,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(Span::styled("▲ ", Style::default().fg(t.help_key))),
+            ind,
+        );
+    }
+    if has_more_below && inner.height > 0 && inner.width > 2 {
+        let ind = Rect {
+            x: inner.x + inner.width - 2,
+            y: inner.y + inner.height - 1,
+            width: 2,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(Span::styled("▼ ", Style::default().fg(t.help_key))),
+            ind,
+        );
+    }
 }
 
 // ── Branch select popup ───────────────────────────────────────────────────
@@ -1033,9 +1104,9 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
         " Checkout Branch — select branch ".to_string()
     };
     let height = (app.branch_items.len() as u16 + 4)
-        .clamp(5, 20)
+        .clamp(BRANCH_SELECT_MIN_HEIGHT, BRANCH_SELECT_MAX_HEIGHT)
         .min(frame.area().height);
-    let area = centered_rect(55, height, frame.area());
+    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, height, frame.area());
     frame.render_widget(Clear, area);
 
     let border_color = if delete_mode {
@@ -1105,7 +1176,7 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
 
 fn draw_new_branch_input(frame: &mut Frame, app: &App) {
     let t = app.theme();
-    let area = centered_rect(55, 7, frame.area());
+    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, 7, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()

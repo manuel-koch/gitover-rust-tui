@@ -11,6 +11,10 @@
 - `general.git`: override the path to the git executable
 - `general.auto_fetch_interval`: interval in seconds for automatic background fetch of all repos
   (default: 600 = 10 minutes; set to 0 to disable automatic fetch)
+- `repo_commands`: list of commands that can be run for current repository
+  - `repo_commands[].name`: Description of the command, will be shown in action menu
+  - `repo_commands[].cmd`: The command line to be executed, supports variable expansion like `$ROOT` ( repo git root path ), `$BRANCH` ( current git branch name )
+  - `repo_commands[].background`: Boolean flag whether the `cmd` should be executed in background
 - Persisted app state (repo list, recent repos, pane visibility) stored at `~/.config/gitover/state.yaml`
 
 ## Repository Management
@@ -191,7 +195,7 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Left-click on an action menu entry executes the selected action
 - Clicking outside the action menu dismisses it, same as pressing `Esc`
 
-## Branch Information (per repo, available for future use)
+## Branch Information (per repo)
 
 - Full list of local branches
 - Remote branches not yet checked out locally

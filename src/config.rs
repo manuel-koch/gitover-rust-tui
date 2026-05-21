@@ -16,12 +16,29 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// A custom command that can be run against the selected repository.
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct RepoCommand {
+    /// Human-readable name shown in the action menu.
+    pub name: String,
+    /// Shell command to execute. Supports variables:
+    /// - $ROOT : repo root path
+    /// - $BRANCH : current branch name
+    pub cmd: String,
+    /// When true the command is spawned without waiting for it to finish and its output is discarded.
+    #[serde(default)]
+    pub background: bool,
+}
+
 /// Application configuration loaded from `~/.config/gitover/config.yaml`.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
+    /// Optional list of custom repo commands shown at the bottom of the action menu.
+    #[serde(default)]
+    pub repo_commands: Vec<RepoCommand>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]

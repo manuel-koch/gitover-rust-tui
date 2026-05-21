@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::sync::mpsc::Sender;
 use std::time::SystemTime;
 
@@ -49,22 +49,30 @@ pub enum OpRequest {
     },
     /// Delete an untracked file from disk (path relative to repo root).
     DiscardFile(String),
+    /// Run a custom shell command from config (already interpolated).
+    RunRepoCommand {
+        name: String,
+        cmd: String,
+        /// When true, spawn without waiting and discard output.
+        background: bool,
+    },
 }
 
 impl OpRequest {
-    pub fn label(&self) -> &'static str {
+    pub fn label(&self) -> String {
         match self {
-            OpRequest::Fetch => "fetch",
-            OpRequest::Pull => "pull",
-            OpRequest::Push => "push",
-            OpRequest::ForcePush => "force push",
-            OpRequest::CheckoutBranch { .. } => "checkout",
-            OpRequest::CreateBranch(_) => "create branch",
-            OpRequest::DeleteBranch(_) => "delete branch",
-            OpRequest::StageFile(_) => "stage file",
-            OpRequest::UnstageFile(_) => "unstage file",
-            OpRequest::RevertFile { .. } => "revert file",
-            OpRequest::DiscardFile(_) => "discard file",
+            OpRequest::Fetch => "fetch".into(),
+            OpRequest::Pull => "pull".into(),
+            OpRequest::Push => "push".into(),
+            OpRequest::ForcePush => "force push".into(),
+            OpRequest::CheckoutBranch { .. } => "checkout".into(),
+            OpRequest::CreateBranch(_) => "create branch".into(),
+            OpRequest::DeleteBranch(_) => "delete branch".into(),
+            OpRequest::StageFile(_) => "stage file".into(),
+            OpRequest::UnstageFile(_) => "unstage file".into(),
+            OpRequest::RevertFile { .. } => "revert file".into(),
+            OpRequest::DiscardFile(_) => "discard file".into(),
+            OpRequest::RunRepoCommand { name, .. } => name.clone(),
         }
     }
 }
@@ -72,7 +80,7 @@ impl OpRequest {
 /// Spawn a background thread that executes `request` and sends the result to `tx`.
 pub fn spawn_op(repo_path: String, request: OpRequest, git_bin: String, tx: Sender<OpResult>) {
     std::thread::spawn(move || {
-        let label = request.label().to_string();
+        let label = request.label();
         let (success, lines) = run_op(&repo_path, &request, &git_bin);
         let _ = tx.send(OpResult {
             repo_path,
@@ -174,6 +182,42 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
                 Err(e) => {
                     lines.push(format!("error deleting {path}: {e}"));
                     false
+                }
+            }
+        }
+
+        OpRequest::RunRepoCommand {
+            cmd, background, ..
+        } => {
+            if *background {
+                match std::process::Command::new("sh")
+                    .args(["-c", cmd])
+                    .current_dir(repo_path)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                {
+                    Ok(_) => true,
+                    Err(e) => {
+                        lines.push(format!("error: {e}"));
+                        false
+                    }
+                }
+            } else {
+                match std::process::Command::new("sh")
+                    .args(["-c", cmd])
+                    .current_dir(repo_path)
+                    .output()
+                {
+                    Ok(output) => {
+                        append_output(&output, &mut lines);
+                        output.status.success()
+                    }
+                    Err(e) => {
+                        lines.push(format!("error: {e}"));
+                        false
+                    }
                 }
             }
         }

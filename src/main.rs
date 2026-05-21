@@ -265,10 +265,12 @@ fn handle_mouse_event(
                     .unwrap_or_default();
                 if let Some(item_idx) = menu_item_under_mouse(app, mouse, terminal_area) {
                     if let Some(item) = app.menu_items.get(item_idx).cloned() {
-                        if matches!(app.mode, AppMode::FileActionMenu) {
-                            dispatch_file_menu_action(app, op_tx, item.key);
-                        } else {
-                            dispatch_menu_action(app, op_tx, item.key);
+                        if !item.is_separator {
+                            if matches!(app.mode, AppMode::FileActionMenu) {
+                                dispatch_file_menu_action(app, op_tx, item.key);
+                            } else {
+                                activate_menu_item(app, op_tx, &item);
+                            }
                         }
                     }
                 } else {
@@ -288,9 +290,9 @@ fn handle_mouse_event(
                     .unwrap_or_default();
                 // Height calculation matches UI.
                 let height = (app.branch_items.len() as u16 + 4)
-                    .clamp(5, 20)
+                    .clamp(ui::BRANCH_SELECT_MIN_HEIGHT, ui::BRANCH_SELECT_MAX_HEIGHT)
                     .min(term_area.height);
-                let popup = ui::centered_rect(55, height, term_area);
+                let popup = ui::centered_rect(ui::BRANCH_SELECT_WIDTH_PCT, height, term_area);
                 let inner = ratatui::widgets::Block::default()
                     .borders(ratatui::widgets::Borders::ALL)
                     .title("")
@@ -529,15 +531,16 @@ pub fn menu_item_under_mouse(
     mouse: &MouseEvent,
     terminal_area: ratatui::layout::Rect,
 ) -> Option<usize> {
-    // Mirror the geometry used in draw_action_menu:
-    // height = menu_items.len() + 4 (title + top/bottom borders + blank line at bottom)
+    // Mirror the geometry used in draw_action_menu exactly.
     let width = if matches!(app.mode, AppMode::FileActionMenu) {
-        66
+        ui::FILE_ACTION_MENU_WIDTH_PCT
     } else {
-        40
+        ui::ACTION_MENU_WIDTH_PCT
     };
-    let height = (app.menu_items.len() as u16 + 4).min(terminal_area.height);
-    let area = ui::top_centered_rect(width, height, 3, terminal_area);
+    let n = app.menu_items.len() as u16;
+    let max_height = terminal_area.height.saturating_sub(ui::HEADER_HEIGHT);
+    let height = ((n + 2).min(max_height)).max(3);
+    let area = ui::top_centered_rect(width, height, ui::HEADER_HEIGHT, terminal_area);
     let (col, row) = (mouse.column, mouse.row);
 
     // Check if click is inside the menu area
@@ -553,7 +556,7 @@ pub fn menu_item_under_mouse(
         return None;
     }
 
-    let item_index = (row - inner_top) as usize;
+    let item_index = (row - inner_top) as usize + app.menu_scroll;
     if item_index >= app.menu_items.len() {
         return None;
     }
@@ -675,8 +678,46 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
             _ => app::RepoOperation::Fetching,
         },
     );
-    app.log(format!("{label} {path}"));
+    app.log(format!("run '{label}' in {path}"));
     spawn_op(path, request, git_bin, op_tx.clone());
+}
+
+/// Interpolate `$ROOT` / `$BRANCH` in a repo command string and spawn it.
+fn launch_repo_cmd(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    name: &str,
+    raw_cmd: &str,
+    background: bool,
+) {
+    if app.repos.is_empty() {
+        return;
+    }
+    let repo = &app.repos[app.selected];
+    if repo.error.is_some() {
+        return;
+    }
+    let root = repo.path.clone();
+    let branch = repo.branch.clone();
+    let cmd = raw_cmd.replace("$ROOT", &root).replace("$BRANCH", &branch);
+    let name = name.to_string();
+    let git_bin = app
+        .config
+        .general
+        .git
+        .clone()
+        .unwrap_or_else(|| "git".to_string());
+    app.log(format!("run '{name}' in {root}"));
+    spawn_op(
+        root,
+        OpRequest::RunRepoCommand {
+            name,
+            cmd,
+            background,
+        },
+        git_bin,
+        op_tx.clone(),
+    );
 }
 
 /// Handle a completed op result: log output, clear busy indicator, refresh.
@@ -686,11 +727,12 @@ fn handle_op_result(
     result: OpResult,
 ) {
     app.operations.remove(&result.repo_path);
-    let status = if result.success { "ok" } else { "FAILED" };
-    app.log(format!(
-        "{} {} — {status}",
-        result.op_label, result.repo_path
-    ));
+    if !result.success {
+        app.log(format!(
+            "FAILED '{}' in {}",
+            result.op_label, result.repo_path
+        ));
+    }
     for line in &result.lines {
         app.log(format!("  {line}"));
     }
@@ -712,18 +754,48 @@ fn handle_menu_key(
     match key {
         KeyCode::Down => app.menu_next(),
         KeyCode::Up => app.menu_previous(),
+        KeyCode::PageDown => app.menu_next_page(),
+        KeyCode::PageUp => app.menu_previous_page(),
         KeyCode::Esc => app.close_menu(),
         KeyCode::Enter => {
             if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {
-                dispatch_menu_action(app, op_tx, item.key);
+                if !item.is_separator {
+                    activate_menu_item(app, op_tx, &item);
+                }
             }
         }
-        // Also handle direct key shortcuts inside the menu
         k => {
             if let KeyCode::Char(c) = k {
-                dispatch_menu_action(app, op_tx, c);
+                // Check for a repo-command with this key first; fall back to built-in dispatch.
+                let rc = app
+                    .menu_items
+                    .iter()
+                    .find(|i| !i.is_separator && i.key == c && i.repo_cmd.is_some())
+                    .cloned();
+                if let Some(item) = rc {
+                    activate_menu_item(app, op_tx, &item);
+                } else {
+                    dispatch_menu_action(app, op_tx, c);
+                }
             }
         }
+    }
+}
+
+/// Execute the action for a non-separator menu item: repo command or built-in.
+fn activate_menu_item(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    item: &app::MenuItem,
+) {
+    if let Some((raw_cmd, background)) = &item.repo_cmd {
+        let name = item.label.clone();
+        let cmd = raw_cmd.clone();
+        let bg = *background;
+        app.close_menu();
+        launch_repo_cmd(app, op_tx, &name, &cmd, bg);
+    } else {
+        dispatch_menu_action(app, op_tx, item.key);
     }
 }
 
@@ -732,6 +804,8 @@ fn handle_log_menu_key(app: &mut App, _op_tx: &std::sync::mpsc::Sender<OpResult>
     match key {
         KeyCode::Down => app.menu_next(),
         KeyCode::Up => app.menu_previous(),
+        KeyCode::PageDown => app.menu_next_page(),
+        KeyCode::PageUp => app.menu_previous_page(),
         KeyCode::Esc => app.close_menu(),
         KeyCode::Enter => app.copy_log_to_clipboard(), // copy_log_to_clipboard sets mode to PopupMessage
         _ => {}
@@ -828,6 +902,8 @@ fn handle_file_menu_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
     match key {
         KeyCode::Down => app.menu_next(),
         KeyCode::Up => app.menu_previous(),
+        KeyCode::PageDown => app.menu_next_page(),
+        KeyCode::PageUp => app.menu_previous_page(),
         KeyCode::Esc => app.close_menu(),
         KeyCode::Enter => {
             if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {

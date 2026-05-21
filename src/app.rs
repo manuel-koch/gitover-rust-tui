@@ -96,6 +96,42 @@ pub enum AppMode {
 pub struct MenuItem {
     pub label: String,
     pub key: char,
+    /// When true this item is a visual separator row and cannot be activated.
+    pub is_separator: bool,
+    /// Raw (un-interpolated) shell command + background flag for custom repo commands from config.
+    pub repo_cmd: Option<(String, bool)>,
+}
+
+impl MenuItem {
+    pub fn item(label: impl Into<String>, key: char) -> Self {
+        Self {
+            label: label.into(),
+            key,
+            is_separator: false,
+            repo_cmd: None,
+        }
+    }
+    pub fn separator() -> Self {
+        Self {
+            label: String::new(),
+            key: '\0',
+            is_separator: true,
+            repo_cmd: None,
+        }
+    }
+    pub fn repo_command(
+        label: impl Into<String>,
+        key: char,
+        cmd: String,
+        background: bool,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            key,
+            is_separator: false,
+            repo_cmd: Some((cmd, background)),
+        }
+    }
 }
 
 /// An item in the branch selection list.
@@ -160,6 +196,8 @@ pub struct App {
     pub menu_items: Vec<MenuItem>,
     /// Currently highlighted action menu item.
     pub menu_selected: usize,
+    /// Scroll offset (top visible row) for the action menu popup.
+    pub menu_scroll: usize,
     /// Branches shown in the branch-select popup.
     pub branch_items: Vec<BranchItem>,
     /// Currently highlighted branch-select item.
@@ -204,6 +242,9 @@ const MAX_LOG_LINES: usize = 1000;
 /// Number of rows to jump when using Fn-Up/Down (PageUp/PageDown).
 const PAGE_STEP: usize = 10;
 
+/// Maximum number of commits loaded into the history pane.
+const HISTORY_COMMIT_LIMIT: usize = 200;
+
 impl App {
     pub fn new() -> Self {
         let config = Config::load();
@@ -245,6 +286,7 @@ impl App {
             next_auto_fetch: Some(Instant::now() + interval),
             menu_items: Vec::new(),
             menu_selected: 0,
+            menu_scroll: 0,
             branch_items: Vec::new(),
             branch_selected: 0,
             branch_input: String::new(),
@@ -625,79 +667,122 @@ impl App {
 
         let mut items = Vec::new();
         if !has_error {
-            items.push(MenuItem {
-                label: "Fetch".into(),
-                key: 'f',
-            });
-            items.push(MenuItem {
-                label: "Pull".into(),
-                key: 'p',
-            });
+            items.push(MenuItem::item("Fetch", 'f'));
+            items.push(MenuItem::item("Pull", 'p'));
             if has_upstream {
-                items.push(MenuItem {
-                    label: "Push".into(),
-                    key: 'P',
-                });
-                items.push(MenuItem {
-                    label: "Force Push".into(),
-                    key: 'F',
-                });
+                items.push(MenuItem::item("Push", 'P'));
+                items.push(MenuItem::item("Force Push", 'F'));
             }
-            items.push(MenuItem {
-                label: "Checkout branch".into(),
-                key: 'c',
-            });
-            items.push(MenuItem {
-                label: "Create new branch".into(),
-                key: 'n',
-            });
-            items.push(MenuItem {
-                label: "Delete branch".into(),
-                key: 'x',
-            });
-            items.push(MenuItem {
-                label: "Commit history".into(),
-                key: 'h',
-            });
+            items.push(MenuItem::item("Checkout branch", 'c'));
+            items.push(MenuItem::item("Create new branch", 'n'));
+            items.push(MenuItem::item("Delete branch", 'x'));
+            items.push(MenuItem::item("Commit history", 'h'));
             if let Some(upstream) = &repo.upstream {
-                items.push(MenuItem {
-                    label: format!("History: ahead of {}", upstream.branch),
-                    key: 'u',
-                });
-                items.push(MenuItem {
-                    label: format!("History: behind {}", upstream.branch),
-                    key: 'U',
-                });
+                if upstream.ahead > 0 {
+                    items.push(MenuItem::item(
+                        format!("History: ahead of {}", upstream.branch),
+                        'u',
+                    ));
+                }
+                if upstream.behind > 0 {
+                    items.push(MenuItem::item(
+                        format!("History: behind {}", upstream.branch),
+                        'U',
+                    ));
+                }
             }
+            // Skip trunk entries when trunk branch == upstream branch (duplicates).
+            let upstream_branch = repo
+                .upstream
+                .as_ref()
+                .map(|u| u.branch.as_str())
+                .unwrap_or("");
             if let Some(trunk) = &repo.trunk {
-                items.push(MenuItem {
-                    label: format!("History: ahead of {}", trunk.branch),
-                    key: 't',
-                });
-                items.push(MenuItem {
-                    label: format!("History: behind {}", trunk.branch),
-                    key: 'T',
-                });
+                if trunk.branch != upstream_branch {
+                    if trunk.ahead > 0 {
+                        items.push(MenuItem::item(
+                            format!("History: ahead of {}", trunk.branch),
+                            't',
+                        ));
+                    }
+                    if trunk.behind > 0 {
+                        items.push(MenuItem::item(
+                            format!("History: behind {}", trunk.branch),
+                            'T',
+                        ));
+                    }
+                }
+            }
+
+            // Custom repo commands from config, separated from built-in actions
+            let cmds = self.config.repo_commands.clone();
+            if !cmds.is_empty() {
+                items.push(MenuItem::separator());
+                for (i, rc) in cmds.iter().enumerate() {
+                    // Assign digit keys '1'–'9', then '0' for the 10th
+                    let key = char::from_digit((i + 1) as u32 % 10, 10).unwrap_or('\0');
+                    items.push(MenuItem::repo_command(
+                        rc.name.clone(),
+                        key,
+                        rc.cmd.clone(),
+                        rc.background,
+                    ));
+                }
             }
         }
+        self.open_menu(items, AppMode::ActionMenu);
+    }
+
+    fn open_menu(&mut self, items: Vec<MenuItem>, mode: AppMode) {
         self.menu_items = items;
         self.menu_selected = 0;
-        self.mode = AppMode::ActionMenu;
+        self.menu_scroll = 0;
+        self.mode = mode;
     }
 
     pub fn menu_next(&mut self) {
-        if !self.menu_items.is_empty() {
-            self.menu_selected = (self.menu_selected + 1) % self.menu_items.len();
+        let n = self.menu_items.len();
+        if n == 0 {
+            return;
+        }
+        let mut idx = (self.menu_selected + 1) % n;
+        for _ in 0..n {
+            if !self.menu_items[idx].is_separator {
+                self.menu_selected = idx;
+                return;
+            }
+            idx = (idx + 1) % n;
         }
     }
 
     pub fn menu_previous(&mut self) {
-        if !self.menu_items.is_empty() {
-            if self.menu_selected == 0 {
-                self.menu_selected = self.menu_items.len() - 1;
-            } else {
-                self.menu_selected -= 1;
+        let n = self.menu_items.len();
+        if n == 0 {
+            return;
+        }
+        let mut idx = if self.menu_selected == 0 {
+            n - 1
+        } else {
+            self.menu_selected - 1
+        };
+        for _ in 0..n {
+            if !self.menu_items[idx].is_separator {
+                self.menu_selected = idx;
+                return;
             }
+            idx = if idx == 0 { n - 1 } else { idx - 1 };
+        }
+    }
+
+    pub fn menu_next_page(&mut self) {
+        for _ in 0..PAGE_STEP {
+            self.menu_next();
+        }
+    }
+
+    pub fn menu_previous_page(&mut self) {
+        for _ in 0..PAGE_STEP {
+            self.menu_previous();
         }
     }
 
@@ -727,62 +812,34 @@ impl App {
         let mut items = Vec::new();
         match file_status {
             FileStatusKind::Staged => {
-                items.push(MenuItem {
-                    label: "Unstage file".into(),
-                    key: 'u',
-                });
+                items.push(MenuItem::item("Unstage file", 'u'));
             }
             FileStatusKind::Modified => {
-                items.push(MenuItem {
-                    label: "Stage file".into(),
-                    key: 's',
-                });
-                items.push(MenuItem {
-                    label: "Revert file".into(),
-                    key: 'r',
-                });
+                items.push(MenuItem::item("Stage file", 's'));
+                items.push(MenuItem::item("Revert file", 'r'));
             }
             FileStatusKind::Deleted => {
-                items.push(MenuItem {
-                    label: "Stage deletion".into(),
-                    key: 's',
-                });
-                items.push(MenuItem {
-                    label: "Revert file".into(),
-                    key: 'r',
-                });
+                items.push(MenuItem::item("Stage deletion", 's'));
+                items.push(MenuItem::item("Revert file", 'r'));
             }
             FileStatusKind::Conflict => {
-                items.push(MenuItem {
-                    label: "Revert file".into(),
-                    key: 'r',
-                });
+                items.push(MenuItem::item("Revert file", 'r'));
             }
             FileStatusKind::Untracked => {
-                items.push(MenuItem {
-                    label: "Stage file".into(),
-                    key: 's',
-                });
-                items.push(MenuItem {
-                    label: "Discard file".into(),
-                    key: 'd',
-                });
+                items.push(MenuItem::item("Stage file", 's'));
+                items.push(MenuItem::item("Discard file", 'd'));
             }
         }
 
-        self.menu_items = items;
-        self.menu_selected = 0;
-        self.mode = AppMode::FileActionMenu;
+        self.open_menu(items, AppMode::FileActionMenu);
     }
 
     /// Open the log action menu for the Output Log pane.
     pub fn open_log_action_menu(&mut self) {
-        self.menu_items = vec![MenuItem {
-            label: "Copy log output".into(),
-            key: ' ', // no direct shortcut key
-        }];
-        self.menu_selected = 0;
-        self.mode = AppMode::LogActionMenu;
+        self.open_menu(
+            vec![MenuItem::item("Copy log output", ' ')],
+            AppMode::LogActionMenu,
+        );
     }
 
     /// Copy the entire Output Log content to the system clipboard.
@@ -928,7 +985,8 @@ impl App {
             return;
         }
         let path = repo.path.clone();
-        self.history = crate::git::get_commit_history(&path, &filter, 200).unwrap_or_default();
+        self.history = crate::git::get_commit_history(&path, &filter, HISTORY_COMMIT_LIMIT)
+            .unwrap_or_default();
         self.history_repo_path = path;
         self.history_filter = filter;
         self.history_selected = 0;
@@ -963,8 +1021,8 @@ impl App {
             return;
         }
         let filter = self.history_filter.clone();
-        self.history =
-            crate::git::get_commit_history(&current_path, &filter, 200).unwrap_or_default();
+        self.history = crate::git::get_commit_history(&current_path, &filter, HISTORY_COMMIT_LIMIT)
+            .unwrap_or_default();
         self.history_repo_path = current_path;
         self.history_selected = 0;
         self.history_scroll = 0;
@@ -977,7 +1035,8 @@ impl App {
             return;
         }
         let filter = self.history_filter.clone();
-        self.history = crate::git::get_commit_history(repo_path, &filter, 200).unwrap_or_default();
+        self.history = crate::git::get_commit_history(repo_path, &filter, HISTORY_COMMIT_LIMIT)
+            .unwrap_or_default();
         self.history_selected = 0;
         self.history_scroll = 0;
     }

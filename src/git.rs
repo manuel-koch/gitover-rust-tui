@@ -1,6 +1,9 @@
 use anyhow::Result;
 use git2::{Repository, Status};
 
+/// Number of hex characters shown for abbreviated commit hashes.
+const COMMIT_HASH_SHORT_LEN: usize = 8;
+
 #[derive(Debug, Clone)]
 pub struct AheadBehind {
     pub ahead: usize,
@@ -128,7 +131,7 @@ pub fn get_commit_history(
         let oid = oid_result?;
         let commit = repo.find_commit(oid)?;
 
-        let short_hash = format!("{:.8}", commit.id());
+        let short_hash = format!("{:.prec$}", commit.id(), prec = COMMIT_HASH_SHORT_LEN);
         let author = commit.author().name().unwrap_or("?").to_string();
         let summary = commit.summary().unwrap_or("").to_string();
 
@@ -392,7 +395,7 @@ fn get_branch_name(repo: &Repository) -> String {
             } else {
                 // Detached HEAD — show first 8 chars of the commit SHA
                 match head.target() {
-                    Some(oid) => format!("detached {}", &oid.to_string()[..8]),
+                    Some(oid) => format!("detached {}", &oid.to_string()[..COMMIT_HASH_SHORT_LEN]),
                     None => "detached".to_string(),
                 }
             }
