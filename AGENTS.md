@@ -34,14 +34,19 @@ Merge finished todo tasks with the features document:
   - If feature is not matched, introduce a new distinct feature with tasks content.
     If needed check if the new feature belongs to a new section/heading within the documents
     to group features by topics.
-  - if in doubt if a task matches a feature, ask the user how to proceed, provide proposal what you think would fit best.
-- Don't add explicit features that would stem from task that have subject of tests / refactoring / housekeeping or fixing bugs
+  - if in doubt if a task matches a feature, ask the user how to proceed, provide proposal
+    what you think would fit best.
+- Don't add explicit features that would stem from task that have subject of
+  tests / refactoring / housekeeping or fixing bugs
 - Remove finished task from todo when merged with feature document
-- Don't remove empty todo sections - we might add new tasks to it, add a placeholder "- [ ]" task if neccessary.
+- Don't remove empty todo sections - we might add new tasks to it,
+  add a placeholder "- [ ]" task if neccessary.
 
-For updated features document, consult the sources/implementation to check if features are actually implemented
-the way they are currently stated in the feature description.
+For updated features document, consult the sources/implementation to check if features
+are actually implemented the way they are currently stated in the feature description.
 Update the feature descriptions to match the current implementation.
+
+Check `README.md` too and align it to `features.md`.
 
 ## Contributor Notes
 
@@ -60,25 +65,29 @@ src/
   state.rs      — persistent state (repo list, recents, ~/.config/gitover/state.yaml)
   lib.rs        — re-exports config/git/state for integration tests
 tests/
-  git_tests.rs  — unit + integration tests for git.rs
+  git_tests.rs    — unit + integration tests for git.rs
   config_tests.rs — unit tests for config.rs and state.rs
 docs/
   features.md   — implemented feature reference (keep in sync with code)
   todo.md       — living task list (never delete sections, use placeholder)
-Makefile        — lint / format / build-and-run / test targets
+Makefile        — build, lint, format, test, release, install, tag-version targets
 ```
 
 ### Development workflow
 
 After implementing new functionality or fixing bugs, run the test suite to verify all tests still succeed.
-For new feature come up with appropriate test case(s) to verify it.
+For new features come up with appropriate test case(s) to verify them.
 For bugfixes check whether there is an existing test case that could be improved to verify the fix or introduce
 new test case(s) to verify the fix.
 If unclear whether to introduce new test case(s), ask user for clarification.
 
 ```shell
-make lint          # cargo clippy — fix all warnings before committing
+make lint          # cargo check + cargo clippy — fix all warnings before committing
 make format        # cargo fmt
 make test          # cargo test — all tests must pass
-make build-and-run # quick run for manual testing
+make build         # cargo build (debug)
+make build-and-run # cargo run — quick manual test
+make release       # cargo build --release
+make install       # cargo install --path . → ~/.cargo/bin/gitover
+make tag-version   # tag HEAD with version from Cargo.toml
 ```
