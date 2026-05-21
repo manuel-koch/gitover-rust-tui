@@ -356,6 +356,7 @@ fn handle_mouse_event(
                 }
             } else {
                 handle_mouse_click(app, mouse);
+                app.reload_history_if_open();
             }
 
             app.last_click_time = Some(now);
@@ -1327,10 +1328,22 @@ fn handle_history_key(
         KeyCode::Char('h') => app.close_history(),
         KeyCode::Tab => app.cycle_focus(),
         KeyCode::BackTab => app.cycle_focus_reverse(),
-        KeyCode::Down => app.next(),
-        KeyCode::Up => app.previous(),
-        KeyCode::PageDown => app.next_page(),
-        KeyCode::PageUp => app.previous_page(),
+        KeyCode::Down => {
+            app.next();
+            app.reload_history_if_open();
+        }
+        KeyCode::Up => {
+            app.previous();
+            app.reload_history_if_open();
+        }
+        KeyCode::PageDown => {
+            app.next_page();
+            app.reload_history_if_open();
+        }
+        KeyCode::PageUp => {
+            app.previous_page();
+            app.reload_history_if_open();
+        }
         KeyCode::Enter => {
             if app.focus == Focus::Log && app.show_log {
                 app.open_log_action_menu();
