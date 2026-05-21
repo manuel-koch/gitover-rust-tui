@@ -6,24 +6,7 @@ Done tasks are check-marked when implemented.
 
 ## Bugs
 
-- [x] "Repositories" pane, action menu, first entry is selected, click on second entry does not trigger the action.
-
-## Config & Repo Management
-
-- [x] Add repo commands as a list of mappings to configuration
-  - [x] Every repo command has key "name" that holds a string that describes the tool name.
-  - [x] Every repo command has key "cmd" that holds a string that is the commandline
-        of the tool.
-  - [x] "cmd" supports variables like $VAR that are interpolated when the command gets executed
-    - [x] Variable $ROOT: the git root path
-    - [x] Variable $BRANCH: the current git branch
-  - [x] Repo commands are executed with current-working-directory in the git root of
-        current repository.
-  - [x] Output of run repo command is append to the app output log.
-  - [x] Repositories action menu contains the repo commands ( at the end of the list, separated
-        from the built-in actions via a separator line "-------" )
-  - [x] Repo commands support optional "background" boolean property (default false); when true
-        the command is spawned without waiting and its output is discarded.
+- [ ]
 
 ## Git Status Columns
 

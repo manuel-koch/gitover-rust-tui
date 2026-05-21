@@ -72,6 +72,15 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 
 Direct shortcuts `f`, `p`, `P`, `c` also work from the normal Repositories view without opening the menu.
 
+### Custom Repo Commands
+
+Entries from `repo_commands` config are appended to the per-repo action menu below a separator line, after all built-in actions. Digit keys `1`–`9` (then `0`) are assigned in declaration order. Each command:
+
+- Runs with the working directory set to the repo's git root
+- Expands `$ROOT` (git root path) and `$BRANCH` (current branch name) in the command string before execution
+- Appends its output to the Output Log pane on completion
+- If `background: true`, is spawned without waiting and its output is discarded
+
 `Alt-f` fetches all tracked repositories in parallel (global shortcut, works from any pane).
 
 All git operations run in the background. Progress is shown via the Activity column spinner.
@@ -147,7 +156,7 @@ Dismiss the menu with `Esc` or by clicking outside it.
 | Key | Action |
 |-----|--------|
 | `↑` / `↓` | Navigate up/down in focused pane |
-| `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows; clamps at list boundaries, no wrap |
+| `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows in focused pane or action menu; clamps at list boundaries, no wrap |
 | `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / Output Log / Git History / Diff panes |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
