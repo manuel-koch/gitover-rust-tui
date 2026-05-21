@@ -1,4 +1,4 @@
-.PHONY: lint format build-and-run test release install
+.PHONY: lint format build-and-run test release install tag-version
 
 # Run cargo check/clippy and report all warnings
 lint:
@@ -28,3 +28,9 @@ release:
 # Build optimized release binary and install it `~/.cargo/bin`
 install:
 	cargo install --path .
+
+# Tag HEAD with the version from Cargo.toml (e.g. v0.2.0)
+tag-version:
+	$(eval VERSION := $(shell grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/'))
+	git tag v$(VERSION) HEAD
+	@echo "Tagged HEAD as v$(VERSION)"

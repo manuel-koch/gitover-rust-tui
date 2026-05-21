@@ -256,6 +256,7 @@ gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
   - `make test` — runs all unit and integration tests via `cargo test`
   - `make release` — builds an optimized release binary (`target/release/gitover`)
   - `make install` — builds an optimized release binary and installs it into `~/.cargo/bin`
+  - `make tag-version` — creates a git tag `v<version>` at HEAD using the version from `Cargo.toml`
 - `create-sandbox-repos.sh` at the project root creates a set of demo git repositories
   that exercise every major gitover display state:
   | Repo | What it demonstrates |
