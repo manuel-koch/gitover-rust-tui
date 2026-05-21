@@ -7,16 +7,18 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 ## Features (brief)
 
 - Live status for all tracked repos in a single table
-  - current branch
-  - change counter for staged / conflict / modified / deleted / untracked files
-  - ahead / behind counter for upstream and trunk
-- Background git operations: fetch, pull, push, force-push, checkout branch, create branch, delete branch
-- Fetch all repos in parallel
-- Status Details pane — per-file change list with priority sorting and scroll
+  - current branch, ahead/behind upstream and trunk
+  - change counter: staged / conflict / modified / deleted / untracked
+- Background git operations: fetch, pull, push, force-push, checkout, create & delete branch
+- Fetch all repos in parallel (`Alt-f`)
+- Status Details pane — per-file change list with priority sorting and scroll indicators
+- Commit History pane — full log or filtered ahead/behind upstream & trunk; file sub-rows per commit
+- Diff pane — patch-format diff of selected file from Status Details or History pane
 - Output Log pane — timestamped git command output with auto-follow
+- Per-file actions: stage, unstage, revert, discard
+- Custom repo commands configurable per project
 - File-system watcher for instant refresh (no polling)
-- Persistent repo list and recent-repo history across sessions
-- Config file for custom git path
+- Persistent repo list and pane state across sessions
 
 ![screenshot](screenshot.jpg)
 
@@ -36,13 +38,13 @@ The binary is at `target/release/gitover`. Copy it anywhere on your PATH:
 cp target/release/gitover ~/.local/bin/gitover
 ```
 
-Or run directly without installing:
+Or build and install in one step:
 
 ```shell
-cargo run --release
+make install
 ```
 
-Or build executable locally from the remote git repo and install it
+Or install directly from the remote git repo:
 
 ```shell
 cargo install --git https://github.com/manuel-koch/gitover-rust-tui
@@ -50,72 +52,99 @@ cargo install --git https://github.com/manuel-koch/gitover-rust-tui
 
 ## Configuration
 
-Gitover reads its config from `~/.config/gitover/config.yaml`.
-
-The file is optional — a missing or empty file is valid. Example:
+Config file lookup: searches for `gitover.config.yaml` starting from the current working directory,
+walking up to the filesystem root; falls back to `~/.config/gitover/config.yaml`.
+A missing file is valid — defaults are used.
 
 ```yaml
 general:
-  git: /usr/local/bin/git   # optional: override git executable path
+  git: /usr/local/bin/git        # optional: override git executable path
+  auto_fetch_interval: 600       # seconds between background fetches (0 = disabled)
+
+repo_commands:
+  - name: Open in editor
+    cmd: code $ROOT
+    background: true
 ```
 
-State (repo list, recents) is saved automatically to `~/.config/gitover/state.yaml`.
+State (repo list, pane visibility) is saved automatically to `~/.config/gitover/state.yaml`
+(or a `gitover.state.yaml` found by the same CWD-walk).
 
 ## Usage
 
 ```shell
-gitover
+gitover [--config <path>] [--state <path>]
 ```
 
 On first launch the repo list is empty. Press `A` to add a repository using the file picker.
+If the current working directory is a git repository it is added automatically.
 
 ## Keybindings
 
 ### Global
 
-| Key       | Action                                      |
-|-----------|---------------------------------------------|
-| `Ctrl-C`  | Quit                                        |
-| `Tab`     | Cycle focus: Repositories / Status Details / Output Log |
-| `r`       | Refresh all repositories                    |
-| `Alt-f`   | Fetch all tracked repos in parallel         |
+| Key         | Action                                                                 |
+|-------------|------------------------------------------------------------------------|
+| `Ctrl-C`    | Quit                                                                   |
+| `Tab`       | Cycle focus forward: Repos → Status Details → History → Diff → Log     |
+| `Shift+Tab` | Cycle focus backward                                                   |
+| `↑` / `↓`  | Navigate in focused pane                                                |
+| `PgUp/Dn`  | Jump 10 rows in focused pane                                            |
+| `r`         | Refresh all repositories                                               |
+| `Alt-f`     | Fetch all tracked repos in parallel                                    |
+| `s`         | Toggle Status Details pane                                             |
+| `h`         | Toggle Git History pane                                                |
+| `d`         | Toggle Diff pane                                                       |
+| `l`         | Toggle Output Log pane                                                 |
 
 ### Repositories pane
 
-| Key           | Action                                  |
-|---------------|-----------------------------------------|
-| `↓`           | Move cursor down                        |
-| `↑`           | Move cursor up                          |
-| `PgDn`        | Jump 10 rows down                       |
-| `PgUp`        | Jump 10 rows up                         |
-| `Enter`       | Open per-repo action menu               |
-| `f`           | Fetch selected repo                     |
-| `p`           | Pull selected repo                      |
-| `P`           | Push selected repo                      |
-| `c`           | Checkout branch (opens branch list)     |
-| `A`           | Add repository (file picker)            |
-| `D`           | Remove selected repository              |
-| `s`           | Toggle Status Details pane              |
-| `l`           | Toggle Output Log pane                  |
+| Key     | Action                                      |
+|---------|---------------------------------------------|
+| `Enter` | Open per-repo action menu                   |
+| `f`     | Fetch selected repo                         |
+| `p`     | Pull selected repo                          |
+| `P`     | Push selected repo                          |
+| `c`     | Checkout branch                             |
+| `A`     | Add repository (file picker)                |
+| `D`     | Remove selected repository (with confirm)   |
 
-### Action menu (opened with Enter)
+### Action menu (opened with `Enter`)
 
-| Key   | Action                                              |
-|-------|-----------------------------------------------------|
-| `f`   | Fetch (`git fetch origin --prune`)                  |
-| `p`   | Pull (auto-stash/pop, `git pull --prune`)           |
-| `P`   | Push (sets upstream automatically if needed)        |
-| `F`   | Force Push (confirmation dialog shown first)        |
-| `c`   | Checkout Branch (auto-stash/pop)                    |
-| `n`   | New Branch (prompts for name)                       |
-| `x`   | Delete Branch (select from list)                    |
-| `Esc` | Dismiss menu                                        |
+| Key   | Action                                            |
+|-------|---------------------------------------------------|
+| `f`   | Fetch (`git fetch origin --prune`)                |
+| `p`   | Pull (auto-stash/pop, `git pull --prune`)         |
+| `P`   | Push (sets upstream automatically if needed)      |
+| `F`   | Force Push (confirmation dialog)                  |
+| `c`   | Checkout Branch (auto-stash/pop)                  |
+| `n`   | New Branch (prompts for name)                     |
+| `x`   | Delete Branch (select from list)                  |
+| `h`   | Commit History (full log)                         |
+| `u/U` | Commit History ahead of / behind upstream         |
+| `t/T` | Commit History ahead of / behind trunk            |
+| `Esc` | Dismiss menu                                      |
 
-### Status Details / Output Log panes
+### Status Details pane
 
-| Key       | Action              |
-|-----------|---------------------|
-| `↓`       | Scroll down        |
-| `↑`       | Scroll up          |
-| `PgDn`    | Jump 10 lines down  |
-| `PgUp`    | Jump 10 lines up    |
+| Key     | Action                           |
+|---------|----------------------------------|
+| `Enter` | Open per-file action menu        |
+| `↑/↓`  | Select file                       |
+| `PgUp/Dn` | Jump 10 files                  |
+
+### Git History pane
+
+| Key     | Action                           |
+|---------|----------------------------------|
+| `↑/↓`  | Navigate commits and file rows    |
+| `PgUp/Dn` | Jump 10 rows                   |
+| `h`     | Close history pane               |
+
+### Diff pane
+
+| Key     | Action            |
+|---------|-------------------|
+| `↑/↓`  | Scroll diff        |
+| `PgUp/Dn` | Jump 10 lines   |
+| `d`     | Close diff pane   |
