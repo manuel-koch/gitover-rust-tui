@@ -1003,20 +1003,29 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
         .inner(inner_chunks[0]);
     frame.render_widget_ref(explorer_widget, explorer_area);
 
-    // Keybinding hint bar
-    let hint = Line::from(vec![
-        Span::styled("↑↓/jk", Style::default().fg(t.help_key)),
-        Span::raw(" navigate  "),
-        Span::styled("Enter/→/l", Style::default().fg(t.help_key)),
-        Span::raw(" open dir  "),
-        Span::styled("←/h/Bksp", Style::default().fg(t.help_key)),
-        Span::raw(" parent  "),
-        Span::styled("Space", Style::default().fg(t.help_key_confirm)),
-        Span::raw(" select repo  "),
-        Span::styled("Esc", Style::default().fg(t.help_key)),
-        Span::raw(" cancel"),
-    ]);
-    frame.render_widget(Paragraph::new(hint), inner_chunks[1]);
+    // Keybinding hint bar — drop leftmost groups when width is tight.
+    // Group widths: navigate=16, open-dir=20, parent=17, Space+Esc=29.
+    let w = inner_chunks[1].width;
+    let ks = Style::default().fg(t.help_key);
+    let kc = Style::default().fg(t.help_key_confirm);
+    let mut spans: Vec<Span> = Vec::new();
+    if w >= 82 {
+        spans.push(Span::styled("↑↓/jk", ks));
+        spans.push(Span::raw(" navigate  "));
+    }
+    if w >= 66 {
+        spans.push(Span::styled("Enter/→/l", ks));
+        spans.push(Span::raw(" open dir  "));
+    }
+    if w >= 46 {
+        spans.push(Span::styled("←/h/Bksp", ks));
+        spans.push(Span::raw(" parent  "));
+    }
+    spans.push(Span::styled("Space", kc));
+    spans.push(Span::raw(" select repo  "));
+    spans.push(Span::styled("Esc", ks));
+    spans.push(Span::raw(" cancel"));
+    frame.render_widget(Paragraph::new(Line::from(spans)), inner_chunks[1]);
 }
 
 fn draw_confirm_remove(frame: &mut Frame, app: &App) {
