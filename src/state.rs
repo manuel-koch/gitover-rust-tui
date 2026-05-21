@@ -31,6 +31,9 @@ pub struct State {
     /// Whether the History pane was open on last exit.
     #[serde(default)]
     pub show_history: bool,
+    /// Whether the Diff pane was open on last exit.
+    #[serde(default)]
+    pub show_diff: bool,
     /// Where this state was loaded from and will be saved to.
     #[serde(skip)]
     pub path: PathBuf,
@@ -43,6 +46,7 @@ impl Default for State {
             show_file_status: false,
             show_log: false,
             show_history: false,
+            show_diff: false,
             path: global_state_path(),
         }
     }
@@ -83,6 +87,7 @@ impl State {
             show_file_status: raw.show_file_status,
             show_log: raw.show_log,
             show_history: raw.show_history,
+            show_diff: raw.show_diff,
             path: path.to_path_buf(),
         })
     }
@@ -103,6 +108,7 @@ impl State {
             show_file_status: self.show_file_status,
             show_log: self.show_log,
             show_history: self.show_history,
+            show_diff: self.show_diff,
             path: PathBuf::new(),
         };
         let content = serde_yaml::to_string(&saveable)?;

@@ -83,6 +83,7 @@ fn main() -> Result<()> {
     }
 
     refresh_repos(&mut app);
+    app.refresh_diff();
 
     let mut dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
 
@@ -357,6 +358,7 @@ fn handle_mouse_event(
             } else {
                 handle_mouse_click(app, mouse);
                 app.reload_history_if_open();
+                app.refresh_diff();
             }
 
             app.last_click_time = Some(now);
@@ -368,6 +370,7 @@ fn handle_mouse_event(
             } else {
                 app.previous();
                 app.reload_history_if_open();
+                app.refresh_diff();
             }
         }
         MouseEventKind::ScrollDown => {
@@ -376,6 +379,7 @@ fn handle_mouse_event(
             } else {
                 app.next();
                 app.reload_history_if_open();
+                app.refresh_diff();
             }
         }
         _ => {}
@@ -404,7 +408,6 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
             // Also select the file under the mouse, if any
             if let Some(row) = file_status_row_under_mouse(app, mouse, *file_status_area) {
                 app.file_status_selected = row;
-                app.file_status_scroll = 0; // reset scroll so selection is visible
             }
             return;
         }
@@ -416,8 +419,14 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
             // Also select the commit/change under the mouse, if any
             if let Some(row) = history_row_under_mouse(app, mouse, *history_area) {
                 app.history_selected = row;
-                app.history_scroll = 0;
             }
+            return;
+        }
+    }
+
+    if let Some(diff_area) = &areas.diff {
+        if in_rect(click, *diff_area) {
+            app.focus = Focus::Diff;
             return;
         }
     }
@@ -433,9 +442,11 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
         app.focus = Focus::Repos;
         // If clicking in the repos table, also update the selection
         if let Some(selected_row) = row_under_mouse(app, mouse, areas.repos) {
-            app.selected = selected_row;
-            app.file_status_selected = 0;
-            app.file_status_scroll = 0;
+            if selected_row != app.selected {
+                app.selected = selected_row;
+                app.file_status_selected = 0;
+                app.file_status_scroll = 0;
+            }
         }
     }
 }
@@ -452,11 +463,8 @@ fn row_under_mouse(
     mouse: &MouseEvent,
     table_area: ratatui::layout::Rect,
 ) -> Option<usize> {
-    // The table block has borders (1 on each side) and a header row with
-    // bottom_margin(1) — visually the header occupies 2 lines (content + margin).
-    // Inner area starts at table_area.y + 1 (top border).
-    // First data row: y + 1 (border) + 1 (header) + 1 (bottom_margin) = y + 3.
-    let inner_top = table_area.y + 3;
+    // 1 top border + 1 header row = first data row at y + 2.
+    let inner_top = table_area.y + 2;
     let inner_bottom = table_area.y + table_area.height - 1; // -1 for bottom border
     let row = mouse.row;
 
@@ -496,7 +504,7 @@ fn file_status_row_under_mouse(
 
     let row_index = (row - inner_top) as usize;
     let files = app.selected_files();
-    let offset_row = row_index;
+    let offset_row = row_index + app.file_status_scroll;
 
     if offset_row < files.len() {
         Some(offset_row)
@@ -523,9 +531,9 @@ fn history_row_under_mouse(
     }
 
     let row_index = (row - inner_top) as usize;
-    let offset_row = row_index;
+    let offset_row = row_index + app.history_scroll;
 
-    if offset_row < app.history.len() {
+    if offset_row < app.history_row_count() {
         Some(offset_row)
     } else {
         None
@@ -585,29 +593,40 @@ fn handle_normal_key(
     }
 
     match key {
-        KeyCode::Tab => app.cycle_focus(),
-        KeyCode::BackTab => app.cycle_focus_reverse(),
+        KeyCode::Tab => {
+            app.cycle_focus();
+            app.refresh_diff();
+        }
+        KeyCode::BackTab => {
+            app.cycle_focus_reverse();
+            app.refresh_diff();
+        }
         KeyCode::Down => {
             app.next();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::Up => {
             app.previous();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::PageDown => {
             app.next_page();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::PageUp => {
             app.previous_page();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::Char('r') => refresh_repos(app),
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
+        KeyCode::Char('d') => app.toggle_diff(),
         // Enter opens context-sensitive action menu
         KeyCode::Enter => {
             if app.focus == Focus::Log && app.show_log {
@@ -1331,23 +1350,33 @@ fn handle_history_key(
 
     match key {
         KeyCode::Char('h') => app.close_history(),
-        KeyCode::Tab => app.cycle_focus(),
-        KeyCode::BackTab => app.cycle_focus_reverse(),
+        KeyCode::Tab => {
+            app.cycle_focus();
+            app.refresh_diff();
+        }
+        KeyCode::BackTab => {
+            app.cycle_focus_reverse();
+            app.refresh_diff();
+        }
         KeyCode::Down => {
             app.next();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::Up => {
             app.previous();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::PageDown => {
             app.next_page();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::PageUp => {
             app.previous_page();
             app.reload_history_if_open();
+            app.refresh_diff();
         }
         KeyCode::Enter => {
             if app.focus == Focus::Log && app.show_log {
@@ -1361,6 +1390,7 @@ fn handle_history_key(
         // Global keys that must work from any pane
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
+        KeyCode::Char('d') => app.toggle_diff(),
         KeyCode::Char('r') => refresh_repos(app),
         KeyCode::Char('T') => app.next_theme(),
         KeyCode::Char('A') => app.enter_pick_mode(),

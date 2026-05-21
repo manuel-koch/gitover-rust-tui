@@ -4,6 +4,9 @@ use git2::{Repository, Status};
 /// Number of hex characters shown for abbreviated commit hashes.
 const COMMIT_HASH_SHORT_LEN: usize = 8;
 
+/// Maximum bytes collected from a diff before truncating.
+const DIFF_TRUNCATION_LIMIT: usize = 1024 * 1024; // 1 MB
+
 #[derive(Debug, Clone)]
 pub struct AheadBehind {
     pub ahead: usize,
@@ -537,6 +540,82 @@ fn get_remote_only_branches(repo: &Repository, local_branches: &[String]) -> Vec
     }
     remote_only.sort();
     remote_only
+}
+
+/// Read the raw content of an untracked file, truncated at `DIFF_TRUNCATION_LIMIT` bytes.
+/// Appends `\n...diff truncated` when the file was cut.
+pub fn get_untracked_file_content(repo_path: &str, file_path: &str) -> Result<String> {
+    let full = std::path::Path::new(repo_path).join(file_path);
+    let bytes = std::fs::read(&full)?;
+    if bytes.contains(&b'\0') {
+        return Ok("<binary file>".to_string());
+    }
+    let (content, truncated) = if bytes.len() > DIFF_TRUNCATION_LIMIT {
+        (
+            std::str::from_utf8(&bytes[..DIFF_TRUNCATION_LIMIT])
+                .unwrap_or("")
+                .to_string(),
+            true,
+        )
+    } else {
+        (String::from_utf8_lossy(&bytes).into_owned(), false)
+    };
+    if truncated {
+        Ok(format!("{}\n...diff truncated", content))
+    } else {
+        Ok(content)
+    }
+}
+
+/// Truncate `text` to `DIFF_TRUNCATION_LIMIT` bytes, appending `\n...diff truncated` if cut.
+fn truncate_text(text: String) -> Result<String> {
+    if text.len() <= DIFF_TRUNCATION_LIMIT {
+        return Ok(text);
+    }
+    let cut = text[..DIFF_TRUNCATION_LIMIT].to_string();
+    Ok(format!("{}\n...diff truncated", cut))
+}
+
+/// Get the patch-format diff of `file_path` in the working tree (staged + unstaged) vs HEAD.
+/// Equivalent to `git diff HEAD -- <file>`.
+pub fn get_file_diff(repo_path: &str, file_path: &str, git_bin: &str) -> Result<String> {
+    let output = std::process::Command::new(git_bin)
+        .args(["-C", repo_path, "diff", "HEAD", "--", file_path])
+        .output()?;
+    truncate_text(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Get the patch-format diff of `file_path` as changed by the commit identified by
+/// `short_hash`, diffed against the commit's first parent.
+pub fn get_commit_file_diff(repo_path: &str, short_hash: &str, file_path: &str) -> Result<String> {
+    let repo = Repository::open(repo_path)?;
+    let obj = repo.revparse_single(short_hash)?;
+    let commit = obj.peel_to_commit()?;
+    let tree = commit.tree()?;
+    let parent_tree = commit.parents().next().and_then(|p| p.tree().ok());
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file_path);
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
+    patch_text_from_diff(&diff)
+}
+
+fn patch_text_from_diff(diff: &git2::Diff) -> Result<String> {
+    let mut text = String::new();
+    let mut truncated = false;
+    let _ = diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        if text.len() >= DIFF_TRUNCATION_LIMIT {
+            truncated = true;
+            return false;
+        }
+        if let Ok(s) = std::str::from_utf8(line.content()) {
+            text.push_str(s);
+        }
+        true
+    });
+    if truncated {
+        text.push_str("\n...diff truncated");
+    }
+    Ok(text)
 }
 
 /// Return local branches that are fully merged into the trunk branch.

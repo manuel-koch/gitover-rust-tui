@@ -21,7 +21,7 @@ use ratatui::{
 };
 use std::time::Instant;
 
-use crate::app::{App, AppMode, Focus, RepoOperation};
+use crate::app::{App, AppMode, DiffSource, Focus, RepoOperation};
 use crate::git::RepoStatus;
 
 /// Popup width (percent of terminal width) for the repo/log action menu.
@@ -51,6 +51,7 @@ pub struct PaneAreas {
     pub file_status: Option<Rect>,
     pub history: Option<Rect>,
     pub log: Option<Rect>,
+    pub diff: Option<Rect>,
     pub help_bar: Rect,
 }
 
@@ -96,13 +97,13 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     let repos = chunks[idx];
     idx += 1;
 
-    let mut file_status = None;
+    let mut file_status: Option<Rect> = None;
     if app.show_file_status {
         file_status = Some(chunks[idx]);
         idx += 1;
     }
 
-    let mut history = None;
+    let mut history: Option<Rect> = None;
     if app.show_history {
         history = Some(chunks[idx]);
         idx += 1;
@@ -116,6 +117,31 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
 
     let help_bar = chunks[idx];
 
+    // When diff is shown, shrink the FileStatus and History panes to the left
+    // half and expose a single right-half diff area spanning their combined height.
+    let mut diff: Option<Rect> = None;
+    if app.show_diff && (file_status.is_some() || history.is_some()) {
+        let top_area = file_status.or(history).unwrap();
+        let bottom_area = history.or(file_status).unwrap();
+        let combined_y = top_area.y;
+        let combined_height = bottom_area.y + bottom_area.height - combined_y;
+        let full_w = total.width;
+        let half_w = full_w / 2;
+        let left_w = full_w - half_w;
+        if let Some(ref mut r) = file_status {
+            r.width = left_w;
+        }
+        if let Some(ref mut r) = history {
+            r.width = left_w;
+        }
+        diff = Some(Rect {
+            x: total.x + left_w,
+            y: combined_y,
+            width: half_w,
+            height: combined_height,
+        });
+    }
+
     PaneAreas {
         terminal: total,
         header,
@@ -123,6 +149,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
         file_status,
         history,
         log,
+        diff,
         help_bar,
     }
 }
@@ -141,18 +168,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .count();
 
     // Distribute available space evenly among Repositories + open panes.
-    // Any remaining lines go to Repositories so it is always the biggest.
     let base_share = total_available / (open_panes as u16 + 1);
     let remainder = total_available % (open_panes as u16 + 1);
-    // Repositories gets `base_share + remainder`; each optional pane gets `base_share`.
     let repo_height = base_share + remainder;
     let pane_height = base_share;
 
-    // Build constraints in fixed order: header / table / file status / history / log / help bar
     let mut constraints: Vec<Constraint> = Vec::new();
-    constraints.push(Constraint::Length(HEADER_HEIGHT)); // header
-    constraints.push(Constraint::Length(repo_height)); // Repositories table — gets all extra space
-
+    constraints.push(Constraint::Length(HEADER_HEIGHT));
+    constraints.push(Constraint::Length(repo_height));
     if app.show_file_status {
         constraints.push(Constraint::Length(pane_height));
     }
@@ -162,7 +185,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.show_log {
         constraints.push(Constraint::Length(pane_height));
     }
-    constraints.push(Constraint::Length(HELP_BAR_HEIGHT)); // help bar
+    constraints.push(Constraint::Length(HELP_BAR_HEIGHT));
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -170,29 +193,71 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
 
     let mut idx = 0;
-
-    // Always present panes (order fixed)
-    draw_header(frame, chunks[idx], app);
+    let header_area = chunks[idx];
     idx += 1;
-    draw_repo_table(frame, chunks[idx], app);
+    let repos_area = chunks[idx];
     idx += 1;
 
-    // Optional panes in fixed order: File Status -> History -> Log
+    let mut file_status_area: Option<Rect> = None;
     if app.show_file_status {
-        draw_file_status_panel(frame, chunks[idx], app);
-        idx += 1;
-    }
-    if app.show_history {
-        draw_history_panel(frame, chunks[idx], app);
-        idx += 1;
-    }
-    if app.show_log {
-        draw_log_panel(frame, chunks[idx], app);
+        file_status_area = Some(chunks[idx]);
         idx += 1;
     }
 
-    // Always present help bar
-    draw_help_bar(frame, chunks[idx], app);
+    let mut history_area: Option<Rect> = None;
+    if app.show_history {
+        history_area = Some(chunks[idx]);
+        idx += 1;
+    }
+
+    let mut log_area: Option<Rect> = None;
+    if app.show_log {
+        log_area = Some(chunks[idx]);
+        idx += 1;
+    }
+
+    let help_area = chunks[idx];
+
+    // When diff is shown, shrink the FileStatus/History panes to the left half
+    // and expose a single right-half panel spanning their combined height.
+    let mut diff_area: Option<Rect> = None;
+    if app.show_diff && (file_status_area.is_some() || history_area.is_some()) {
+        let top_area = file_status_area.or(history_area).unwrap();
+        let bottom_area = history_area.or(file_status_area).unwrap();
+        let combined_y = top_area.y;
+        let combined_height = bottom_area.y + bottom_area.height - combined_y;
+        let full_w = frame.area().width;
+        let half_w = full_w / 2;
+        let left_w = full_w - half_w;
+        if let Some(ref mut r) = file_status_area {
+            r.width = left_w;
+        }
+        if let Some(ref mut r) = history_area {
+            r.width = left_w;
+        }
+        diff_area = Some(Rect {
+            x: frame.area().x + left_w,
+            y: combined_y,
+            width: half_w,
+            height: combined_height,
+        });
+    }
+
+    draw_header(frame, header_area, app);
+    draw_repo_table(frame, repos_area, app);
+    if let Some(area) = file_status_area {
+        draw_file_status_panel(frame, area, app);
+    }
+    if let Some(area) = history_area {
+        draw_history_panel(frame, area, app);
+    }
+    if let Some(area) = diff_area {
+        draw_diff_panel(frame, area, app);
+    }
+    if let Some(area) = log_area {
+        draw_log_panel(frame, area, app);
+    }
+    draw_help_bar(frame, help_area, app);
 
     if app.mode == AppMode::FilePicker {
         draw_file_picker(frame, app);
@@ -388,13 +453,19 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     let has_more_above = app.table_offset > 0;
     let has_more_below = app.table_offset + visible_rows < app.repos.len();
     let t = app.theme();
+    let focused = app.focus == Focus::Repos;
     let inner_x = area.x + 1;
     let inner_y = area.y + 1;
     let inner_w = area.width.saturating_sub(2);
     let inner_h = area.height.saturating_sub(2);
+    let ind_color = if focused {
+        t.border_focused
+    } else {
+        t.border_unfocused
+    };
     if has_more_above && inner_w > 2 {
         frame.render_widget(
-            Paragraph::new(Span::styled("▲ ", Style::default().fg(t.help_key))),
+            Paragraph::new(Span::styled("▲ ", Style::default().fg(ind_color))),
             Rect {
                 x: inner_x + inner_w - 2,
                 y: inner_y + 1,
@@ -405,10 +476,49 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     }
     if has_more_below && inner_h > 1 && inner_w > 2 {
         frame.render_widget(
-            Paragraph::new(Span::styled("▼ ", Style::default().fg(t.help_key))),
+            Paragraph::new(Span::styled("▼ ", Style::default().fg(ind_color))),
             Rect {
                 x: inner_x + inner_w - 2,
                 y: inner_y + inner_h - 1,
+                width: 2,
+                height: 1,
+            },
+        );
+    }
+}
+
+/// Render ▲/▼ scroll indicators at the top-right / bottom-right of `inner`.
+/// Uses the focused/unfocused border colour so the indicator matches the pane border.
+fn draw_scroll_indicators(
+    frame: &mut Frame,
+    inner: Rect,
+    has_more_above: bool,
+    has_more_below: bool,
+    focused: bool,
+    t: &crate::theme::Theme,
+) {
+    let color = if focused {
+        t.border_focused
+    } else {
+        t.border_unfocused
+    };
+    if has_more_above && inner.width > 2 {
+        frame.render_widget(
+            Paragraph::new(Span::styled("▲ ", Style::default().fg(color))),
+            Rect {
+                x: inner.x + inner.width - 2,
+                y: inner.y,
+                width: 2,
+                height: 1,
+            },
+        );
+    }
+    if has_more_below && inner.height > 1 && inner.width > 2 {
+        frame.render_widget(
+            Paragraph::new(Span::styled("▼ ", Style::default().fg(color))),
+            Rect {
+                x: inner.x + inner.width - 2,
+                y: inner.y + inner.height - 1,
                 width: 2,
                 height: 1,
             },
@@ -703,6 +813,15 @@ fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let para = Paragraph::new(lines);
     frame.render_widget(para, inner);
+
+    draw_scroll_indicators(
+        frame,
+        inner,
+        app.file_status_scroll > 0,
+        app.file_status_scroll + visible < files.len(),
+        focused,
+        theme,
+    );
 }
 
 // ── Log panel ─────────────────────────────────────────────────────────────
@@ -763,6 +882,8 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), inner);
+
+    draw_scroll_indicators(frame, inner, start > 0, start + visible < n, focused, theme);
 }
 
 // ── Help bar ──────────────────────────────────────────────────────────────
@@ -771,10 +892,20 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let t = app.theme();
     let focused = app.focus == Focus::History;
     let filter_label = app.history_filter.label();
-    let title = if filter_label.is_empty() {
-        " Commit History ".to_string()
-    } else {
-        format!(" Commit History ({filter_label}) ")
+
+    // Position indicator computed up front so it can go into the title.
+    let commit_idx = app
+        .history_row_at(app.history_selected)
+        .map(|(ci, _)| ci + 1)
+        .unwrap_or(1)
+        .min(app.history.len().max(1));
+    let pos = format!("{}/{}", commit_idx, app.history.len());
+
+    let title = match (filter_label.is_empty(), app.history.is_empty()) {
+        (true, true) => " Commit History ".to_string(),
+        (true, false) => format!(" Commit History [{pos}] "),
+        (false, true) => format!(" Commit History ({filter_label}) "),
+        (false, false) => format!(" Commit History [{pos}] ({filter_label}) "),
     };
     let block = Block::default()
         .borders(Borders::ALL)
@@ -791,8 +922,8 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    // Column widths — distribute proportionally.
-    // hash:10  timestamp:20  author:dynamic  summary:rest
+    // Two-column layout: hash | (timestamp  author  summary)
+    // File sub-rows occupy col 1 only, so they align with the timestamp column.
     let total = inner.width as usize;
     let hash_w = 10usize;
     let ts_w = 20usize;
@@ -804,8 +935,9 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         .max()
         .unwrap_or(8)
         .min(20);
-    let sep = 2usize; // " │ " between cols is 3 chars; account for 3 separators
-    let summary_w = total.saturating_sub(hash_w + ts_w + author_w + sep * 3 + 4);
+    // col 1 width = total minus hash col and the 1-char column_spacing gap
+    let rest_w = total.saturating_sub(hash_w + 1);
+    let summary_w = rest_w.saturating_sub(ts_w + 1 + author_w + 1);
 
     let visible = inner.height as usize;
 
@@ -835,14 +967,24 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             };
             let hash_cell =
                 Cell::from(commit.short_hash.clone()).style(Style::default().fg(t.history_hash));
-            let ts_cell = Cell::from(commit.timestamp.clone())
-                .style(Style::default().fg(t.history_timestamp));
-            let author_cell = Cell::from(commit.author.chars().take(author_w).collect::<String>())
-                .style(Style::default().fg(t.history_author));
-            let summary_cell =
-                Cell::from(commit.summary.chars().take(summary_w).collect::<String>());
-            let row =
-                Row::new(vec![hash_cell, ts_cell, author_cell, summary_cell]).style(row_style);
+            // Build col-1 as a styled Line: timestamp  author  summary
+            let ts_text: String = format!(
+                "{:<ts_w$}",
+                commit.timestamp.chars().take(ts_w).collect::<String>()
+            );
+            let author_text: String = format!(
+                "{:<author_w$}",
+                commit.author.chars().take(author_w).collect::<String>()
+            );
+            let summary_text: String = commit.summary.chars().take(summary_w).collect();
+            let rest_line = Line::from(vec![
+                Span::styled(ts_text, Style::default().fg(t.history_timestamp)),
+                Span::raw(" "),
+                Span::styled(author_text, Style::default().fg(t.history_author)),
+                Span::raw(" "),
+                Span::raw(summary_text),
+            ]);
+            let row = Row::new(vec![hash_cell, Cell::from(rest_line)]).style(row_style);
             rows.push(row);
             if rows.len() >= visible {
                 break 'outer;
@@ -850,7 +992,7 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         }
         flat_idx += 1;
 
-        // File sub-rows
+        // File sub-rows — col 0 empty, col 1 starts at the timestamp position
         for file_delta in &commit.files {
             if flat_idx >= app.history_scroll {
                 let selected = flat_idx == app.history_selected;
@@ -859,18 +1001,15 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                 } else {
                     Style::default()
                 };
-                // empty hash / ts / author; file info in summary column
-                let file_text = format!("  {} {}", file_delta.kind.code(), file_delta.path);
+                let file_text: String = format!("{}  {}", file_delta.kind.code(), file_delta.path)
+                    .chars()
+                    .take(rest_w)
+                    .collect();
                 let file_span = Span::styled(
-                    file_text
-                        .chars()
-                        .take(summary_w + author_w + ts_w)
-                        .collect::<String>(),
+                    file_text,
                     Style::default().fg(t.delta_colour(&file_delta.kind)),
                 );
                 let row = Row::new(vec![
-                    Cell::from(""),
-                    Cell::from(""),
                     Cell::from(""),
                     Cell::from(Line::from(vec![file_span])),
                 ])
@@ -884,35 +1023,118 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         }
     }
 
-    // Scroll indicator: show commit N of M (not flat row index).
-    let commit_idx = app
-        .history_row_at(app.history_selected)
-        .map(|(ci, _)| ci + 1)
-        .unwrap_or(1)
-        .min(app.history.len());
-    let scroll_info = format!("{}/{}", commit_idx, app.history.len());
-    let info_width = scroll_info.len() as u16 + 2;
-    if inner.width > info_width {
-        let info_area = Rect {
-            x: inner.x + inner.width - info_width,
-            y: inner.y,
-            width: info_width,
-            height: 1,
-        };
-        frame.render_widget(
-            Paragraph::new(scroll_info).style(Style::default().fg(t.history_scroll_info)),
-            info_area,
-        );
-    }
-
-    let widths = [
-        Constraint::Length(hash_w as u16),
-        Constraint::Length(ts_w as u16),
-        Constraint::Length(author_w as u16),
-        Constraint::Min(4),
-    ];
+    let widths = [Constraint::Length(hash_w as u16), Constraint::Min(4)];
     let table = Table::new(rows, widths).column_spacing(1);
     frame.render_widget(table, inner);
+
+    draw_scroll_indicators(
+        frame,
+        inner,
+        app.history_scroll > 0,
+        app.history_scroll + visible < app.history_row_count(),
+        focused,
+        t,
+    );
+}
+
+fn draw_diff_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+    let t = app.theme();
+    let focused = app.focus == Focus::Diff;
+
+    // Build a title that names the file being diffed.
+    let title =
+        match app.diff_source {
+            DiffSource::FileStatus => {
+                let name = app
+                    .selected_files()
+                    .get(app.file_status_selected)
+                    .map(|f| f.path.split('/').next_back().unwrap_or(&f.path).to_string())
+                    .unwrap_or_default();
+                if name.is_empty() {
+                    " Diff ".to_string()
+                } else {
+                    format!(" Diff — {name} ")
+                }
+            }
+            DiffSource::History => {
+                let name =
+                    app.history_row_at(app.history_selected)
+                        .and_then(|(ci, fi)| {
+                            let fi = fi?;
+                            app.history.get(ci)?.files.get(fi).map(|f| {
+                                f.path.split('/').next_back().unwrap_or(&f.path).to_string()
+                            })
+                        })
+                        .unwrap_or_default();
+                if name.is_empty() {
+                    " Diff ".to_string()
+                } else {
+                    format!(" Diff — {name} ")
+                }
+            }
+        };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(focus_border_style(focused, t));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if app.diff_content.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Span::styled("no diff", Style::default().fg(t.placeholder))),
+            inner,
+        );
+        return;
+    }
+
+    let visible = inner.height as usize;
+    let total_lines = app.diff_content.lines().count();
+    let max_scroll = total_lines.saturating_sub(visible);
+    if app.diff_scroll > max_scroll {
+        app.diff_scroll = max_scroll;
+    }
+
+    let lines: Vec<Line<'static>> = app
+        .diff_content
+        .lines()
+        .skip(app.diff_scroll)
+        .take(visible)
+        .map(|raw| diff_line_to_ratatui(raw, t))
+        .collect();
+
+    frame.render_widget(Paragraph::new(lines), inner);
+
+    draw_scroll_indicators(
+        frame,
+        inner,
+        app.diff_scroll > 0,
+        app.diff_scroll < max_scroll,
+        focused,
+        t,
+    );
+}
+
+/// Map one raw patch line to a styled ratatui `Line`.
+fn diff_line_to_ratatui(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+    let (style, text) = if line.starts_with('+') && !line.starts_with("+++") {
+        (Style::default().fg(t.delta_added), line.to_string())
+    } else if line.starts_with('-') && !line.starts_with("---") {
+        (Style::default().fg(t.delta_deleted), line.to_string())
+    } else if line.starts_with("@@") {
+        (Style::default().fg(t.history_author), line.to_string())
+    } else if line.starts_with("diff ")
+        || line.starts_with("index ")
+        || line.starts_with("+++")
+        || line.starts_with("---")
+        || line.starts_with("Binary ")
+    {
+        (Style::default().fg(t.placeholder), line.to_string())
+    } else {
+        (Style::default(), line.to_string())
+    };
+    Line::from(Span::styled(text, style))
 }
 
 fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
@@ -931,8 +1153,8 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
     ];
     let nav_width: usize = nav.iter().map(|s| s.width()).sum();
 
-    // Action keys in grouped order: A, D, r, Alt-f, s, h, l, c, Enter
-    let actions: [Span<'static>; 18] = [
+    // Action keys in grouped order: A, D, r, Alt-f, s, h, l, d, c, Enter
+    let actions: [Span<'static>; 20] = [
         Span::styled("A", Style::default().fg(t.help_key)),
         Span::raw(" add  "),
         Span::styled("D", Style::default().fg(t.help_key)),
@@ -947,6 +1169,8 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw(" history  "),
         Span::styled("l", Style::default().fg(t.help_key)),
         Span::raw(" log  "),
+        Span::styled("d", Style::default().fg(t.help_key)),
+        Span::raw(" diff  "),
         Span::styled("c", Style::default().fg(t.help_key)),
         Span::raw(" checkout  "),
         Span::styled("Enter", Style::default().fg(t.help_key)),
@@ -1192,7 +1416,7 @@ fn draw_action_menu(frame: &mut Frame, app: &mut App) {
             height: 1,
         };
         frame.render_widget(
-            Paragraph::new(Span::styled("▲ ", Style::default().fg(t.help_key))),
+            Paragraph::new(Span::styled("▲ ", Style::default().fg(t.border_focused))),
             ind,
         );
     }
@@ -1204,7 +1428,7 @@ fn draw_action_menu(frame: &mut Frame, app: &mut App) {
             height: 1,
         };
         frame.render_widget(
-            Paragraph::new(Span::styled("▼ ", Style::default().fg(t.help_key))),
+            Paragraph::new(Span::styled("▼ ", Style::default().fg(t.border_focused))),
             ind,
         );
     }

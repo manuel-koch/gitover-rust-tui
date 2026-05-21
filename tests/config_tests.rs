@@ -117,11 +117,13 @@ fn state_pane_visibility_round_trip() {
     assert!(!state.show_file_status);
     assert!(!state.show_log);
     assert!(!state.show_history);
+    assert!(!state.show_diff);
 
     // Set pane visibility
     state.show_file_status = true;
     state.show_log = true;
     state.show_history = true;
+    state.show_diff = true;
 
     let yaml = serde_yaml::to_string(&state).expect("serialize");
     let loaded: State = serde_yaml::from_str(&yaml).expect("deserialize");
@@ -129,6 +131,7 @@ fn state_pane_visibility_round_trip() {
     assert!(loaded.show_file_status);
     assert!(loaded.show_log);
     assert!(loaded.show_history);
+    assert!(loaded.show_diff);
 }
 
 // ── State::load_from_path (--state CLI override) ──────────────────────────────

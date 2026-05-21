@@ -61,6 +61,14 @@ pub enum Focus {
     FileStatus,
     Log,
     History,
+    Diff,
+}
+
+/// Which pane last provided content for the Diff panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffSource {
+    FileStatus,
+    History,
 }
 
 /// What the UI is currently showing.
@@ -233,6 +241,16 @@ pub struct App {
     pub popup_message: Option<String>,
     /// Timestamp when the popup was shown (for auto-dismissal).
     pub popup_show_time: Option<Instant>,
+
+    // ── Diff pane ─────────────────────────────────────────────────────────────
+    /// Whether the Diff pane is visible.
+    pub show_diff: bool,
+    /// Raw patch-format diff text currently displayed.
+    pub diff_content: String,
+    /// Scroll offset (lines from top) for the Diff pane.
+    pub diff_scroll: usize,
+    /// Which pane last provided the diff context.
+    pub diff_source: DiffSource,
 }
 
 /// Maximum number of log lines retained.
@@ -266,6 +284,7 @@ impl App {
         let show_file_status = state.show_file_status;
         let show_log = state.show_log;
         let show_history = state.show_history;
+        let show_diff = state.show_diff;
 
         App {
             repos: Vec::new(),
@@ -308,6 +327,10 @@ impl App {
             last_click_pos: None,
             popup_message: None,
             popup_show_time: None,
+            show_diff,
+            diff_content: String::new(),
+            diff_scroll: 0,
+            diff_source: DiffSource::FileStatus,
         }
     }
 
@@ -348,6 +371,12 @@ impl App {
                     self.history_selected += 1;
                 }
             }
+            Focus::Diff => {
+                let n = self.diff_content.lines().count();
+                if n > 0 && self.diff_scroll + 1 < n {
+                    self.diff_scroll += 1;
+                }
+            }
         }
     }
 
@@ -382,26 +411,36 @@ impl App {
                     self.history_selected -= 1;
                 }
             }
+            Focus::Diff => {
+                if self.diff_scroll > 0 {
+                    self.diff_scroll -= 1;
+                }
+            }
         }
     }
 
-    /// Cycle the keyboard focus to the next visible pane.
-    /// Order is fixed: Repos -> FileStatus -> History -> Log (only shown panes are included).
-    pub fn cycle_focus(&mut self) {
+    /// Build the ordered list of focusable panes based on what is currently visible.
+    /// Order: Repos → FileStatus → History → Diff → Log.
+    fn focus_order(&self) -> Vec<Focus> {
         let mut order: Vec<Focus> = vec![Focus::Repos];
-        // Detail is shown before History and Log in the layout, so tab to it first if enabled
         if self.show_file_status {
             order.push(Focus::FileStatus);
         }
-        // History pane is rendered before Log
         if self.show_history {
             order.push(Focus::History);
         }
-        // Log pane is last in the sequence
+        if self.show_diff && (self.show_file_status || self.show_history) {
+            order.push(Focus::Diff);
+        }
         if self.show_log {
             order.push(Focus::Log);
         }
+        order
+    }
 
+    /// Cycle the keyboard focus to the next visible pane.
+    pub fn cycle_focus(&mut self) {
+        let order = self.focus_order();
         if order.len() < 2 {
             self.focus = Focus::Repos;
             return;
@@ -411,25 +450,13 @@ impl App {
     }
 
     /// Cycle the keyboard focus to the previous visible pane.
-    /// Reverse order of `cycle_focus`: Log -> History -> FileStatus -> Repos.
     pub fn cycle_focus_reverse(&mut self) {
-        let mut order: Vec<Focus> = vec![Focus::Repos];
-        if self.show_file_status {
-            order.push(Focus::FileStatus);
-        }
-        if self.show_history {
-            order.push(Focus::History);
-        }
-        if self.show_log {
-            order.push(Focus::Log);
-        }
-
+        let order = self.focus_order();
         if order.len() < 2 {
             self.focus = Focus::Repos;
             return;
         }
         let idx = order.iter().position(|f| *f == self.focus).unwrap_or(0);
-        // Reverse: (idx + len - 1) % len
         self.focus = order[(idx + order.len() - 1) % order.len()];
     }
 
@@ -464,6 +491,12 @@ impl App {
                     self.history_selected = (self.history_selected + PAGE_STEP).min(n - 1);
                 }
             }
+            Focus::Diff => {
+                let n = self.diff_content.lines().count();
+                if n > 0 {
+                    self.diff_scroll = (self.diff_scroll + PAGE_STEP).min(n - 1);
+                }
+            }
         }
     }
 
@@ -487,6 +520,9 @@ impl App {
             }
             Focus::History => {
                 self.history_selected = self.history_selected.saturating_sub(PAGE_STEP);
+            }
+            Focus::Diff => {
+                self.diff_scroll = self.diff_scroll.saturating_sub(PAGE_STEP);
             }
         }
     }
@@ -1087,6 +1123,76 @@ impl App {
         // No adjustment needed — offset 0 always shows the current tail.
     }
 
+    pub fn toggle_diff(&mut self) {
+        self.show_diff = !self.show_diff;
+        if !self.show_diff {
+            if self.focus == Focus::Diff {
+                self.focus = Focus::Repos;
+            }
+            self.diff_content.clear();
+        } else {
+            self.refresh_diff();
+        }
+        self.save_pane_state();
+    }
+
+    /// Reload diff content based on the currently focused/sourced pane.
+    /// No-op when the diff pane is hidden.
+    pub fn refresh_diff(&mut self) {
+        if !self.show_diff {
+            return;
+        }
+        // When the Diff pane itself is focused the user is scrolling its content —
+        // don't reload or reset the scroll position.
+        if self.focus == Focus::Diff {
+            return;
+        }
+        match self.focus {
+            Focus::FileStatus => self.diff_source = DiffSource::FileStatus,
+            Focus::History => self.diff_source = DiffSource::History,
+            _ => {}
+        }
+        self.diff_content = match self.diff_source {
+            DiffSource::FileStatus => self.load_file_status_diff(),
+            DiffSource::History => self.load_history_diff(),
+        };
+        self.diff_scroll = 0;
+    }
+
+    fn load_file_status_diff(&self) -> String {
+        let repo = match self.repos.get(self.selected) {
+            Some(r) if r.error.is_none() => r,
+            _ => return String::new(),
+        };
+        let file = match repo.files.get(self.file_status_selected) {
+            Some(f) => f,
+            None => return String::new(),
+        };
+        if file.status == FileStatusKind::Untracked {
+            return crate::git::get_untracked_file_content(&repo.path, &file.path)
+                .unwrap_or_default();
+        }
+        let git_bin = self.config.general.git.as_deref().unwrap_or("git");
+        crate::git::get_file_diff(&repo.path, &file.path, git_bin).unwrap_or_default()
+    }
+
+    fn load_history_diff(&self) -> String {
+        let (commit_idx, file_idx) = match self.history_row_at(self.history_selected) {
+            Some((ci, Some(fi))) => (ci, fi),
+            _ => return String::new(),
+        };
+        let commit = match self.history.get(commit_idx) {
+            Some(c) => c,
+            None => return String::new(),
+        };
+        let file = match commit.files.get(file_idx) {
+            Some(f) => f,
+            None => return String::new(),
+        };
+        crate::git::get_commit_file_diff(&self.history_repo_path, &commit.short_hash, &file.path)
+            .unwrap_or_default()
+    }
+
     pub fn toggle_file_status(&mut self) {
         self.show_file_status = !self.show_file_status;
         if self.show_file_status {
@@ -1119,6 +1225,7 @@ impl App {
         self.state.show_file_status = self.show_file_status;
         self.state.show_log = self.show_log;
         self.state.show_history = self.show_history;
+        self.state.show_diff = self.show_diff;
         if let Err(e) = self.state.save() {
             self.log(format!("failed to save pane state: {e}"));
         }
