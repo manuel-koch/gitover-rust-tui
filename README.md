@@ -12,8 +12,8 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 - Background git operations: fetch, pull, push, force-push, checkout, create & delete branch
 - Fetch all repos in parallel (`Alt-f`)
 - Status Details pane — per-file change list with priority sorting and scroll indicators
-- Commit History pane — full log or filtered ahead/behind upstream & trunk; file sub-rows per commit
-- Diff pane — patch-format diff of selected file from Status Details or History pane
+- Commit History pane — full log or filtered ahead/behind upstream & trunk; file sub-rows per commit; `,`/`.` jump between commits
+- Details pane — diff of selected file, or full commit details (hash, author, change summary, word-wrapped message) with position indicator
 - Output Log pane — timestamped, severity-coloured git command output with auto-follow
 - Per-file actions: stage, unstage, revert, discard
 - Branches pane — full list of local and remote-only branches with ahead/behind counts; direct checkout and branch action menu
@@ -102,7 +102,7 @@ If the current working directory is a git repository it is added automatically.
 | `s`         | Toggle Status Details pane                                             |
 | `h`         | Toggle Git History pane                                                |
 | `b`         | Toggle Branches pane                                                   |
-| `d`         | Toggle Diff pane                                                       |
+| `d`         | Toggle Details pane                                                    |
 | `l`         | Toggle Output Log pane                                                 |
 | `?`         | Open keybinding help overlay                                           |
 
@@ -153,15 +153,17 @@ If the current working directory is a git repository it is added automatically.
 
 ### Git History pane
 
-| Key     | Action                           |
-|---------|----------------------------------|
-| `↑/↓`  | Navigate commits and file rows    |
-| `PgUp/Dn` | Jump 10 rows                   |
-| `h`     | Close history pane               |
+| Key             | Action                                          |
+|-----------------|-------------------------------------------------|
+| `↑/↓`          | Navigate commits and file rows                   |
+| `PgUp/Dn`      | Jump 10 rows                                    |
+| `Shift-↑` / `,` | Jump to previous commit header row             |
+| `Shift-↓` / `.` | Jump to next commit header row                 |
+| `h`             | Close history pane                              |
 
-### Diff pane
+### Details pane
 
-| Key     | Action            |
-|---------|-------------------|
-| `↑/↓`  | Scroll diff        |
-| `PgUp/Dn` | Jump 10 lines   |
+| Key       | Action                  |
+|-----------|-------------------------|
+| `↑/↓`    | Scroll content           |
+| `PgUp/Dn` | Jump 10 lines           |

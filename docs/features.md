@@ -186,6 +186,7 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
   - Format: `<change-identifier>  <path>` (two spaces between code and path)
   - A = added (blue), M = modified (green), D = deleted (red), R = renamed (yellow)
 - `↑`/`↓` and `PgUp`/`PgDn` scroll through commits and file rows
+- `Shift-↑` / `Shift-↓` (or `,` / `.`) jump directly to the previous/next commit header row, skipping file sub-rows; `,`/`.` are provided as alternatives for terminals that intercept Shift+Arrow (e.g. Zed)
 - Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area; coloured with focused/unfocused border colour
 - History reloads automatically when the selected repo changes while the pane is open
 - History reloads automatically after a git operation completes on the shown repo
@@ -194,27 +195,36 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
   - Behind upstream / trunk — commits in the remote ref not yet merged locally
 - `h` closes the pane; `Tab` cycles focus between panes without closing it
 
-## Diff Pane
+## Details Pane
 
 - Toggle with `d`; visibility is persisted in the state file across sessions
-- Occupies the right half of the combined Status Details + History vertical area; those panes shrink to the left half when the Diff pane is open
-- Title shows `Diff — <filename>` for the file currently being diffed
-- Content sources:
+- Occupies the right half of the combined Status Details + History vertical area; those panes shrink to the left half when the Details pane is open
+- Three display modes selected automatically based on what is focused/selected:
+  - **Diff mode** — title `Diff — <filename>`; shows a patch diff for the selected file
+  - **Commit mode** — title `Commit [n/m]`; shows full commit details for the selected commit header row
+  - **Empty mode** — shows `Select file or commit for details.` placeholder when nothing relevant is selected
+- **Diff mode** content sources:
   - When focus is on Status Details: shows `git diff HEAD -- <file>` for the selected file
-  - When focus is on History and a file sub-row is selected: shows `git show --format="" <hash> -- <file>`
+  - When focus is on History and a file sub-row is selected: shows the file diff against the first parent (`git diff <hash>^1 <hash> -- <file>`), correctly handling merge commits; falls back to `git show` for root commits
   - Untracked files: shows raw file content instead of a patch diff
   - Binary files: shows `<binary file>`
-- Diff is shown in patch format with syntax colouring:
+- **Diff mode** syntax colouring:
   - Added lines (`+`) — green
   - Removed lines (`−`) — red
   - Hunk headers (`@@`) — cyan/author colour
   - File header lines (`diff`, `index`, `+++`, `---`, `Binary`) — gray
+- **Commit mode** shows (top to bottom):
+  - Short hash (yellow) and commit timestamp in local time (gray)
+  - Change summary: `N-A N-M N-D N-R` with per-kind colours, matching the Repositories pane status format
+  - Author name and email
+  - Full commit message (summary in bold, body below a blank line); both summary and body lines are word-wrapped to the pane width
+  - Position indicator in the title (`[n/m]`) reflects the commit's position in the loaded history
 - Content is truncated at 1 MB; a `...diff truncated` line is appended when cut
-- Diff content refreshes automatically when cursor moves in Status Details or History, or when focus switches between those panes
-- While the Diff pane itself has focus, scroll position is preserved (no content reload on navigation keys)
-- `↑`/`↓` and `PgUp`/`PgDn` scroll the diff when Diff pane has focus; mouse wheel also scrolls
-- Scroll indicators (▲ / ▼) appear when diff content overflows above or below the visible area
-- `Tab` / `Shift-Tab` cycles focus to/from the Diff pane like any other pane
+- Content refreshes automatically when cursor moves in Status Details or History, or when focus switches between those panes
+- While the Details pane itself has focus, scroll position is preserved (no content reload on navigation keys)
+- `↑`/`↓` and `PgUp`/`PgDn` scroll the content when Details pane has focus; mouse wheel also scrolls
+- Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area
+- `Tab` / `Shift-Tab` cycles focus to/from the Details pane like any other pane
 
 ## Real-time Updates
 
@@ -232,8 +242,9 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
 | Key | Action |
 |-----|--------|
 | `↑` / `↓` | Navigate up/down in focused pane |
+| `Shift-↑` / `Shift-↓` (or `,` / `.`) | Previous / next commit header row (History pane only) |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows in focused pane or action menu; clamps at list boundaries, no wrap |
-| `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / History / Diff / Output Log panes |
+| `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / History / Details / Output Log panes |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
 | `Enter` | Open per-repo action menu (Repositories pane); open per-file action menu (Status Details pane); open log action menu (Output Log pane) |
@@ -243,7 +254,7 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
 | `c` | Checkout branch on selected repo or currently selected branch |
 | `b` | Toggle Git Branches pane |
 | `h` | Toggle Git History pane |
-| `d` | Toggle Diff pane |
+| `d` | Toggle Details pane |
 | `Alt-f` | Fetch all tracked repos in parallel |
 | `s` | Toggle Status Details pane |
 | `l` | Toggle Output Log pane |
@@ -278,10 +289,10 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 ## Mouse Interaction
 
 - Left-click on a pane sets focus to that pane
-- Mouse wheel scrolls the content of the currently focused pane
+- Mouse wheel over any pane gives focus to that pane first, then scrolls its content
 - Left-click inside the Status Details pane selects the file under the cursor; scroll position is preserved
 - Left-click inside the History pane selects the commit/change under the cursor; scroll position is preserved
-- Left-click inside the Diff pane sets focus to the Diff pane
+- Left-click inside the Details pane sets focus to the Details pane
 - Double-click on a repository row opens the per-repo action menu (same as `Enter`)
 - Double-click on a file row in the Status Details pane opens the per-file action menu (same as `Enter`)
 - Left-click on an action menu entry executes the selected action
