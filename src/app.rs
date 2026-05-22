@@ -101,6 +101,8 @@ pub enum AppMode {
     BranchActionMenu,
     /// Transient popup message that auto-dismisses after a timeout.
     PopupMessage,
+    /// Full-screen keybinding reference overlay (toggled with '?').
+    HelpOverlay,
 }
 
 /// One entry in the action menu.
@@ -266,6 +268,14 @@ pub struct App {
     pub diff_scroll: usize,
     /// Which pane last provided the diff context.
     pub diff_source: DiffSource,
+
+    // ── Help overlay ──────────────────────────────────────────────────────────
+    /// Scroll offset (lines from top) for the help keybindings overlay.
+    pub help_overlay_scroll: usize,
+    /// Maximum valid scroll offset for the help overlay (set each draw frame).
+    pub help_overlay_max_scroll: usize,
+    /// Bounding rect of the help overlay popup (set each draw frame).
+    pub help_overlay_area: Option<ratatui::layout::Rect>,
 }
 
 /// Maximum number of log lines retained.
@@ -351,6 +361,9 @@ impl App {
             diff_content: String::new(),
             diff_scroll: 0,
             diff_source: DiffSource::FileStatus,
+            help_overlay_scroll: 0,
+            help_overlay_max_scroll: usize::MAX,
+            help_overlay_area: None,
         }
     }
 
@@ -832,13 +845,13 @@ impl App {
         if n == 0 {
             return;
         }
-        let mut idx = (self.menu_selected + 1) % n;
-        for _ in 0..n {
+        let mut idx = self.menu_selected + 1;
+        while idx < n {
             if !self.menu_items[idx].is_separator {
                 self.menu_selected = idx;
                 return;
             }
-            idx = (idx + 1) % n;
+            idx += 1;
         }
     }
 
@@ -847,17 +860,13 @@ impl App {
         if n == 0 {
             return;
         }
-        let mut idx = if self.menu_selected == 0 {
-            n - 1
-        } else {
-            self.menu_selected - 1
-        };
-        for _ in 0..n {
+        let mut idx = self.menu_selected;
+        while idx > 0 {
+            idx -= 1;
             if !self.menu_items[idx].is_separator {
                 self.menu_selected = idx;
                 return;
             }
-            idx = if idx == 0 { n - 1 } else { idx - 1 };
         }
     }
 

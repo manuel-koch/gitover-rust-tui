@@ -38,10 +38,10 @@ Done tasks are check-marked when implemented.
 
 ## UX Polish
 
-- [ ] Add keybinding "?" to show current active keybindings
-  - [ ] this help is only shown when no action menu is currently displayed
-  - [ ] Drop the footer line
-  - [ ] Just show keybinding "? help" in the title line
+- [x] Add keybinding "?" to show current active keybindings
+  - [x] this help is only shown when no action menu is currently displayed
+  - [x] Drop the footer line
+  - [x] Just show keybinding "? help" in the title line
 
 ## UX Mouse Interaction
 

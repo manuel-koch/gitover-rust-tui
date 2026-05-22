@@ -176,8 +176,36 @@ where
             }
 
             // Handle mouse events (clicks for focus, wheel for scroll)
+            // Skip while a modal overlay is open so the underlying panes don't scroll.
             if let Event::Mouse(mouse) = &ev {
-                handle_mouse_event(app, op_tx, mouse);
+                if matches!(app.mode, AppMode::HelpOverlay) {
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            app.help_overlay_scroll = app.help_overlay_scroll.saturating_sub(1);
+                        }
+                        MouseEventKind::ScrollDown => {
+                            app.help_overlay_scroll = app
+                                .help_overlay_scroll
+                                .saturating_add(1)
+                                .min(app.help_overlay_max_scroll);
+                        }
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            let outside = app.help_overlay_area.is_none_or(|r| {
+                                mouse.column < r.x
+                                    || mouse.column >= r.x + r.width
+                                    || mouse.row < r.y
+                                    || mouse.row >= r.y + r.height
+                            });
+                            if outside {
+                                app.help_overlay_scroll = 0;
+                                app.restore_base_mode();
+                            }
+                        }
+                        _ => {}
+                    }
+                } else {
+                    handle_mouse_event(app, op_tx, mouse);
+                }
             }
 
             match app.mode {
@@ -247,6 +275,36 @@ where
                         app.popup_message = None;
                         app.popup_show_time = None;
                         app.restore_base_mode();
+                    }
+                }
+                AppMode::HelpOverlay => {
+                    if let Event::Key(key) = &ev {
+                        match key.code {
+                            KeyCode::Down => {
+                                app.help_overlay_scroll = app
+                                    .help_overlay_scroll
+                                    .saturating_add(1)
+                                    .min(app.help_overlay_max_scroll);
+                            }
+                            KeyCode::Up => {
+                                app.help_overlay_scroll = app.help_overlay_scroll.saturating_sub(1);
+                            }
+                            KeyCode::PageDown => {
+                                app.help_overlay_scroll = app
+                                    .help_overlay_scroll
+                                    .saturating_add(10)
+                                    .min(app.help_overlay_max_scroll);
+                            }
+                            KeyCode::PageUp => {
+                                app.help_overlay_scroll =
+                                    app.help_overlay_scroll.saturating_sub(10);
+                            }
+                            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?') => {
+                                app.help_overlay_scroll = 0;
+                                app.restore_base_mode();
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -729,6 +787,7 @@ fn handle_normal_key(
         }
         KeyCode::Char('h') => app.open_history(app::HistoryFilter::Full),
         KeyCode::Char('T') => app.next_theme(),
+        KeyCode::Char('?') => app.mode = AppMode::HelpOverlay,
         KeyCode::Esc => {
             if app.focus == Focus::Branches {
                 app.close_branches_pane();
@@ -1629,6 +1688,7 @@ fn handle_history_key(
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
         KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
+        KeyCode::Char('?') => app.mode = AppMode::HelpOverlay,
         KeyCode::Esc => {
             if app.focus == Focus::Branches {
                 app.close_branches_pane();

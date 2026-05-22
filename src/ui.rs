@@ -30,10 +30,8 @@ pub const ACTION_MENU_WIDTH_PCT: u16 = 60;
 pub const FILE_ACTION_MENU_WIDTH_PCT: u16 = 80;
 /// Height (rows) of the header panel — used for layout and popup positioning.
 pub const HEADER_HEIGHT: u16 = 3;
-/// Height (rows) of the help bar at the bottom of the screen.
-const HELP_BAR_HEIGHT: u16 = 1;
-/// Total rows consumed by fixed panels (header + help bar).
-const FIXED_PANE_HEIGHT: u16 = HEADER_HEIGHT + HELP_BAR_HEIGHT;
+/// Total rows consumed by fixed panels (header only; footer was removed).
+const FIXED_PANE_HEIGHT: u16 = HEADER_HEIGHT;
 /// Popup width (percent of terminal width) for branch-select and new-branch dialogs.
 pub const BRANCH_SELECT_WIDTH_PCT: u16 = 80;
 /// Minimum height (rows) for the branch-select popup.
@@ -54,7 +52,6 @@ pub struct PaneAreas {
     pub history: Option<Rect>,
     pub log: Option<Rect>,
     pub diff: Option<Rect>,
-    pub help_bar: Rect,
 }
 
 /// Compute the layout rectangles for all visible panes.
@@ -87,7 +84,6 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     if app.show_log {
         constraints.push(Constraint::Length(pane_height));
     }
-    constraints.push(Constraint::Length(HELP_BAR_HEIGHT));
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -117,8 +113,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
         log = Some(chunks[idx]);
         idx += 1;
     }
-
-    let help_bar = chunks[idx];
+    let _ = idx;
 
     // When diff is shown, shrink the FileStatus and History panes to the left
     // half and expose a single right-half diff area spanning their combined height.
@@ -156,7 +151,6 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
         history,
         log,
         diff,
-        help_bar,
     }
 }
 
@@ -192,7 +186,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.show_log {
         constraints.push(Constraint::Length(pane_height));
     }
-    constraints.push(Constraint::Length(HELP_BAR_HEIGHT));
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -222,8 +215,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         log_area = Some(chunks[idx]);
         idx += 1;
     }
-
-    let help_area = chunks[idx];
+    let _ = idx;
 
     // When diff is shown, shrink the FileStatus/History panes to the left half
     // and expose a single right-half panel spanning their combined height.
@@ -268,7 +260,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if let Some(area) = log_area {
         draw_log_panel(frame, area, app);
     }
-    draw_help_bar(frame, help_area, app);
 
     if app.mode == AppMode::FilePicker {
         draw_file_picker(frame, app);
@@ -299,6 +290,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     if app.mode == AppMode::PopupMessage {
         draw_popup_message(frame, app);
+    }
+    if app.mode == AppMode::HelpOverlay {
+        draw_help_overlay(frame, app);
     }
 }
 
@@ -332,7 +326,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         }
     };
 
-    // Left side: title + optional scanning spinner.
+    // Left side: title + optional scanning spinner + help hint.
     let mut left_spans: Vec<Span<'static>> = vec![Span::styled(
         concat!("Git Repository Overview (v", env!("CARGO_PKG_VERSION"), ")"),
         Style::default()
@@ -352,6 +346,12 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(theme.spinner),
         ));
     }
+
+    left_spans.push(Span::styled("   ?", Style::default().fg(theme.help_key)));
+    left_spans.push(Span::styled(
+        " help",
+        Style::default().fg(theme.refresh_info),
+    ));
 
     // Right side: "refreshed: Xs ago" — right-aligned inside the block inner area.
     // We render two paragraphs: one left-aligned, one right-aligned.
@@ -1319,57 +1319,94 @@ fn diff_line_to_ratatui(line: &str, t: &crate::theme::Theme) -> Line<'static> {
     Line::from(Span::styled(text, style))
 }
 
-fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
     let t = app.theme();
-    let mut spans: Vec<Span<'static>> = Vec::new();
+    let height = 37_u16.min(frame.area().height.saturating_sub(HEADER_HEIGHT));
+    let area = top_centered_rect(62, height, HEADER_HEIGHT, frame.area());
+    app.help_overlay_area = Some(area);
 
-    // Navigation hints — shown only when the full help text fits.
-    // Built first so we can measure both sections together.
-    let nav: [Span<'static>; 6] = [
-        Span::styled("Tab", Style::default().fg(t.help_key)),
-        Span::raw(" focus  "),
-        Span::styled("↑↓", Style::default().fg(t.help_key)),
-        Span::raw(" nav  "),
-        Span::styled("PgUp/Dn", Style::default().fg(t.help_key)),
-        Span::raw(" fast  "),
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Application Help ")
+        .title_style(
+            Style::default()
+                .fg(t.popup_border)
+                .add_modifier(Modifier::BOLD),
+        )
+        .border_style(Style::default().fg(t.popup_border));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let sec = Style::default().fg(t.title).add_modifier(Modifier::BOLD);
+    let key_sty = Style::default().fg(t.help_key).add_modifier(Modifier::BOLD);
+    let desc_sty = Style::default().fg(Color::DarkGray);
+
+    let kv = |k: &str, v: &'static str| -> Line<'static> {
+        Line::from(vec![
+            Span::styled(format!("  {:<20}", k), key_sty),
+            Span::styled(v, desc_sty),
+        ])
+    };
+
+    let lines: Vec<Line> = vec![
+        Line::from(Span::styled(" Navigation", sec)),
+        kv("Tab / Shift-Tab", "cycle focus"),
+        kv("↑ / ↓", "move up / down"),
+        kv("PgUp / PgDn", "move up / down fast"),
+        Line::raw(""),
+        Line::from(Span::styled(" Toggle Panes", sec)),
+        kv("s", "File Status"),
+        kv("b", "Branches"),
+        kv("h", "Commit History"),
+        kv("d", "File Diff"),
+        kv("l", "Output Log"),
+        Line::raw(""),
+        Line::from(Span::styled(" Repositories", sec)),
+        kv("f", "Fetch"),
+        kv("p", "Pull"),
+        kv("P", "Push"),
+        kv("c", "Checkout Branch"),
+        kv("Enter", "Action Menu"),
+        kv("A", "Add Repository"),
+        kv("D", "Remove Repository"),
+        kv("r", "Refresh Repository Info"),
+        Line::raw(""),
+        Line::from(Span::styled(" Branches Pane", sec)),
+        kv("c", "Checkout selected Branch"),
+        kv("Enter", "Branch Action Menu"),
+        kv("Esc / b", "Close Branches"),
+        Line::raw(""),
+        Line::from(Span::styled(" Global", sec)),
+        kv("Alt-f", "Fetch All Repositories"),
+        kv("Ctrl-C", "Quit Application"),
+        Line::raw(""),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("Esc", key_sty),
+            Span::styled("  or  ", desc_sty),
+            Span::styled("Enter", key_sty),
+            Span::styled("   close help popup", desc_sty),
+        ]),
     ];
-    let nav_width: usize = nav.iter().map(|s| s.width()).sum();
 
-    // Action keys in grouped order: A, D, r, Alt-f, s, b, h, l, d, c, Enter
-    let actions: [Span<'static>; 22] = [
-        Span::styled("A", Style::default().fg(t.help_key)),
-        Span::raw(" add  "),
-        Span::styled("D", Style::default().fg(t.help_key)),
-        Span::raw(" remove  "),
-        Span::styled("r", Style::default().fg(t.help_key)),
-        Span::raw(" refresh  "),
-        Span::styled("Alt-f", Style::default().fg(t.help_key)),
-        Span::raw(" fetch all  "),
-        Span::styled("s", Style::default().fg(t.help_key)),
-        Span::raw(" status  "),
-        Span::styled("b", Style::default().fg(t.help_key)),
-        Span::raw(" branches  "),
-        Span::styled("h", Style::default().fg(t.help_key)),
-        Span::raw(" history  "),
-        Span::styled("l", Style::default().fg(t.help_key)),
-        Span::raw(" log  "),
-        Span::styled("d", Style::default().fg(t.help_key)),
-        Span::raw(" diff  "),
-        Span::styled("c", Style::default().fg(t.help_key)),
-        Span::raw(" checkout  "),
-        Span::styled("Enter", Style::default().fg(t.help_key)),
-        Span::raw(" actions"),
-    ];
-    let actions_width: usize = actions.iter().map(|s| s.width()).sum();
+    let total_lines = lines.len();
+    let visible = inner.height as usize;
+    let max_scroll = total_lines.saturating_sub(visible);
+    app.help_overlay_max_scroll = max_scroll;
+    let scroll = app.help_overlay_scroll.min(max_scroll) as u16;
 
-    // Only include nav hints if everything fits without clipping
-    if (nav_width + actions_width) as u16 <= area.width {
-        spans.extend(nav);
-    }
-    spans.extend(actions);
-
-    let help = Line::from(spans);
-    frame.render_widget(Paragraph::new(help), area);
+    frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
+    draw_scroll_indicators(
+        frame,
+        inner,
+        scroll > 0,
+        (scroll as usize) + visible < total_lines,
+        true,
+        t,
+    );
 }
 
 // ── Popups ────────────────────────────────────────────────────────────────
