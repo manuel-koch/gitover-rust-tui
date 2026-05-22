@@ -1373,7 +1373,18 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
         ])
     };
 
+    let build_info_sty = Style::default().fg(Color::DarkGray);
     let lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            format!(
+                "  gitover v{} (commit {}, built {})",
+                env!("CARGO_PKG_VERSION"),
+                env!("GIT_SHORT_HASH"),
+                env!("BUILD_TIMESTAMP"),
+            ),
+            build_info_sty,
+        )),
+        Line::raw(""),
         Line::from(Span::styled(" Navigation", sec)),
         kv("Tab / Shift-Tab", "cycle focus"),
         kv("↑ / ↓", "move up / down"),
