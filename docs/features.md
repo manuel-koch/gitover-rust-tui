@@ -337,8 +337,8 @@ gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
   - `make release` — builds an optimized release binary (`target/release/gitover`)
   - `make install` — builds an optimized release binary and installs it into `~/.cargo/bin`
   - `make tag-version` — creates a git tag `v<version>` at HEAD using the version from `Cargo.toml`
-- `create-sandbox-repos.sh` at the project root creates a set of demo git repositories
-  that exercise every major gitover display state:
+- `create-sandbox-repos.sh` creates a set of demo git repositories under `<base-dir>`
+  that demonstrate a selection of git states visible in gitover:
   | Repo | What it demonstrates |
   |------|----------------------|
   | `repo-01` | Clean repo, fully in sync with upstream (↑0 ↓0) |
@@ -350,7 +350,13 @@ gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
   | `repo-07` | Active merge conflict (C count in Status column) |
 
   Usage: `./create-sandbox-repos.sh [<base-dir>]`
-  Omitting `<base-dir>` creates repos in a fresh `mktemp` directory so they live
-  outside the project tree (avoids editor "dubious ownership" warnings).
-  Re-running the script wipes and recreates all repos cleanly.
-  After running, add the printed paths to gitover with the `A` key.
+
+  - `<base-dir>` is the root directory under which all sandbox repos are created.
+    - If omitted, a new temporary directory is created via `mktemp -d -t gitover-sandbox`
+      (e.g. `/tmp/gitover-sandbox.XXXXXX`), keeping repos outside the project tree and
+      avoiding editor "dubious ownership" warnings for nested git repos.
+    - If provided, the directory is created with `mkdir -p` if it does not yet exist, and
+      the path is canonicalized to an absolute path before use.
+  - Re-running the script wipes and recreates all repos cleanly under the same `<base-dir>`.
+  - The script prints the absolute path of each created repo at the end — add them to
+    gitover with the `A` key.
