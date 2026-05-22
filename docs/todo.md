@@ -33,6 +33,8 @@ Done tasks are check-marked when implemented.
       showing commit history of selected branch.
       "Branches" pane has precendence over current branch from "Repositories" pane.
       Closing the "Branches" pane updates "History" pane with commits from current repos branch.
+- [x] Press "esc" key while "Branches" pane is open and has focus, close Branches pane and
+      give focus to Repositories pane.
 
 ## UX Polish
 
