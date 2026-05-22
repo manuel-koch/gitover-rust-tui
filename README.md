@@ -16,6 +16,8 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 - Diff pane — patch-format diff of selected file from Status Details or History pane
 - Output Log pane — timestamped git command output with auto-follow
 - Per-file actions: stage, unstage, revert, discard
+- Branches pane — full list of local and remote-only branches with ahead/behind counts; direct checkout and branch action menu
+- Help overlay (`?`) — Show available keybindings
 - Custom repo commands configurable per project
 - File-system watcher for instant refresh (no polling)
 - Persistent repo list and pane state across sessions
@@ -94,8 +96,10 @@ If the current working directory is a git repository it is added automatically.
 | `Alt-f`     | Fetch all tracked repos in parallel                                    |
 | `s`         | Toggle Status Details pane                                             |
 | `h`         | Toggle Git History pane                                                |
+| `b`         | Toggle Branches pane                                                   |
 | `d`         | Toggle Diff pane                                                       |
 | `l`         | Toggle Output Log pane                                                 |
+| `?`         | Open keybinding help overlay                                           |
 
 ### Repositories pane
 
@@ -108,6 +112,15 @@ If the current working directory is a git repository it is added automatically.
 | `c`     | Checkout branch                             |
 | `A`     | Add repository (file picker)                |
 | `D`     | Remove selected repository (with confirm)   |
+
+### Branches pane
+
+| Key         | Action                                             |
+|-------------|----------------------------------------------------|
+| `↑/↓`      | Navigate branches                                   |
+| `c`         | Checkout highlighted branch directly               |
+| `Enter`     | Open branch action menu                            |
+| `b` / `Esc` | Close Branches pane                                |
 
 ### Action menu (opened with `Enter`)
 
@@ -147,4 +160,3 @@ If the current working directory is a git repository it is added automatically.
 |---------|-------------------|
 | `↑/↓`  | Scroll diff        |
 | `PgUp/Dn` | Jump 10 lines   |
-| `d`     | Close diff pane   |

@@ -210,15 +210,16 @@ Dismiss the menu with `Esc` or by clicking outside it.
 | `f` | Fetch selected repo (shortcut, no menu needed) |
 | `p` | Pull selected repo (shortcut, no menu needed) |
 | `P` | Push selected repo (shortcut, no menu needed) |
-| `c` | Checkout branch on selected repo (shortcut, no menu needed) |
+| `c` | Checkout branch on selected repo or currently selected branch |
+| `b` | Toggle Git Branches pane |
 | `h` | Toggle Git History pane |
 | `d` | Toggle Diff pane |
 | `Alt-f` | Fetch all tracked repos in parallel |
 | `s` | Toggle Status Details pane |
 | `l` | Toggle Output Log pane |
 | `r` | Refresh all repositories |
-| `T` | Cycle to next UI theme |
-| `Ctrl-C` | Quit (works in all modes) |
+| `?` | Help popup, showing available keybindings |
+| `Ctrl-C` | Quit application |
 
 In the action menu, `Esc` dismisses the menu without taking any action.
 
@@ -233,8 +234,8 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Loading spinner in header while repos are being scanned
 - Refresh timestamp shown right-aligned in the header bar
 - Auto-fetch countdown shown right-aligned in the header bar (e.g. "fetching all in 30s"; hidden when auto-fetch is disabled)
-- Single-line help bar at the bottom showing active key bindings; keybinding hints for navigation
-  (`Tab`, `↑↓`, `PgUp`/`PgDn`) are hidden when horizontal space is too small
+- `? help` hint shown in the header title bar; pressing `?` opens a help overlay
+  to show available keybindings
 - Confirmation dialogs for destructive actions (remove repo, force push)
 - File picker popup for adding repos
   - `↑`/`↓` navigate in list
@@ -256,11 +257,30 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 - Left-click on an action menu entry executes the selected action
 - Clicking outside the action menu dismisses it, same as pressing `Esc`
 
-## Branch Information (per repo)
+## Git Branches Pane
 
-- Full list of local branches
-- Remote branches not yet checked out locally
-- Local branches already merged into the trunk branch
+- Toggle with `b`; while open it replaces the Repositories pane; title shows "Branches — <repo path>"
+- Lists every local branch and every remote-only branch (remote branches not yet checked out locally)
+- Each branch row shows ahead/behind counts with respect to both its configured upstream and the trunk branch
+- `c` directly checks out the highlighted branch without opening a selection dialog (auto-stash/pop applied)
+- `Enter` opens the per-branch action menu (see below)
+- Scrolling through the branch list updates the History pane (if open) to show commits for the highlighted branch;
+  the Branches pane takes precedence over the current repo branch for History content
+- Closing the Branches pane (`b` or `Esc`) restores the History pane to show commits for the current repo branch
+- `Esc` closes the Branches pane and returns focus to the Repositories pane
+
+### Per-branch Action Menu
+
+Opened with `Enter` on the highlighted branch row. Dismiss with `Esc`.
+
+| Key   | Action                                                                                      |
+|-------|---------------------------------------------------------------------------------------------|
+| `u`   | Commit History ahead of upstream — commits in this branch not yet in its upstream           |
+| `U`   | Commit History behind upstream — commits in the upstream not yet merged into this branch    |
+| `t`   | Commit History ahead of trunk — commits in this branch not yet in the trunk branch          |
+| `T`   | Commit History behind trunk — commits in the trunk branch not yet merged into this branch   |
+| `p`   | Pull — fast-forward pull of this branch from its upstream (shown only when branch is behind upstream) |
+| `Esc` | Dismiss menu                                                                                |
 
 ## Release Info
 
