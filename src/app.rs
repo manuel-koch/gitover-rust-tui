@@ -246,6 +246,8 @@ pub struct App {
     pub popup_message: Option<String>,
     /// Timestamp when the popup was shown (for auto-dismissal).
     pub popup_show_time: Option<Instant>,
+    /// Transient status text shown in the header for 2 s after a triggered action.
+    pub header_flash: Option<(String, Instant)>,
 
     // ── Branches pane ─────────────────────────────────────────────────────────
     /// Whether the Branches pane is visible (replaces Repositories pane).
@@ -352,6 +354,7 @@ impl App {
             last_click_pos: None,
             popup_message: None,
             popup_show_time: None,
+            header_flash: None,
             show_branches: false,
             branch_info_list: Vec::new(),
             branches_pane_selected: 0,
@@ -957,6 +960,20 @@ impl App {
     }
 
     /// Check if the popup message should auto-dismiss (2 seconds timeout).
+    /// Show a short status text in the header for 2 seconds.
+    pub fn set_header_flash(&mut self, msg: impl Into<String>) {
+        self.header_flash = Some((msg.into(), Instant::now()));
+    }
+
+    /// Clear the header flash once its 2-second lifetime has passed.
+    pub fn tick_header_flash(&mut self) {
+        if let Some((_, t)) = self.header_flash {
+            if t.elapsed().as_secs() >= 2 {
+                self.header_flash = None;
+            }
+        }
+    }
+
     pub fn check_popup_timeout(&mut self) {
         if let (Some(show_time), Some(_msg)) = (self.popup_show_time, &self.popup_message) {
             if show_time.elapsed().as_secs() >= 2 {

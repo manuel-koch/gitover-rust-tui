@@ -359,15 +359,26 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Left paragraph (title + spinner)
+    // Left paragraph (title + spinner + help hint)
     let left_para = Paragraph::new(Line::from(left_spans));
     frame.render_widget(left_para, inner);
 
-    // Right paragraph (refresh indicator + auto-fetch hint) — right-aligned
+    // Right paragraph (refresh indicator + auto-fetch hint or flash) — right-aligned.
+    // Flash replaces the auto-fetch slot so no text shifts on the right side.
     let right_text = format!("refreshed: {}  ", refresh_text);
+    let right_info: Span = if let Some((msg, _)) = &app.header_flash {
+        Span::styled(
+            msg.as_str(),
+            Style::default()
+                .fg(theme.spinner)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        Span::styled(&auto_fetch_info, Style::default().fg(theme.auto_fetch_info))
+    };
     let right_spans = vec![
         Span::styled(right_text, Style::default().fg(theme.refresh_info)),
-        Span::styled(&auto_fetch_info, Style::default().fg(theme.auto_fetch_info)),
+        right_info,
     ];
     let right_para =
         Paragraph::new(Line::from(right_spans)).alignment(ratatui::layout::Alignment::Right);

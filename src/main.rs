@@ -158,6 +158,7 @@ where
         if matches!(app.mode, AppMode::PopupMessage) {
             app.check_popup_timeout();
         }
+        app.tick_header_flash();
         last_tick = Instant::now();
 
         app.spinner_tick = app.spinner_tick.wrapping_add(1);
@@ -171,6 +172,16 @@ where
             if let Event::Key(key) = &ev {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
                     app.should_quit = true;
+                    continue;
+                }
+                // Alt-f / Option-f: global shortcut — fetch all repos from any mode.
+                // macOS Terminal sends ƒ (U+0192) with no modifier instead of ALT+'f'.
+                let is_alt_f = (key.modifiers.contains(KeyModifiers::ALT)
+                    && key.code == KeyCode::Char('f'))
+                    || key.code == KeyCode::Char('ƒ');
+                if is_alt_f {
+                    app.reset_auto_fetch_timer();
+                    launch_all_fetch(app, op_tx);
                     continue;
                 }
             }
@@ -685,15 +696,8 @@ fn handle_normal_key(
     _dirty_rx: &mut std::sync::mpsc::Receiver<String>,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
-    modifiers: KeyModifiers,
+    _modifiers: KeyModifiers,
 ) {
-    // Alt-f: fetch all tracked repos
-    if modifiers.contains(KeyModifiers::ALT) && key == KeyCode::Char('f') {
-        app.reset_auto_fetch_timer();
-        launch_all_fetch(app, op_tx);
-        return;
-    }
-
     match key {
         KeyCode::Tab => {
             app.cycle_focus();
@@ -806,6 +810,7 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
         .clone()
         .unwrap_or_else(|| "git".to_string());
 
+    let total = app.repos.len();
     let paths: Vec<String> = app
         .repos
         .iter()
@@ -817,6 +822,7 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
         return;
     }
 
+    app.set_header_flash(format!("↻ fetching {} repos…", paths.len()));
     app.log(format!("fetching all {} repos…", paths.len()));
 
     for path in paths {
@@ -1588,15 +1594,8 @@ fn handle_history_key(
     app: &mut App,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
-    modifiers: KeyModifiers,
+    _modifiers: KeyModifiers,
 ) {
-    // Alt-f: fetch all tracked repos (global shortcut, works from any pane)
-    if modifiers.contains(KeyModifiers::ALT) && key == KeyCode::Char('f') {
-        app.reset_auto_fetch_timer();
-        launch_all_fetch(app, op_tx);
-        return;
-    }
-
     match key {
         KeyCode::Char('h') => app.close_history(),
         KeyCode::Tab => {
