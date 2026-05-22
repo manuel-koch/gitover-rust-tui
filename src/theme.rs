@@ -60,7 +60,7 @@ pub struct Theme {
     pub selection_row_bg: Color, // dark bg for selected rows — preserves per-cell fg colors
 
     // ── Output Log ────────────────────────────────────────────────────────────
-    pub log_timestamp: Color,
+    pub log_message: Color,
     pub log_debug: Color,
     pub log_info: Color,
     pub log_warn: Color,
@@ -151,7 +151,7 @@ pub const DEFAULT: Theme = Theme {
     selection_bg: Color::Cyan,
     selection_row_bg: Color::Rgb(55, 55, 80),
 
-    log_timestamp: Color::DarkGray,
+    log_message: Color::DarkGray,
     log_debug: Color::DarkGray,
     log_info: Color::Reset,
     log_warn: Color::Yellow,

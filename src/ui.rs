@@ -1073,13 +1073,14 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             Line::from(vec![
                 Span::styled(
                     format!("[{} ", l.timestamp),
-                    Style::default().fg(theme.log_timestamp),
+                    Style::default().fg(theme.log_message),
                 ),
                 Span::styled(
-                    format!("{:>5}] ", l.level.label()),
+                    format!("{:>5}", l.level.label()),
                     Style::default().fg(text_color),
                 ),
-                Span::styled(l.text.clone(), Style::default().fg(text_color)),
+                Span::styled("] ", Style::default().fg(theme.log_message)),
+                Span::styled(l.text.clone(), Style::default().fg(theme.log_message)),
             ])
         })
         .collect();
