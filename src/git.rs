@@ -55,8 +55,12 @@ pub struct CommitEntry {
     pub timestamp: String,
     /// Author name.
     pub author: String,
+    /// Author email.
+    pub author_email: String,
     /// First line of the commit message.
     pub summary: String,
+    /// Everything after the first line of the commit message (may be empty).
+    pub body: String,
     /// Files changed in this commit.
     pub files: Vec<CommitFileDelta>,
 }
@@ -185,7 +189,9 @@ pub fn get_commit_history(
 
         let short_hash = format!("{:.prec$}", commit.id(), prec = COMMIT_HASH_SHORT_LEN);
         let author = commit.author().name().unwrap_or("?").to_string();
+        let author_email = commit.author().email().unwrap_or("").to_string();
         let summary = commit.summary().unwrap_or("").to_string();
+        let body = commit.body().unwrap_or("").to_string();
 
         // Format timestamp as local time YYYY-MM-DD HH:MM:SS
         let ts = commit.time();
@@ -227,7 +233,9 @@ pub fn get_commit_history(
             short_hash,
             timestamp,
             author,
+            author_email,
             summary,
+            body,
             files,
         });
     }
@@ -753,6 +761,27 @@ pub fn get_commit_file_diff(
     file_path: &str,
     git_bin: &str,
 ) -> Result<String> {
+    // Use diff against first parent so merge commits show correctly.
+    // git show's combined-diff for merges only shows conflict resolutions,
+    // producing empty output for clean merges even when files changed.
+    let parent_ref = format!("{}^1", short_hash);
+    let diff_out = std::process::Command::new(git_bin)
+        .args([
+            "-C",
+            repo_path,
+            "diff",
+            &parent_ref,
+            short_hash,
+            "--",
+            file_path,
+        ])
+        .output();
+    if let Ok(out) = diff_out {
+        if out.status.success() && !out.stdout.is_empty() {
+            return truncate_text(String::from_utf8_lossy(&out.stdout).into_owned());
+        }
+    }
+    // Fallback for root commits (no parent) and other edge cases.
     let output = std::process::Command::new(git_bin)
         .args([
             "-C",

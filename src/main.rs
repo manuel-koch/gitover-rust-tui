@@ -149,7 +149,8 @@ fn main() -> Result<()> {
     }
 
     refresh_repos(&mut app);
-    app.refresh_diff();
+    app.reload_history_if_open();
+    app.refresh_details();
 
     let mut dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
 
@@ -515,7 +516,7 @@ fn handle_mouse_event(
             } else {
                 handle_mouse_click(app, mouse);
                 app.reload_history_if_open();
-                app.refresh_diff();
+                app.refresh_details();
             }
 
             app.last_click_time = Some(now);
@@ -525,18 +526,20 @@ fn handle_mouse_event(
             if matches!(app.mode, AppMode::ActionMenu) {
                 app.menu_previous();
             } else {
+                focus_pane_under_mouse(app, mouse);
                 app.previous();
                 app.reload_history_if_open();
-                app.refresh_diff();
+                app.refresh_details();
             }
         }
         MouseEventKind::ScrollDown => {
             if matches!(app.mode, AppMode::ActionMenu) {
                 app.menu_next();
             } else {
+                focus_pane_under_mouse(app, mouse);
                 app.next();
                 app.reload_history_if_open();
-                app.refresh_diff();
+                app.refresh_details();
             }
         }
         _ => {}
@@ -566,6 +569,7 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
             if let Some(row) = file_status_row_under_mouse(app, mouse, *file_status_area) {
                 app.file_status_selected = row;
             }
+            app.refresh_details();
             return;
         }
     }
@@ -577,13 +581,14 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
             if let Some(row) = history_row_under_mouse(app, mouse, *history_area) {
                 app.history_selected = row;
             }
+            app.refresh_details();
             return;
         }
     }
 
     if let Some(diff_area) = &areas.diff {
         if in_rect(click, *diff_area) {
-            app.focus = Focus::Diff;
+            app.focus = Focus::Details;
             return;
         }
     }
@@ -615,8 +620,55 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
                 app.selected = selected_row;
                 app.file_status_selected = 0;
                 app.file_status_scroll = 0;
+                app.reload_history_if_open();
+                app.refresh_details();
             }
         }
+    }
+}
+
+/// Set focus to whichever pane the mouse cursor is currently over.
+/// Used by scroll events so scrolling an unfocused pane works intuitively.
+fn focus_pane_under_mouse(app: &mut App, mouse: &MouseEvent) {
+    if !matches!(app.mode, AppMode::Normal | AppMode::History) {
+        return;
+    }
+    let Some(areas) = &app.cached_pane_areas else {
+        return;
+    };
+    let pos = (mouse.column, mouse.row);
+    if let Some(a) = areas.file_status {
+        if in_rect(pos, a) {
+            app.focus = Focus::FileStatus;
+            return;
+        }
+    }
+    if let Some(a) = areas.history {
+        if in_rect(pos, a) {
+            app.focus = Focus::History;
+            return;
+        }
+    }
+    if let Some(a) = areas.diff {
+        if in_rect(pos, a) {
+            app.focus = Focus::Details;
+            return;
+        }
+    }
+    if let Some(a) = areas.log {
+        if in_rect(pos, a) {
+            app.focus = Focus::Log;
+            return;
+        }
+    }
+    if let Some(a) = areas.branches {
+        if in_rect(pos, a) {
+            app.focus = Focus::Branches;
+            return;
+        }
+    }
+    if in_rect(pos, areas.repos) {
+        app.focus = Focus::Repos;
     }
 }
 
@@ -779,11 +831,11 @@ fn handle_normal_key(
     match key {
         KeyCode::Tab => {
             app.cycle_focus();
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::BackTab => {
             app.cycle_focus_reverse();
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::Down => {
             app.next();
@@ -792,7 +844,7 @@ fn handle_normal_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::Up => {
             app.previous();
@@ -801,7 +853,7 @@ fn handle_normal_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::PageDown => {
             app.next_page();
@@ -810,7 +862,7 @@ fn handle_normal_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::PageUp => {
             app.previous_page();
@@ -819,14 +871,14 @@ fn handle_normal_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::Char('r') => refresh_repos(app),
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
-        KeyCode::Char('d') => app.toggle_diff(),
+        KeyCode::Char('d') => app.toggle_details(),
         KeyCode::Char('b') => {
             if app.show_branches {
                 app.close_branches_pane();
@@ -1703,11 +1755,11 @@ fn handle_history_key(
         KeyCode::Char('h') => app.close_history(),
         KeyCode::Tab => {
             app.cycle_focus();
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::BackTab => {
             app.cycle_focus_reverse();
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::Down => {
             app.next();
@@ -1716,7 +1768,7 @@ fn handle_history_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::Up => {
             app.previous();
@@ -1725,7 +1777,7 @@ fn handle_history_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::PageDown => {
             app.next_page();
@@ -1734,7 +1786,7 @@ fn handle_history_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::PageUp => {
             app.previous_page();
@@ -1743,7 +1795,7 @@ fn handle_history_key(
             } else {
                 app.reload_history_if_open();
             }
-            app.refresh_diff();
+            app.refresh_details();
         }
         KeyCode::Enter => {
             if app.focus == Focus::Branches {
@@ -1759,7 +1811,7 @@ fn handle_history_key(
         // Global keys that must work from any pane
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
-        KeyCode::Char('d') => app.toggle_diff(),
+        KeyCode::Char('d') => app.toggle_details(),
         KeyCode::Char('b') => {
             if app.show_branches {
                 app.close_branches_pane();

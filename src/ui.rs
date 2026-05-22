@@ -21,7 +21,7 @@ use ratatui::{
 };
 use std::time::Instant;
 
-use crate::app::{App, AppMode, DiffSource, Focus, LogLevel, RepoOperation};
+use crate::app::{App, AppMode, Focus, LogLevel, RepoOperation};
 use crate::git::RepoStatus;
 
 /// Popup width (percent of terminal width) for the repo/log action menu.
@@ -118,7 +118,7 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     // When diff is shown, shrink the FileStatus and History panes to the left
     // half and expose a single right-half diff area spanning their combined height.
     let mut diff: Option<Rect> = None;
-    if app.show_diff && (file_status.is_some() || history.is_some()) {
+    if app.show_details && (file_status.is_some() || history.is_some()) {
         let top_area = file_status.or(history).unwrap();
         let bottom_area = history.or(file_status).unwrap();
         let combined_y = top_area.y;
@@ -220,7 +220,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // When diff is shown, shrink the FileStatus/History panes to the left half
     // and expose a single right-half panel spanning their combined height.
     let mut diff_area: Option<Rect> = None;
-    if app.show_diff && (file_status_area.is_some() || history_area.is_some()) {
+    if app.show_details && (file_status_area.is_some() || history_area.is_some()) {
         let top_area = file_status_area.or(history_area).unwrap();
         let bottom_area = history_area.or(file_status_area).unwrap();
         let combined_y = top_area.y;
@@ -255,7 +255,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         draw_history_panel(frame, area, app);
     }
     if let Some(area) = diff_area {
-        draw_diff_panel(frame, area, app);
+        draw_details_panel(frame, area, app);
     }
     if let Some(area) = log_area {
         draw_log_panel(frame, area, app);
@@ -1241,28 +1241,45 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     );
 }
 
-fn draw_diff_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+fn draw_details_panel(frame: &mut Frame, area: Rect, app: &mut App) {
+    use crate::app::{DetailsMode, DetailsSource};
     let t = app.theme();
-    let focused = app.focus == Focus::Diff;
+    let focused = app.focus == Focus::Details;
 
-    // Build a title that names the file being diffed.
-    let title =
-        match app.diff_source {
-            DiffSource::FileStatus => {
-                let name = app
-                    .selected_files()
-                    .get(app.file_status_selected)
-                    .map(|f| f.path.split('/').next_back().unwrap_or(&f.path).to_string())
-                    .unwrap_or_default();
-                if name.is_empty() {
-                    " Diff ".to_string()
-                } else {
-                    format!(" Diff — {name} ")
+    match app.details_mode {
+        DetailsMode::Empty => {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(" Details ")
+                .border_style(focus_border_style(focused, t));
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+            frame.render_widget(
+                Paragraph::new(Span::styled(
+                    "Select file or commit for details.",
+                    Style::default().fg(t.placeholder),
+                )),
+                inner,
+            );
+        }
+
+        DetailsMode::Diff => {
+            let title = match app.details_source {
+                DetailsSource::FileStatus => {
+                    let name = app
+                        .selected_files()
+                        .get(app.file_status_selected)
+                        .map(|f| f.path.split('/').next_back().unwrap_or(&f.path).to_string())
+                        .unwrap_or_default();
+                    if name.is_empty() {
+                        " Diff ".to_string()
+                    } else {
+                        format!(" Diff — {name} ")
+                    }
                 }
-            }
-            DiffSource::History => {
-                let name =
-                    app.history_row_at(app.history_selected)
+                DetailsSource::HistoryFile | DetailsSource::HistoryCommit => {
+                    let name = app
+                        .history_row_at(app.history_selected)
                         .and_then(|(ci, fi)| {
                             let fi = fi?;
                             app.history.get(ci)?.files.get(fi).map(|f| {
@@ -1270,54 +1287,183 @@ fn draw_diff_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                             })
                         })
                         .unwrap_or_default();
-                if name.is_empty() {
-                    " Diff ".to_string()
-                } else {
-                    format!(" Diff — {name} ")
+                    if name.is_empty() {
+                        " Diff ".to_string()
+                    } else {
+                        format!(" Diff — {name} ")
+                    }
+                }
+            };
+
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(focus_border_style(focused, t));
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+
+            if app.details_content.is_empty() {
+                frame.render_widget(
+                    Paragraph::new(Span::styled("no diff", Style::default().fg(t.placeholder))),
+                    inner,
+                );
+                return;
+            }
+
+            let visible = inner.height as usize;
+            let total_lines = app.details_content.lines().count();
+            let max_scroll = total_lines.saturating_sub(visible);
+            if app.details_scroll > max_scroll {
+                app.details_scroll = max_scroll;
+            }
+
+            let lines: Vec<Line<'static>> = app
+                .details_content
+                .lines()
+                .skip(app.details_scroll)
+                .take(visible)
+                .map(|raw| diff_line_to_ratatui(raw, t))
+                .collect();
+
+            frame.render_widget(Paragraph::new(lines), inner);
+            draw_scroll_indicators(
+                frame,
+                inner,
+                app.details_scroll > 0,
+                app.details_scroll < max_scroll,
+                focused,
+                t,
+            );
+        }
+
+        DetailsMode::Commit => {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(" Commit ")
+                .border_style(focus_border_style(focused, t));
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+
+            let (commit_idx, _) = match app.history_row_at(app.history_selected) {
+                Some((ci, None)) => (ci, ()),
+                _ => return,
+            };
+            let commit = match app.history.get(commit_idx) {
+                Some(c) => c.clone(),
+                None => return,
+            };
+
+            // Build the change summary exactly like build_status_spans: "N-A N-M N-D N-R"
+            let delta_counts: &[(crate::git::DeltaKind, &str, Color)] = &[
+                (crate::git::DeltaKind::Added, "A", t.delta_added),
+                (crate::git::DeltaKind::Modified, "M", t.delta_modified),
+                (crate::git::DeltaKind::Deleted, "D", t.delta_deleted),
+                (crate::git::DeltaKind::Renamed, "R", t.delta_modified),
+            ];
+            let mut change_spans: Vec<Span<'static>> = Vec::new();
+            for (kind, code, colour) in delta_counts {
+                let count = commit.files.iter().filter(|f| &f.kind == kind).count();
+                if count > 0 {
+                    if !change_spans.is_empty() {
+                        change_spans.push(Span::raw(" "));
+                    }
+                    change_spans.push(Span::styled(
+                        format!("{count}-{code}"),
+                        Style::default().fg(*colour),
+                    ));
                 }
             }
-        };
+            if change_spans.is_empty() {
+                change_spans.push(Span::styled(
+                    "no changes",
+                    Style::default().fg(t.placeholder),
+                ));
+            }
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .border_style(focus_border_style(focused, t));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+            let width = inner.width as usize;
 
-    if app.diff_content.is_empty() {
-        frame.render_widget(
-            Paragraph::new(Span::styled("no diff", Style::default().fg(t.placeholder))),
-            inner,
-        );
-        return;
+            let mut lines: Vec<Line<'static>> = vec![
+                Line::from(vec![
+                    Span::styled(
+                        commit.short_hash.clone(),
+                        Style::default().fg(t.history_hash),
+                    ),
+                    Span::raw("  "),
+                    Span::styled(
+                        commit.timestamp.clone(),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]),
+                Line::from(change_spans),
+                Line::from(Span::styled(
+                    format!("{} <{}>", commit.author, commit.author_email),
+                    Style::default().fg(t.history_author),
+                )),
+                Line::raw(""),
+            ];
+
+            for wrapped in word_wrap(&commit.summary, width) {
+                lines.push(Line::from(Span::styled(
+                    wrapped,
+                    Style::default().add_modifier(Modifier::BOLD),
+                )));
+            }
+
+            if !commit.body.is_empty() {
+                lines.push(Line::raw(""));
+                for body_line in commit.body.lines() {
+                    if body_line.trim().is_empty() {
+                        lines.push(Line::raw(""));
+                    } else {
+                        for wrapped in word_wrap(body_line, width) {
+                            lines.push(Line::from(wrapped));
+                        }
+                    }
+                }
+            }
+
+            let total_lines = lines.len();
+            let visible = inner.height as usize;
+            let max_scroll = total_lines.saturating_sub(visible);
+            if app.details_scroll > max_scroll {
+                app.details_scroll = max_scroll;
+            }
+            let scroll = app.details_scroll;
+
+            let display: Vec<Line<'static>> =
+                lines.into_iter().skip(scroll).take(visible).collect();
+            frame.render_widget(Paragraph::new(display), inner);
+            draw_scroll_indicators(frame, inner, scroll > 0, scroll < max_scroll, focused, t);
+        }
     }
+}
 
-    let visible = inner.height as usize;
-    let total_lines = app.diff_content.lines().count();
-    let max_scroll = total_lines.saturating_sub(visible);
-    if app.diff_scroll > max_scroll {
-        app.diff_scroll = max_scroll;
+/// Word-wrap `text` to fit within `width` columns.
+/// Returns at least one element; preserves empty input as `[""]`.
+fn word_wrap(text: &str, width: usize) -> Vec<String> {
+    if width == 0 {
+        return vec![text.to_string()];
     }
-
-    let lines: Vec<Line<'static>> = app
-        .diff_content
-        .lines()
-        .skip(app.diff_scroll)
-        .take(visible)
-        .map(|raw| diff_line_to_ratatui(raw, t))
-        .collect();
-
-    frame.render_widget(Paragraph::new(lines), inner);
-
-    draw_scroll_indicators(
-        frame,
-        inner,
-        app.diff_scroll > 0,
-        app.diff_scroll < max_scroll,
-        focused,
-        t,
-    );
+    if text.trim().is_empty() {
+        return vec![String::new()];
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if line.is_empty() {
+            line.push_str(word);
+        } else if line.len() + 1 + word.len() <= width {
+            line.push(' ');
+            line.push_str(word);
+        } else {
+            out.push(std::mem::take(&mut line));
+            line.push_str(word);
+        }
+    }
+    if !line.is_empty() {
+        out.push(line);
+    }
+    out
 }
 
 /// Map one raw patch line to a styled ratatui `Line`.
@@ -1394,7 +1540,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
         kv("s", "File Status"),
         kv("b", "Branches"),
         kv("h", "Commit History"),
-        kv("d", "File Diff"),
+        kv("d", "Details"),
         kv("l", "Output Log"),
         Line::raw(""),
         Line::from(Span::styled(" Repositories", sec)),

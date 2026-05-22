@@ -107,14 +107,29 @@ pub enum Focus {
     FileStatus,
     Log,
     History,
-    Diff,
+    Details,
 }
 
-/// Which pane last provided content for the Diff panel.
+/// Which source last drove the content of the Details panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiffSource {
+pub enum DetailsSource {
+    /// A file selected in the File Status pane.
     FileStatus,
-    History,
+    /// A file row selected inside a commit in the History pane.
+    HistoryFile,
+    /// A commit row selected in the History pane.
+    HistoryCommit,
+}
+
+/// What the Details pane is currently displaying.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetailsMode {
+    /// Showing a file diff.
+    Diff,
+    /// Showing commit details (a commit row is selected in the History pane).
+    Commit,
+    /// No relevant selection — showing the placeholder prompt.
+    Empty,
 }
 
 /// What the UI is currently showing.
@@ -306,15 +321,17 @@ pub struct App {
     /// True when the History pane is being driven by the Branches pane selection.
     pub branches_history_active: bool,
 
-    // ── Diff pane ─────────────────────────────────────────────────────────────
-    /// Whether the Diff pane is visible.
-    pub show_diff: bool,
-    /// Raw patch-format diff text currently displayed.
-    pub diff_content: String,
-    /// Scroll offset (lines from top) for the Diff pane.
-    pub diff_scroll: usize,
+    // ── Details pane ──────────────────────────────────────────────────────────
+    /// Whether the Details pane is visible.
+    pub show_details: bool,
+    /// What the Details pane is currently displaying.
+    pub details_mode: DetailsMode,
+    /// Raw patch-format text shown when details_mode == Diff.
+    pub details_content: String,
+    /// Scroll offset (lines from top) for the Details pane.
+    pub details_scroll: usize,
     /// Which pane last provided the diff context.
-    pub diff_source: DiffSource,
+    pub details_source: DetailsSource,
 
     // ── Help overlay ──────────────────────────────────────────────────────────
     /// Scroll offset (lines from top) for the help keybindings overlay.
@@ -356,7 +373,7 @@ impl App {
         let show_file_status = state.show_file_status;
         let show_log = state.show_log;
         let show_history = state.show_history;
-        let show_diff = state.show_diff;
+        let show_details = state.show_details;
 
         App {
             repos: Vec::new(),
@@ -405,10 +422,11 @@ impl App {
             branches_pane_selected: 0,
             branches_pane_scroll: 0,
             branches_history_active: false,
-            show_diff,
-            diff_content: String::new(),
-            diff_scroll: 0,
-            diff_source: DiffSource::FileStatus,
+            show_details,
+            details_mode: DetailsMode::Empty,
+            details_content: String::new(),
+            details_scroll: 0,
+            details_source: DetailsSource::FileStatus,
             help_overlay_scroll: 0,
             help_overlay_max_scroll: usize::MAX,
             help_overlay_area: None,
@@ -458,10 +476,10 @@ impl App {
                     self.history_selected += 1;
                 }
             }
-            Focus::Diff => {
-                let n = self.diff_content.lines().count();
-                if n > 0 && self.diff_scroll + 1 < n {
-                    self.diff_scroll += 1;
+            Focus::Details => {
+                let n = self.details_line_count();
+                if n > 0 && self.details_scroll + 1 < n {
+                    self.details_scroll += 1;
                 }
             }
         }
@@ -503,9 +521,9 @@ impl App {
                     self.history_selected -= 1;
                 }
             }
-            Focus::Diff => {
-                if self.diff_scroll > 0 {
-                    self.diff_scroll -= 1;
+            Focus::Details => {
+                if self.details_scroll > 0 {
+                    self.details_scroll -= 1;
                 }
             }
         }
@@ -525,8 +543,8 @@ impl App {
         if self.show_history {
             order.push(Focus::History);
         }
-        if self.show_diff && (self.show_file_status || self.show_history) {
-            order.push(Focus::Diff);
+        if self.show_details && (self.show_file_status || self.show_history) {
+            order.push(Focus::Details);
         }
         if self.show_log {
             order.push(Focus::Log);
@@ -594,10 +612,10 @@ impl App {
                     self.history_selected = (self.history_selected + PAGE_STEP).min(n - 1);
                 }
             }
-            Focus::Diff => {
-                let n = self.diff_content.lines().count();
+            Focus::Details => {
+                let n = self.details_line_count();
                 if n > 0 {
-                    self.diff_scroll = (self.diff_scroll + PAGE_STEP).min(n - 1);
+                    self.details_scroll = (self.details_scroll + PAGE_STEP).min(n - 1);
                 }
             }
         }
@@ -627,8 +645,8 @@ impl App {
             Focus::History => {
                 self.history_selected = self.history_selected.saturating_sub(PAGE_STEP);
             }
-            Focus::Diff => {
-                self.diff_scroll = self.diff_scroll.saturating_sub(PAGE_STEP);
+            Focus::Details => {
+                self.details_scroll = self.details_scroll.saturating_sub(PAGE_STEP);
             }
         }
     }
@@ -1408,40 +1426,80 @@ impl App {
         }
     }
 
-    pub fn toggle_diff(&mut self) {
-        self.show_diff = !self.show_diff;
-        if !self.show_diff {
-            if self.focus == Focus::Diff {
+    pub fn toggle_details(&mut self) {
+        self.show_details = !self.show_details;
+        if !self.show_details {
+            if self.focus == Focus::Details {
                 self.focus = Focus::Repos;
             }
-            self.diff_content.clear();
+            self.details_content.clear();
+            self.details_mode = DetailsMode::Empty;
         } else {
-            self.refresh_diff();
+            self.refresh_details();
         }
         self.save_pane_state();
     }
 
-    /// Reload diff content based on the currently focused/sourced pane.
-    /// No-op when the diff pane is hidden.
-    pub fn refresh_diff(&mut self) {
-        if !self.show_diff {
+    /// Reload Details pane content based on the currently focused/sourced pane.
+    /// No-op when the Details pane is hidden.
+    pub fn refresh_details(&mut self) {
+        if !self.show_details {
             return;
         }
-        // When the Diff pane itself is focused the user is scrolling its content —
+        // When the Details pane itself is focused the user is scrolling its content —
         // don't reload or reset the scroll position.
-        if self.focus == Focus::Diff {
+        if self.focus == Focus::Details {
             return;
         }
         match self.focus {
-            Focus::FileStatus => self.diff_source = DiffSource::FileStatus,
-            Focus::History => self.diff_source = DiffSource::History,
-            _ => {}
+            Focus::FileStatus => {
+                self.details_source = DetailsSource::FileStatus;
+                self.details_mode = DetailsMode::Diff;
+                self.details_content = self.load_file_status_diff();
+                self.details_scroll = 0;
+            }
+            Focus::History => match self.history_row_at(self.history_selected) {
+                Some((_, None)) => {
+                    self.details_source = DetailsSource::HistoryCommit;
+                    self.details_mode = DetailsMode::Commit;
+                    self.details_content.clear();
+                    self.details_scroll = 0;
+                }
+                Some((_, Some(_))) => {
+                    self.details_source = DetailsSource::HistoryFile;
+                    self.details_mode = DetailsMode::Diff;
+                    self.details_content = self.load_history_diff();
+                    self.details_scroll = 0;
+                }
+                None => {
+                    self.details_mode = DetailsMode::Empty;
+                    self.details_content.clear();
+                    self.details_scroll = 0;
+                }
+            },
+            _ => {
+                self.details_mode = DetailsMode::Empty;
+                self.details_content.clear();
+                self.details_scroll = 0;
+            }
         }
-        self.diff_content = match self.diff_source {
-            DiffSource::FileStatus => self.load_file_status_diff(),
-            DiffSource::History => self.load_history_diff(),
-        };
-        self.diff_scroll = 0;
+    }
+
+    /// Number of scrollable lines in the Details pane (used for scroll clamping).
+    pub fn details_line_count(&self) -> usize {
+        match self.details_mode {
+            DetailsMode::Diff => self.details_content.lines().count(),
+            DetailsMode::Commit => {
+                // commit hash+timestamp, change indicator, author, blank, summary, blank, body lines
+                if let Some((ci, None)) = self.history_row_at(self.history_selected) {
+                    if let Some(commit) = self.history.get(ci) {
+                        return 4 + commit.body.lines().count().max(1);
+                    }
+                }
+                0
+            }
+            DetailsMode::Empty => 0,
+        }
     }
 
     fn load_file_status_diff(&self) -> String {
@@ -1516,9 +1574,9 @@ impl App {
         self.state.show_file_status = self.show_file_status;
         self.state.show_log = self.show_log;
         self.state.show_history = self.show_history;
-        self.state.show_diff = self.show_diff;
+        self.state.show_details = self.show_details;
         if let Err(e) = self.state.save() {
-            self.log(format!("failed to save pane state: {e}"));
+            self.log_error(format!("failed to save pane state: {e}"));
         }
     }
 
