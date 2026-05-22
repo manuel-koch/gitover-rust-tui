@@ -22,7 +22,7 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 - File-system watcher for instant refresh (no polling)
 - Persistent repo list and pane state across sessions
 
-![screenshot](screenshot.jpg)
+![screenshot](./docs/screenshot.jpg)
 
 ## Build & Install
 

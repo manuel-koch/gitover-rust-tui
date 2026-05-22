@@ -5,6 +5,8 @@
 - Rust-based terminal UI application
 - Tracks multiple git repositories simultaneously
 
+![screenshot](./screenshot.jpg)
+
 ## CLI options/flags
 
 | Flag | Description |
