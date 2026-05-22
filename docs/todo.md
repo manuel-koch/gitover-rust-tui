@@ -30,7 +30,7 @@ Done tasks are check-marked when implemented.
 
 ## Git Commit History Pane
 
-- [ ] Keybinding shift-up/down to jump to next/previous commit when "Commit History"
+- [x] Keybinding shift-up/down to jump to next/previous commit when "Commit History"
       pane has focus
 
 ## Git Details Pane

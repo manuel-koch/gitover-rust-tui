@@ -1400,6 +1400,37 @@ impl App {
         None
     }
 
+    /// Jump to the flat row index of commit `ci` (its header row).
+    fn history_commit_flat_row(&self, ci: usize) -> usize {
+        self.history[..ci].iter().map(|c| 1 + c.files.len()).sum()
+    }
+
+    /// Move history selection to the next commit header row (Shift+Down).
+    pub fn next_commit(&mut self) {
+        let Some((ci, _)) = self.history_row_at(self.history_selected) else {
+            return;
+        };
+        let next_ci = ci + 1;
+        if next_ci < self.history.len() {
+            self.history_selected = self.history_commit_flat_row(next_ci);
+        }
+    }
+
+    /// Move history selection to the previous commit header row (Shift+Up).
+    pub fn previous_commit(&mut self) {
+        let Some((ci, fi)) = self.history_row_at(self.history_selected) else {
+            return;
+        };
+        // If already on a commit header, go to the one before it.
+        // If on a file sub-row, go to this commit's header.
+        let target_ci = if fi.is_none() {
+            ci.saturating_sub(1)
+        } else {
+            ci
+        };
+        self.history_selected = self.history_commit_flat_row(target_ci);
+    }
+
     pub fn log(&mut self, text: impl Into<String>) {
         self.log_at(LogLevel::Info, text);
     }

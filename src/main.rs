@@ -1749,7 +1749,7 @@ fn handle_history_key(
     app: &mut App,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
-    _modifiers: KeyModifiers,
+    modifiers: KeyModifiers,
 ) {
     match key {
         KeyCode::Char('h') => app.close_history(),
@@ -1759,6 +1759,23 @@ fn handle_history_key(
         }
         KeyCode::BackTab => {
             app.cycle_focus_reverse();
+            app.refresh_details();
+        }
+        KeyCode::Down if modifiers.contains(KeyModifiers::SHIFT) && app.focus == Focus::History => {
+            app.next_commit();
+            app.refresh_details();
+        }
+        KeyCode::Up if modifiers.contains(KeyModifiers::SHIFT) && app.focus == Focus::History => {
+            app.previous_commit();
+            app.refresh_details();
+        }
+        // Alternative bindings for terminals that intercept Shift+Arrow (e.g. Zed).
+        KeyCode::Char('.') if app.focus == Focus::History => {
+            app.next_commit();
+            app.refresh_details();
+        }
+        KeyCode::Char(',') if app.focus == Focus::History => {
+            app.previous_commit();
             app.refresh_details();
         }
         KeyCode::Down => {

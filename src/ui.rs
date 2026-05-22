@@ -1337,13 +1337,6 @@ fn draw_details_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         }
 
         DetailsMode::Commit => {
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .title(" Commit ")
-                .border_style(focus_border_style(focused, t));
-            let inner = block.inner(area);
-            frame.render_widget(block, area);
-
             let (commit_idx, _) = match app.history_row_at(app.history_selected) {
                 Some((ci, None)) => (ci, ()),
                 _ => return,
@@ -1352,6 +1345,14 @@ fn draw_details_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                 Some(c) => c.clone(),
                 None => return,
             };
+
+            let title = format!(" Commit [{}/{}] ", commit_idx + 1, app.history.len());
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(focus_border_style(focused, t));
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
 
             // Build the change summary exactly like build_status_spans: "N-A N-M N-D N-R"
             let delta_counts: &[(crate::git::DeltaKind, &str, Color)] = &[
@@ -1534,6 +1535,8 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
         Line::from(Span::styled(" Navigation", sec)),
         kv("Tab / Shift-Tab", "cycle focus"),
         kv("↑ / ↓", "move up / down"),
+        kv("Shift-↑ / Shift-↓", "prev / next commit (History pane)"),
+        kv(", / .", "prev / next commit (History pane)"),
         kv("PgUp / PgDn", "move up / down fast"),
         Line::raw(""),
         Line::from(Span::styled(" Toggle Panes", sec)),
