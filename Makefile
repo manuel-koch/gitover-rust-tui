@@ -1,4 +1,4 @@
-.PHONY: lint format build-and-run test release install tag-version
+.PHONY: lint format build-and-run test release install tag-version outdated-dependencies upgrade-dependencies
 
 # Run cargo check/clippy and report all warnings
 lint:
@@ -28,6 +28,14 @@ release:
 # Build optimized release binary and install it `~/.cargo/bin`
 install:
 	cargo install --path .
+
+# Show available dependency upgrades (within semver bounds)
+outdated-dependencies:
+	cargo update --dry-run
+
+# Apply dependency upgrades to Cargo.lock (within semver bounds)
+upgrade-dependencies:
+	cargo update
 
 # Tag HEAD with the version from Cargo.toml (e.g. v0.2.0)
 tag-version:
