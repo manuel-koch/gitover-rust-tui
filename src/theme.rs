@@ -61,6 +61,10 @@ pub struct Theme {
 
     // ── Output Log ────────────────────────────────────────────────────────────
     pub log_timestamp: Color,
+    pub log_debug: Color,
+    pub log_info: Color,
+    pub log_warn: Color,
+    pub log_error: Color,
 
     // ── Git History pane ──────────────────────────────────────────────────────
     pub history_hash: Color,
@@ -148,6 +152,10 @@ pub const DEFAULT: Theme = Theme {
     selection_row_bg: Color::Rgb(55, 55, 80),
 
     log_timestamp: Color::DarkGray,
+    log_debug: Color::DarkGray,
+    log_info: Color::Reset,
+    log_warn: Color::Yellow,
+    log_error: Color::Red,
 
     history_hash: Color::Yellow,
     history_timestamp: Color::DarkGray,

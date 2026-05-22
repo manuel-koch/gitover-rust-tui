@@ -21,7 +21,7 @@ use ratatui::{
 };
 use std::time::Instant;
 
-use crate::app::{App, AppMode, DiffSource, Focus, RepoOperation};
+use crate::app::{App, AppMode, DiffSource, Focus, LogLevel, RepoOperation};
 use crate::git::RepoStatus;
 
 /// Popup width (percent of terminal width) for the repo/log action menu.
@@ -1064,12 +1064,22 @@ fn draw_log_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         .iter()
         .take(visible)
         .map(|l| {
+            let text_color = match l.level {
+                LogLevel::Debug => theme.log_debug,
+                LogLevel::Info => theme.log_info,
+                LogLevel::Warn => theme.log_warn,
+                LogLevel::Error => theme.log_error,
+            };
             Line::from(vec![
                 Span::styled(
-                    format!("[{}] ", l.timestamp),
+                    format!("[{} ", l.timestamp),
                     Style::default().fg(theme.log_timestamp),
                 ),
-                Span::raw(l.text.clone()),
+                Span::styled(
+                    format!("{:>5}] ", l.level.label()),
+                    Style::default().fg(text_color),
+                ),
+                Span::styled(l.text.clone(), Style::default().fg(text_color)),
             ])
         })
         .collect();

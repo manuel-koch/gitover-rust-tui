@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// A custom command that can be run against the selected repository.
@@ -50,6 +51,10 @@ pub struct GeneralConfig {
     /// Defaults to 600 seconds (10 minutes) if not set.
     #[serde(default)]
     pub auto_fetch_interval: Option<u64>,
+    /// Path to the debug log file. When set, debug logging is written to this
+    /// file (appended if it already exists). Overridden by `--debug-log` CLI flag.
+    #[serde(default)]
+    pub debug_log: Option<String>,
 }
 
 impl GeneralConfig {

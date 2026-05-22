@@ -14,7 +14,7 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 - Status Details pane — per-file change list with priority sorting and scroll indicators
 - Commit History pane — full log or filtered ahead/behind upstream & trunk; file sub-rows per commit
 - Diff pane — patch-format diff of selected file from Status Details or History pane
-- Output Log pane — timestamped git command output with auto-follow
+- Output Log pane — timestamped, severity-coloured git command output with auto-follow
 - Per-file actions: stage, unstage, revert, discard
 - Branches pane — full list of local and remote-only branches with ahead/behind counts; direct checkout and branch action menu
 - Help overlay (`?`) — Show available keybindings
@@ -62,10 +62,11 @@ A missing file is valid — defaults are used.
 general:
   git: /usr/local/bin/git        # optional: override git executable path
   auto_fetch_interval: 600       # seconds between background fetches (0 = disabled)
+  debug_log: ~/logs/gitover.log  # optional: persistent debug log (supports ~ and ${VAR})
 
 repo_commands:
   - name: Open in editor
-    cmd: code $ROOT
+    cmd: code ${ROOT}             # ${ROOT} and ${BRANCH} are repo vars; ${HOME} etc. are env vars
     background: true
 ```
 
@@ -75,8 +76,12 @@ State (repo list, pane visibility) is saved automatically to `~/.config/gitover/
 ## Usage
 
 ```shell
-gitover [--config <path>] [--state <path>]
+gitover [--config <path>] [--state <path>] [--debug-log <path>]
 ```
+
+Debug logging can also be enabled persistently via `general.debug_log` in the config file; the CLI flag takes precedence when both are set. Both paths support `~` and `${VAR}` expansion — the app terminates if a variable cannot be resolved.
+
+Repo command strings use `${VAR}` substitution: repo variables (`${ROOT}`, `${BRANCH}`) are resolved first, then any remaining references are resolved from the process environment. The command is not run if any variable is unresolvable.
 
 On first launch the repo list is empty. Press `A` to add a repository using the file picker.
 If the current working directory is a git repository it is added automatically.

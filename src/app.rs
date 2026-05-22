@@ -45,12 +45,57 @@ impl RepoOperation {
     }
 }
 
+/// Severity level for a log line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LogLevel {
+    Debug,
+    #[default]
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    pub fn label(self) -> &'static str {
+        match self {
+            LogLevel::Debug => "DEBUG",
+            LogLevel::Info => "INFO",
+            LogLevel::Warn => "WARN",
+            LogLevel::Error => "ERROR",
+        }
+    }
+}
+
 /// One line in the output log panel.
 #[derive(Debug, Clone)]
 pub struct LogLine {
     /// Wall-clock time the line was recorded, formatted as `HH:MM:SS`.
     pub timestamp: String,
+    pub level: LogLevel,
     pub text: String,
+}
+
+impl LogLine {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self::new_at(LogLevel::Info, text)
+    }
+
+    pub fn new_at(level: LogLevel, text: impl Into<String>) -> Self {
+        Self {
+            timestamp: current_hms(),
+            level,
+            text: text.into(),
+        }
+    }
+
+    pub fn formatted(&self) -> String {
+        format!(
+            "[{} {:>5}] {}",
+            self.timestamp,
+            self.level.label(),
+            self.text
+        )
+    }
 }
 
 /// Which pane currently has keyboard focus. Tab cycles through the visible
@@ -947,7 +992,7 @@ impl App {
         let text: String = self
             .log
             .iter()
-            .map(|l| format!("[{}] {}", l.timestamp, l.text))
+            .map(|l| l.formatted())
             .collect::<Vec<_>>()
             .join("\n");
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
@@ -1337,22 +1382,30 @@ impl App {
         None
     }
 
-    /// Append a timestamped line to the output log.
-    /// If `log_follow` is true (or the log panel is closed), the offset is
-    /// advanced so the newest entry stays visible when the panel is open.
     pub fn log(&mut self, text: impl Into<String>) {
-        let timestamp = current_hms();
-        self.log.push(LogLine {
-            timestamp,
-            text: text.into(),
-        });
+        self.log_at(LogLevel::Info, text);
+    }
+
+    pub fn log_debug(&mut self, text: impl Into<String>) {
+        self.log_at(LogLevel::Debug, text);
+    }
+
+    pub fn log_warn(&mut self, text: impl Into<String>) {
+        self.log_at(LogLevel::Warn, text);
+    }
+
+    pub fn log_error(&mut self, text: impl Into<String>) {
+        self.log_at(LogLevel::Error, text);
+    }
+
+    fn log_at(&mut self, level: LogLevel, text: impl Into<String>) {
+        let line = LogLine::new_at(level, text);
+        crate::write_debug_log(&line);
+        self.log.push(line);
         if self.log.len() > MAX_LOG_LINES {
             let drop = self.log.len() - MAX_LOG_LINES;
             self.log.drain(0..drop);
-            // log_offset is lines-from-tail, so drain doesn't affect it.
         }
-        // With lines-from-tail semantics, follow just means keeping offset at 0.
-        // No adjustment needed — offset 0 always shows the current tail.
     }
 
     pub fn toggle_diff(&mut self) {

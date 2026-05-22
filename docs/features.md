@@ -12,6 +12,7 @@
 | `--version` | Show version & built info and exit |
 | `--config <path>` | Override the config file location (skips CWD-walk and global fallback) |
 | `--state <path>` | Override the state file location (skips CWD-walk and global fallback); file is created on first save if absent |
+| `--debug-log <path>` | Enable debug logging to a file; path supports `~` and `${VAR}` expansion. Appended to if it already exists, created otherwise. Overrides `general.debug_log` from config. App terminates if any variable cannot be resolved |
 
 ## Configuration
 
@@ -21,9 +22,15 @@
 - `general.git`: override the path to the git executable
 - `general.auto_fetch_interval`: interval in seconds for automatic background fetch of all repos
   (default: 600 = 10 minutes; set to 0 to disable automatic fetch)
+- `general.debug_log`: path to the debug log file; supports `~` and `${VAR}` expansion. Appended to if
+  it already exists, created otherwise. Can be overridden by `--debug-log` CLI flag. App terminates if
+  any variable cannot be resolved
 - `repo_commands`: list of commands that can be run for current repository
   - `repo_commands[].name`: Description of the command, will be shown in action menu
-  - `repo_commands[].cmd`: The command line to be executed, supports variable expansion like `$ROOT` ( repo git root path ), `$BRANCH` ( current git branch name )
+  - `repo_commands[].cmd`: The command line to be executed; supports `${VAR}` substitution in two steps:
+    1. Repo-dependent variables: `${ROOT}` (git root path), `${BRANCH}` (current branch name)
+    2. Environment variables: any `${VAR}` still unresolved is looked up in the process environment
+    The command is not executed if any variable cannot be resolved
   - `repo_commands[].background`: Boolean flag whether the `cmd` should be executed in background
 - Persisted app state (repo list, pane visibility):
   - State file lookup: searches for `gitover.state.yaml` starting from CWD and walking up to root;
@@ -99,7 +106,10 @@ Direct shortcuts `f`, `p`, `P`, `c` also work from the normal Repositories view 
 Entries from `repo_commands` config are appended to the per-repo action menu below a separator line, after all built-in actions. Digit keys `1`–`9` (then `0`) are assigned in declaration order. Each command:
 
 - Runs with the working directory set to the repo's git root
-- Expands `$ROOT` (git root path) and `$BRANCH` (current branch name) in the command string before execution
+- Variable substitution uses `${VAR}` syntax only, applied in two steps:
+  1. Repo variables: `${ROOT}` (git root path), `${BRANCH}` (current branch name)
+  2. Environment variables: any remaining `${VAR}` references resolved from the process environment
+- Command is not executed if any variable cannot be resolved; an error is logged for each unknown variable
 - Appends its output to the Output Log pane on completion
 - If `background: true`, is spawned without waiting and its output is discarded
 
@@ -135,7 +145,8 @@ Dismiss the menu with `Esc` or by clicking outside it.
 ## Output Log Pane
 
 - Toggle with `l`
-- Shows timestamped lines from git command output in local time (`HH:MM:SS`)
+- Shows timestamped lines from git command output in local time; each line displays `[HH:MM:SS LEVEL] message`
+- Severity is colour-coded: `INFO` default, `WARN` yellow, `ERROR` red, `DEBUG` dim gray
 - Auto-follows new entries (scrolls to tail) when cursor is at the last visible line
 - When pane is not focused, always shows the tail (latest entries)
 - User can scroll up into history; scrolling back to tail re-enables auto-follow
@@ -144,6 +155,23 @@ Dismiss the menu with `Esc` or by clicking outside it.
 - Pressing `Enter` when the Output Log pane has focus opens the log action menu
   - Menu entry "Copy log output" copies the entire log content to system clipboard
   - After copying, shows a transient popup notification "Log output copied to clipboard!" that auto-dismisses after 2 seconds
+
+## Debug Logging
+
+When `--debug-log <path>` is passed on the command line, gitover writes a structured log to the specified file.
+
+- Enabled via `--debug-log <path>` CLI flag or `general.debug_log` config option; CLI flag takes precedence
+- Both path sources support `~` and `${VAR}` expansion; the app terminates with an error if any variable cannot be resolved
+- File is appended to if it already exists, created otherwise; no file is written when neither source is set
+- Every entry in the Output Log pane is mirrored to the debug log file
+- Internal debug events (raw key events, operation dispatch) that are not shown in the UI are also written
+- Each line uses the format: `[HH:MM:SS LEVEL] message`
+  - `LEVEL` is right-aligned in a 5-character field: `DEBUG`, ` INFO`, ` WARN`, `ERROR`
+- Severity levels:
+  - `DEBUG` — internal events (key presses, operation routing); file only, not shown in the Output Log pane
+  - `INFO` — normal operation output (fetch started, scan complete, etc.)
+  - `WARN` — non-fatal anomalies
+  - `ERROR` — failed git operations
 
 ## Git History Pane
 

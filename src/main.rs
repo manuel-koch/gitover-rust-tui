@@ -19,6 +19,7 @@ mod ops;
 mod state;
 mod theme;
 mod ui;
+mod utils;
 mod watcher;
 
 use anyhow::Result;
@@ -36,9 +37,34 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use ratatui_explorer::Input as ExplorerInput;
 use std::{
     io,
-    sync::mpsc::{self, Receiver, TryRecvError},
+    sync::{
+        mpsc::{self, Receiver, TryRecvError},
+        Mutex,
+    },
     time::{Duration, Instant},
 };
+
+pub(crate) static DEBUG_LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
+
+/// Single point of control for writing a log line to the debug log file.
+pub(crate) fn write_debug_log(line: &app::LogLine) {
+    if let Ok(mut guard) = DEBUG_LOG.lock() {
+        if let Some(f) = guard.as_mut() {
+            use std::io::Write as _;
+            let _ = writeln!(f, "{}", line.formatted());
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! dlog {
+    ($($arg:tt)*) => {{
+        $crate::write_debug_log(&$crate::app::LogLine::new_at(
+            $crate::app::LogLevel::Debug,
+            format!($($arg)*),
+        ));
+    }};
+}
 
 /// Tick interval for the event loop (UI responsiveness).
 const TICK: Duration = Duration::from_millis(200);
@@ -63,6 +89,46 @@ fn main() -> Result<()> {
 
     let config_override = parse_path_flag(&args, "--config");
     let state_override = parse_path_flag(&args, "--state");
+
+    // Resolve debug-log path: CLI flag takes precedence over config file option.
+    let config_for_log = config::Config::load_from(&config::find_config_path());
+    let raw_log_path: Option<String> = args
+        .windows(2)
+        .find(|w| w[0] == "--debug-log")
+        .map(|w| w[1].clone())
+        .or_else(|| config_for_log.general.debug_log.clone());
+
+    let log_path = raw_log_path
+        .map(|s| {
+            let (path, missing) = utils::expand_path(&s);
+            if !missing.is_empty() {
+                for name in &missing {
+                    eprintln!("error: debug-log path: unknown variable ${{{name}}}");
+                }
+                Err(anyhow::anyhow!(
+                    "debug-log path contains unresolvable variables"
+                ))
+            } else {
+                Ok(path)
+            }
+        })
+        .transpose()?;
+
+    if let Some(ref log_path) = log_path {
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+        {
+            Ok(f) => {
+                if let Ok(mut guard) = DEBUG_LOG.lock() {
+                    *guard = Some(f);
+                }
+                dlog!("gitover started");
+            }
+            Err(e) => eprintln!("warning: cannot open debug log {log_path:?}: {e}"),
+        }
+    }
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -170,6 +236,12 @@ where
         if event::poll(timeout)? {
             let ev = event::read()?;
             if let Event::Key(key) = &ev {
+                dlog!(
+                    "key: code={:?} modifiers={:?} mode={:?}",
+                    key.code,
+                    key.modifiers,
+                    app.mode
+                );
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
                     app.should_quit = true;
                     continue;
@@ -180,10 +252,16 @@ where
                     && key.code == KeyCode::Char('f'))
                     || key.code == KeyCode::Char('ƒ');
                 if is_alt_f {
+                    dlog!("alt-f matched → launch_all_fetch");
                     app.reset_auto_fetch_timer();
                     launch_all_fetch(app, op_tx);
                     continue;
                 }
+                dlog!(
+                    "alt-f NOT matched (modifiers={:?} code={:?})",
+                    key.modifiers,
+                    key.code
+                );
             }
 
             // Handle mouse events (clicks for focus, wheel for scroll)
@@ -818,7 +896,17 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
         .map(|r| r.path.clone())
         .collect();
 
+    dlog!(
+        "launch_all_fetch: total_repos={} fetchable={}",
+        total,
+        paths.len()
+    );
+    for r in &app.repos {
+        dlog!("  repo path={:?} error={:?}", r.path, r.error);
+    }
+
     if paths.is_empty() {
+        dlog!("launch_all_fetch: no fetchable repos, returning early");
         return;
     }
 
@@ -862,7 +950,7 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
     spawn_op(path, request, git_bin, op_tx.clone());
 }
 
-/// Interpolate `$ROOT` / `$BRANCH` in a repo command string and spawn it.
+/// Expand `${ROOT}` / `${BRANCH}` and env vars in a repo command string and spawn it.
 fn launch_repo_cmd(
     app: &mut App,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
@@ -879,7 +967,22 @@ fn launch_repo_cmd(
     }
     let root = repo.path.clone();
     let branch = repo.branch.clone();
-    let cmd = raw_cmd.replace("$ROOT", &root).replace("$BRANCH", &branch);
+
+    // Step 1: replace repo-dependent vars (${ROOT}, ${BRANCH}).
+    // Unresolved names are left as-is and will be tried as env vars in step 2.
+    let (s1, _) = utils::expand_vars(raw_cmd, &[("ROOT", &root), ("BRANCH", &branch)]);
+
+    // Step 2: replace remaining env vars (${HOME}, etc.).
+    // Any name still unresolved at this point is a genuine error.
+    let (cmd, missing) = utils::expand_env_vars(&s1);
+    for var in &missing {
+        app.log_error(format!(
+            "repo command '{name}': unknown variable ${{{var}}}"
+        ));
+    }
+    if !missing.is_empty() {
+        return;
+    }
     let name = name.to_string();
     let git_bin = app
         .config
@@ -908,8 +1011,8 @@ fn handle_op_result(
 ) {
     app.operations.remove(&result.repo_path);
     if !result.success {
-        app.log(format!(
-            "FAILED '{}' in {}",
+        app.log_error(format!(
+            "'{}' failed in {}",
             result.op_label, result.repo_path
         ));
     }
