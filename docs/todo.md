@@ -30,7 +30,24 @@ Done tasks are check-marked when implemented.
 
 ## Git History Pane
 
-- [ ]
+- [ ] Refactor the current "Diff" pane to be a "Details" pane
+- [ ] The "Details" pane will show
+  - [ ] file diff, if a file is selected in status pane or history pane
+  - [ ] commit details, if a commit message row is selected
+- [ ] Refactor the "d" keybinding to refer to "Details" pane
+- [ ] "Details" pane content can be scrolled, has scroll indicator
+- [ ] When "Details" pane is in commit-mode, it shows
+  - [ ] pane title as "Commit"
+  - [ ] short commit hash
+  - [ ] commit timestamp in local time
+  - [ ] Summary change indicator like in "Repositories" for branches
+  - [ ] author name and email
+  - [ ] full commit message
+- [ ] When "Details" pane is in diff-mode, it shows
+  - [ ] pane title as "Diff"
+  - [ ] the diff as it was implemented in the former "Diff" pane
+- [ ] If "Details" pane is enabled, show "Select file or commit for details." if
+      neither file nor commit row is currently selected.
 
 ## Git Basic Operations
 
