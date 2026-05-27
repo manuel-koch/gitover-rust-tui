@@ -270,6 +270,10 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - Status Details, Output Log, and Git History are optional; shown only when toggled open
   - When the Diff pane is open it occupies the right half of the combined Status Details + History area
 - Focused pane highlighted with focused border colour; unfocused panes use unfocused border colour
+- The Repositories pane can be resized by dragging the bottom divider (the border row between the Repositories pane and the pane below it)
+  - When optional panes (Status Details, History, Output Log) are shown or hidden the custom pane height is preserved so re-opening any of them restores the last user-set size
+  - The custom size is not saved to the state file (it is terminal-size dependent and would not be meaningful across sessions)
+  - A ↕ indicator appears on the divider when the mouse hovers over it, signalling it is draggable
 - Scroll indicators (▲ / ▼) in all scrollable panes use focused/unfocused border colours to match the pane border
 - App version shown in the header title (e.g. `Git Repository Overview  v0.1.0`)
 - Loading spinner in header while repos are being scanned
@@ -342,8 +346,10 @@ gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
 - `Makefile` at the project root with the following targets:
   - `make lint` — runs `cargo clippy`
   - `make format` — runs `cargo fmt`
+  - `make clean` — removes all build artifacts via `cargo clean`
   - `make build` — builds a debug binary via `cargo build`
   - `make build-and-run` — builds and launches the app via `cargo run`
+  - `make rebuild` — cleans all build artifacts and then builds the debug binary from scratch
   - `make test` — runs all unit and integration tests via `cargo test`
   - `make release` — builds an optimized release binary (`target/release/gitover`)
   - `make install` — builds an optimized release binary and installs it into `~/.cargo/bin`
