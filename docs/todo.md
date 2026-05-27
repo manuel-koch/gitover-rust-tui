@@ -20,6 +20,11 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
     ahead/behind commits
   - In general I think the commit history should fallback to showing the commit history of
     current branch when current history mode (behind trunk) is not applicable.
+- [x] Pull non-current branch doesn't work.
+      On a repo with a branch behind-trunk commits, open the branches pane,
+      go to non-current branch, open action menu, select "pull" action.
+      Output log shows "pulling" action, but nothing changes, branch is not pulled,
+      ahead/behind counters are unchanged.
 
 ## Git Status Columns
 

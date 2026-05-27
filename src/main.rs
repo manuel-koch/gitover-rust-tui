@@ -968,7 +968,13 @@ fn handle_normal_key(
         }
         // Direct shortcuts (bypass menu)
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
-        KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
+        KeyCode::Char('p') => {
+            if let Some(op) = branch_pull_op(app) {
+                launch_op(app, op_tx, op);
+            } else {
+                launch_op(app, op_tx, OpRequest::Pull);
+            }
+        }
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
         KeyCode::Char('c') => {
             if app.focus == Focus::Branches {
@@ -1040,6 +1046,26 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
     }
 }
 
+/// Return a `PullBranch` op if the branches pane is focused and the selected branch
+/// is a non-current branch that can be fast-forwarded, otherwise `None`.
+fn branch_pull_op(app: &App) -> Option<OpRequest> {
+    if app.focus != Focus::Branches {
+        return None;
+    }
+    let b = app.selected_branch_info()?;
+    if b.is_current {
+        return None;
+    }
+    let up = b.upstream.as_ref()?;
+    if up.behind == 0 || up.ahead != 0 {
+        return None;
+    }
+    Some(OpRequest::PullBranch {
+        name: b.name.clone(),
+        upstream: up.branch.clone(),
+    })
+}
+
 /// Dispatch a git operation for the currently selected repo.
 fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: OpRequest) {
     if app.repos.is_empty() {
@@ -1061,7 +1087,7 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
         path.clone(),
         match &request {
             OpRequest::Fetch => app::RepoOperation::Fetching,
-            OpRequest::Pull | OpRequest::PullBranch(_) => app::RepoOperation::Pulling,
+            OpRequest::Pull | OpRequest::PullBranch { .. } => app::RepoOperation::Pulling,
             OpRequest::Push | OpRequest::ForcePush => app::RepoOperation::Pushing,
             _ => app::RepoOperation::Fetching,
         },
@@ -1455,8 +1481,13 @@ fn dispatch_branch_menu_action(
             }
         }
         'p' => {
+            let upstream = branch
+                .upstream
+                .as_ref()
+                .map(|u| u.branch.clone())
+                .unwrap_or_else(|| format!("origin/{}", branch.name));
             app.close_menu();
-            launch_op(app, op_tx, OpRequest::PullBranch(branch.name));
+            launch_op(app, op_tx, OpRequest::PullBranch { name: branch.name, upstream });
         }
         _ => {}
     }
@@ -1925,7 +1956,13 @@ fn handle_history_key(
             }
         }
         KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
-        KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
+        KeyCode::Char('p') => {
+            if let Some(op) = branch_pull_op(app) {
+                launch_op(app, op_tx, op);
+            } else {
+                launch_op(app, op_tx, OpRequest::Pull);
+            }
+        }
         KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
         KeyCode::Char('?') => app.mode = AppMode::HelpOverlay,
         KeyCode::Esc => {

@@ -1406,7 +1406,9 @@ impl App {
                     format!("History: behind {}", upstream.branch),
                     'U',
                 ));
-                items.push(MenuItem::item("Pull (fast-forward)", 'p'));
+                if upstream.ahead == 0 {
+                    items.push(MenuItem::item("Pull (fast-forward)", 'p'));
+                }
             }
         }
         let upstream_branch = branch
