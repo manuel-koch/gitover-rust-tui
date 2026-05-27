@@ -340,6 +340,15 @@ pub struct App {
     pub help_overlay_max_scroll: usize,
     /// Bounding rect of the help overlay popup (set each draw frame).
     pub help_overlay_area: Option<ratatui::layout::Rect>,
+
+    // ── Pane resize ───────────────────────────────────────────────────────────
+    /// User-overridden height for the Repositories pane (drag-to-resize).
+    /// None = automatic equal-distribution layout. Not saved to state.
+    pub repos_height_override: Option<u16>,
+    /// True while a mouse drag on the repos divider is in progress.
+    pub dragging_repos_divider: bool,
+    /// True when the mouse is hovering over the repos divider row.
+    pub hover_repos_divider: bool,
 }
 
 /// Maximum number of log lines retained.
@@ -430,6 +439,9 @@ impl App {
             help_overlay_scroll: 0,
             help_overlay_max_scroll: usize::MAX,
             help_overlay_area: None,
+            repos_height_override: None,
+            dragging_repos_divider: false,
+            hover_repos_divider: false,
         }
     }
 

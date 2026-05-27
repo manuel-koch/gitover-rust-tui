@@ -54,6 +54,16 @@ pub struct PaneAreas {
     pub diff: Option<Rect>,
 }
 
+/// Clamp a user-supplied repos pane height to safe bounds:
+/// at least 4 rows, and leaves at least 3 rows per optional pane below.
+fn clamp_repos_height(override_h: u16, total_available: u16, open_panes: u16) -> u16 {
+    const MIN_REPOS: u16 = 4;
+    let max = total_available
+        .saturating_sub(open_panes * 3)
+        .max(MIN_REPOS);
+    override_h.clamp(MIN_REPOS, max)
+}
+
 /// Compute the layout rectangles for all visible panes.
 /// This mirrors the layout logic in `draw()` so main.rs can use these
 /// rectangles for mouse-click focus detection.
@@ -64,25 +74,38 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
     let open_panes = [show_file_status, app.show_history, app.show_log]
         .into_iter()
         .filter(|&p| p)
-        .count();
-
-    let base_share = total_available / (open_panes as u16 + 1);
-    let remainder = total_available % (open_panes as u16 + 1);
-    let repo_height = base_share + remainder;
-    let pane_height = base_share;
+        .count() as u16;
 
     let mut constraints: Vec<Constraint> = Vec::new();
     constraints.push(Constraint::Length(HEADER_HEIGHT));
-    constraints.push(Constraint::Length(repo_height));
 
-    if show_file_status {
-        constraints.push(Constraint::Length(pane_height));
-    }
-    if app.show_history {
-        constraints.push(Constraint::Length(pane_height));
-    }
-    if app.show_log {
-        constraints.push(Constraint::Length(pane_height));
+    if open_panes == 0 {
+        constraints.push(Constraint::Length(total_available));
+    } else if let Some(override_h) = app.repos_height_override {
+        let repo_height = clamp_repos_height(override_h, total_available, open_panes);
+        constraints.push(Constraint::Length(repo_height));
+        if show_file_status {
+            constraints.push(Constraint::Fill(1));
+        }
+        if app.show_history {
+            constraints.push(Constraint::Fill(1));
+        }
+        if app.show_log {
+            constraints.push(Constraint::Fill(1));
+        }
+    } else {
+        let base_share = total_available / (open_panes + 1);
+        let remainder = total_available % (open_panes + 1);
+        constraints.push(Constraint::Length(base_share + remainder));
+        if show_file_status {
+            constraints.push(Constraint::Length(base_share));
+        }
+        if app.show_history {
+            constraints.push(Constraint::Length(base_share));
+        }
+        if app.show_log {
+            constraints.push(Constraint::Length(base_share));
+        }
     }
 
     let chunks = Layout::default()
@@ -166,25 +189,39 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let open_panes = [show_file_status, app.show_history, app.show_log]
         .into_iter()
         .filter(|&p| p)
-        .count();
-
-    // Distribute available space evenly among Repositories + open panes.
-    let base_share = total_available / (open_panes as u16 + 1);
-    let remainder = total_available % (open_panes as u16 + 1);
-    let repo_height = base_share + remainder;
-    let pane_height = base_share;
+        .count() as u16;
 
     let mut constraints: Vec<Constraint> = Vec::new();
     constraints.push(Constraint::Length(HEADER_HEIGHT));
-    constraints.push(Constraint::Length(repo_height));
-    if show_file_status {
-        constraints.push(Constraint::Length(pane_height));
-    }
-    if app.show_history {
-        constraints.push(Constraint::Length(pane_height));
-    }
-    if app.show_log {
-        constraints.push(Constraint::Length(pane_height));
+
+    if open_panes == 0 {
+        constraints.push(Constraint::Length(total_available));
+    } else if let Some(override_h) = app.repos_height_override {
+        let repo_height = clamp_repos_height(override_h, total_available, open_panes);
+        constraints.push(Constraint::Length(repo_height));
+        if show_file_status {
+            constraints.push(Constraint::Fill(1));
+        }
+        if app.show_history {
+            constraints.push(Constraint::Fill(1));
+        }
+        if app.show_log {
+            constraints.push(Constraint::Fill(1));
+        }
+    } else {
+        // Distribute available space evenly among Repositories + open panes.
+        let base_share = total_available / (open_panes + 1);
+        let remainder = total_available % (open_panes + 1);
+        constraints.push(Constraint::Length(base_share + remainder));
+        if show_file_status {
+            constraints.push(Constraint::Length(base_share));
+        }
+        if app.show_history {
+            constraints.push(Constraint::Length(base_share));
+        }
+        if app.show_log {
+            constraints.push(Constraint::Length(base_share));
+        }
     }
 
     let chunks = Layout::default()
@@ -456,7 +493,10 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
         Block::default()
             .borders(Borders::ALL)
             .title("Repositories")
-            .border_style(focus_border_style(app.focus == Focus::Repos, app.theme())),
+            .border_style(focus_border_style(
+                app.focus == Focus::Repos || app.dragging_repos_divider || app.hover_repos_divider,
+                app.theme(),
+            )),
     )
     .row_highlight_style(
         Style::default()
@@ -510,6 +550,25 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
                 x: inner_x + inner_w - 2,
                 y: inner_y + inner_h - 1,
                 width: 2,
+                height: 1,
+            },
+        );
+    }
+
+    // Drag-handle indicator on the bottom border when hovering or dragging.
+    if (app.hover_repos_divider || app.dragging_repos_divider) && area.width > 4 {
+        let indicator = Span::styled(
+            " ↕ ",
+            Style::default()
+                .fg(t.border_focused)
+                .add_modifier(Modifier::BOLD),
+        );
+        frame.render_widget(
+            Paragraph::new(indicator),
+            Rect {
+                x: area.x + area.width / 2 - 1,
+                y: area.y + area.height - 1,
+                width: 3,
                 height: 1,
             },
         );

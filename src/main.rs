@@ -499,6 +499,15 @@ fn handle_mouse_event(
                 return;
             }
 
+            // Repos-divider drag: start drag when clicking on the bottom border
+            // of the repos pane (only when optional panes are open below it).
+            if matches!(app.mode, AppMode::Normal | AppMode::History)
+                && is_repos_divider(app, mouse)
+            {
+                app.dragging_repos_divider = true;
+                return;
+            }
+
             let now = std::time::Instant::now();
             let pos = (mouse.column, mouse.row);
             let is_double_click = app
@@ -522,6 +531,21 @@ fn handle_mouse_event(
             app.last_click_time = Some(now);
             app.last_click_pos = Some(pos);
         }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if app.dragging_repos_divider {
+                update_repos_height_from_drag(app, mouse);
+            }
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            if app.dragging_repos_divider {
+                update_repos_height_from_drag(app, mouse);
+                app.dragging_repos_divider = false;
+            }
+        }
+        MouseEventKind::Moved => {
+            app.hover_repos_divider = matches!(app.mode, AppMode::Normal | AppMode::History)
+                && is_repos_divider(app, mouse);
+        }
         MouseEventKind::ScrollUp => {
             if matches!(app.mode, AppMode::ActionMenu) {
                 app.menu_previous();
@@ -544,6 +568,45 @@ fn handle_mouse_event(
         }
         _ => {}
     }
+}
+
+/// Returns true when the mouse is on the bottom border row of the repos pane
+/// and at least one optional pane is visible below (making the divider draggable).
+fn is_repos_divider(app: &App, mouse: &MouseEvent) -> bool {
+    let Some(areas) = &app.cached_pane_areas else {
+        return false;
+    };
+    let has_panes_below =
+        areas.file_status.is_some() || areas.history.is_some() || areas.log.is_some();
+    if !has_panes_below {
+        return false;
+    }
+    mouse.row == areas.repos.y + areas.repos.height.saturating_sub(1)
+}
+
+/// Recompute `repos_height_override` so the bottom of the repos pane tracks the mouse row.
+fn update_repos_height_from_drag(app: &mut App, mouse: &MouseEvent) {
+    let Some(areas) = app.cached_pane_areas.clone() else {
+        return;
+    };
+    let open_panes = [
+        areas.file_status.is_some(),
+        areas.history.is_some(),
+        areas.log.is_some(),
+    ]
+    .into_iter()
+    .filter(|&p| p)
+    .count() as u16;
+    if open_panes == 0 {
+        return;
+    }
+    let total_available = (areas.terminal.y + areas.terminal.height).saturating_sub(areas.repos.y);
+    let new_height = mouse.row.saturating_sub(areas.repos.y) + 1;
+    const MIN_REPOS: u16 = 4;
+    let max_h = total_available
+        .saturating_sub(open_panes * 3)
+        .max(MIN_REPOS);
+    app.repos_height_override = Some(new_height.clamp(MIN_REPOS, max_h));
 }
 
 /// Determine which pane a mouse click landed on and set focus accordingly.

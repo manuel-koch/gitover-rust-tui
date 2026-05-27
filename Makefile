@@ -1,4 +1,4 @@
-.PHONY: lint format build-and-run test release install tag-version outdated-dependencies upgrade-dependencies
+.PHONY: lint format build build-and-run test release install clean rebuild tag-version outdated-dependencies upgrade-dependencies
 
 # Run cargo check/clippy and report all warnings
 lint:
@@ -9,9 +9,16 @@ lint:
 format:
 	cargo fmt
 
+# Remove all build artifacts (forces a full recompilation on next build)
+clean:
+	cargo clean
+
 # Build debug binary (output: target/debug/gitover)
 build:
 	cargo build
+
+# Clean all build artifacts, then build the debug binary from scratch
+rebuild: clean build
 
 # Build debug binary and launch it
 build-and-run:

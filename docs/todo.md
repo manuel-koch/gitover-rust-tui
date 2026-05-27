@@ -23,7 +23,12 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## UX Polish
 
-- [ ]
+- [x] Allow resizing the "Repositories" pane via drag'n'drop on the divider
+      between the panes.
+      When panes are shown/hidden, keep the modified pane size, so that re-showing a pane
+      again uses the former size(s).
+  - [x] Don't preserve the modified size of the "Repositories" pane in the saved state
+        because is highly depending on the size of the terminal the app is running in.
 
 ## UX Mouse Interaction
 
