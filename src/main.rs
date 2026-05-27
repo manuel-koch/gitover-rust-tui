@@ -542,6 +542,11 @@ fn handle_mouse_event(
                 app.dragging_repos_divider = false;
             }
         }
+        // NOTE: Moved events (no button held) require the terminal to honour the
+        // `?1003h` any-event mouse mode that crossterm requests via EnableMouseCapture.
+        // ZED and kitty send them correctly; iTerm2 does not, so the hover indicator
+        // on the repos divider is never triggered there. Drag (button-held motion) uses
+        // `?1002h` which iTerm2 does support, so drag itself works fine in iTerm2.
         MouseEventKind::Moved => {
             app.hover_repos_divider = matches!(app.mode, AppMode::Normal | AppMode::History)
                 && is_repos_divider(app, mouse);
