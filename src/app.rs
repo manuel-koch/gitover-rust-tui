@@ -1193,9 +1193,8 @@ impl App {
         self.restore_base_mode();
     }
 
-    /// Reload history for the current selected repo if the history pane is open
-    /// and the selected repo has changed.
-    pub fn reload_history_if_open(&mut self) {
+    /// Reload history for the current selected repo if the history pane is open.
+    pub fn reload_history_if_open(&mut self, force: bool) {
         if !self.show_history {
             return;
         }
@@ -1203,30 +1202,75 @@ impl App {
             Some(r) if r.error.is_none() => r.path.clone(),
             _ => return,
         };
-        if current_path == self.history_repo_path {
+        if !force && current_path == self.history_repo_path {
             return;
         }
-        let filter = self.history_filter.clone();
-        self.history = crate::git::get_commit_history(&current_path, &filter, HISTORY_COMMIT_LIMIT)
-            .unwrap_or_default();
-        self.history_repo_path = current_path;
-        self.history_selected = 0;
-        self.history_scroll = 0;
-    }
-
-    /// Force-reload history if the pane is open and it belongs to `repo_path`.
-    /// Called after a git operation completes on that repo.
-    pub fn refresh_history_for_repo(&mut self, repo_path: &str) {
-        if !self.show_history || self.history_repo_path != repo_path {
+        if force && current_path != self.history_repo_path {
             return;
         }
         if self.show_branches && self.branches_history_active {
             self.reload_history_from_branches();
             return;
         }
+        // For AheadOf/BehindOf filters, re-resolve the ref against the new repo's
+        // own trunk/upstream names in case the stored ref belongs to a different
+        // remote (e.g. "origin/master" → "origin/main"). Candidates are tried in
+        // order — stored ref, trunk ref, upstream ref — falling back to Full.
         let filter = self.history_filter.clone();
-        self.history = crate::git::get_commit_history(repo_path, &filter, HISTORY_COMMIT_LIMIT)
-            .unwrap_or_default();
+        let stored_ref = match &filter {
+            HistoryFilter::AheadOf(r) | HistoryFilter::BehindOf(r) => Some(r.clone()),
+            _ => None,
+        };
+        let (commits, effective_filter) = if let Some(stored) = stored_ref {
+            let is_ahead = matches!(filter, HistoryFilter::AheadOf(_));
+            let make = |r: &str| -> HistoryFilter {
+                if is_ahead {
+                    HistoryFilter::AheadOf(r.to_string())
+                } else {
+                    HistoryFilter::BehindOf(r.to_string())
+                }
+            };
+            let trunk_ref = self.repos[self.selected]
+                .trunk
+                .as_ref()
+                .map(|t| t.branch.clone());
+            let upstream_ref = self.repos[self.selected]
+                .upstream
+                .as_ref()
+                .map(|u| u.branch.clone());
+            let mut candidates: Vec<HistoryFilter> = vec![filter];
+            let mut seen = vec![stored];
+            for alt in [trunk_ref.as_deref(), upstream_ref.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                if !seen.iter().any(|s| s == alt) {
+                    candidates.push(make(alt));
+                    seen.push(alt.to_string());
+                }
+            }
+            candidates.push(HistoryFilter::Full);
+            candidates
+                .into_iter()
+                .find_map(|f| {
+                    let c = crate::git::get_commit_history(&current_path, &f, HISTORY_COMMIT_LIMIT)
+                        .unwrap_or_default();
+                    if !c.is_empty() || matches!(f, HistoryFilter::Full) {
+                        Some((c, f))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or((Vec::new(), HistoryFilter::Full))
+        } else {
+            let commits =
+                crate::git::get_commit_history(&current_path, &filter, HISTORY_COMMIT_LIMIT)
+                    .unwrap_or_default();
+            (commits, filter)
+        };
+        self.history = commits;
+        self.history_filter = effective_filter;
+        self.history_repo_path = current_path;
         self.history_selected = 0;
         self.history_scroll = 0;
     }

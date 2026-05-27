@@ -149,7 +149,7 @@ fn main() -> Result<()> {
     }
 
     refresh_repos(&mut app);
-    app.reload_history_if_open();
+    app.reload_history_if_open(false);
     app.refresh_details();
 
     let mut dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
@@ -524,7 +524,7 @@ fn handle_mouse_event(
                 }
             } else {
                 handle_mouse_click(app, mouse);
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
                 app.refresh_details();
             }
 
@@ -557,7 +557,7 @@ fn handle_mouse_event(
             } else {
                 focus_pane_under_mouse(app, mouse);
                 app.previous();
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
                 app.refresh_details();
             }
         }
@@ -567,7 +567,7 @@ fn handle_mouse_event(
             } else {
                 focus_pane_under_mouse(app, mouse);
                 app.next();
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
                 app.refresh_details();
             }
         }
@@ -688,7 +688,7 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
                 app.selected = selected_row;
                 app.file_status_selected = 0;
                 app.file_status_scroll = 0;
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
                 app.refresh_details();
             }
         }
@@ -910,7 +910,7 @@ fn handle_normal_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }
@@ -919,7 +919,7 @@ fn handle_normal_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }
@@ -928,7 +928,7 @@ fn handle_normal_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }
@@ -937,7 +937,7 @@ fn handle_normal_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }
@@ -1144,7 +1144,7 @@ fn handle_op_result(
         app.toggle_log();
     }
     refresh_single_repo(app, &result.repo_path);
-    app.refresh_history_for_repo(&result.repo_path.clone());
+    app.reload_history_if_open(true);
     app.refresh_branches_for_repo(&result.repo_path.clone());
     *dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
 }
@@ -1851,7 +1851,7 @@ fn handle_history_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }
@@ -1860,7 +1860,7 @@ fn handle_history_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }
@@ -1869,7 +1869,7 @@ fn handle_history_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }
@@ -1878,7 +1878,7 @@ fn handle_history_key(
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
             } else {
-                app.reload_history_if_open();
+                app.reload_history_if_open(false);
             }
             app.refresh_details();
         }

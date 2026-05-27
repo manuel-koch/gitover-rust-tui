@@ -7,7 +7,19 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Bugs
 
-- [ ]
+- [x] Commit history not updated properly:
+  - Select a repo that has ahead/behind to trunk branch
+  - Select show commit history for behind commits to trunk branch
+  - History is updated with correct commits
+  - Select another repo ( w/ ahead/behind changes )
+  - Commit History just shows "No commits found" although the current branch has ahead/behind commits
+    that should be shown.
+  - Select another repo ( w/o ahead/behind changes )
+  - Commit History just shows "No commits found" and title still says
+    "Commit History  ( behind origin/master )" although there are no
+    ahead/behind commits
+  - In general I think the commit history should fallback to showing the commit history of
+    current branch when current history mode (behind trunk) is not applicable.
 
 ## Git Status Columns
 
