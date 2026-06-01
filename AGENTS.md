@@ -73,12 +73,30 @@ docs/
 Makefile        — build, lint, format, test, release, install, tag-version targets
 ```
 
+### Guidelines for Implementation, Testing and Bugfixing
+
+- Avoid Code Smells
+- KISS Principle
+- SOLID Principles
+- SSOT (Single Source of Truth)
+- YAGNI (You Aren’t Gonna Need It)
+- Clean Architecture
+- Minimum Viable Product (MVP)
+- Five Whys (Ohno)
+- Chain of Thought (CoT)
+- Occam’s Razor
+- TDD, Chicago School
+- Test Double: Mock (Meszaros)
+- Test Double: Spy (Meszaros)
+- Test Double: Stub (Meszaros)
+
 ### Development workflow
 
-After implementing new functionality or fixing bugs, run the test suite to verify all tests still succeed.
+After implementing new functionality or fixing bugs, run the test suite to verify
+all tests still succeed.
 For new features come up with appropriate test case(s) to verify them.
-For bugfixes check whether there is an existing test case that could be improved to verify the fix or introduce
-new test case(s) to verify the fix.
+For bugfixes check whether there is an existing test case that could be improved to
+verify the fix or introduce new test case(s) to verify the fix.
 If unclear whether to introduce new test case(s), ask user for clarification.
 
 ```shell
