@@ -36,7 +36,7 @@ commit() {     # git add -A + commit with message "$2" inside repo "$1"
 
 for d in repo-01 repo-01.origin repo-02 repo-03 repo-03.origin \
          repo-04 repo-04.origin repo-05 repo-05.origin \
-         repo-06 repo-07 _tmp; do
+         repo-06 repo-07 repo-08 repo-08.origin _tmp; do
     rm -rf "$SANDBOX/$d"
 done
 
@@ -209,6 +209,35 @@ commit                "$SANDBOX/repo-07" "main: edit shared.txt"
 # merge → leaves shared.txt in conflict state
 git -C                "$SANDBOX/repo-07" merge branch-a 2>/dev/null || true
 
+# ── repo-08: merged and active branches ────────────────────────────────────
+# Shows:  merged-feature with ✓ marker (ahead=0 vs trunk), active-feature without
+
+echo "  repo-08 — merged-feature (✓ merged to trunk) + active-feature (still ahead)"
+git init --bare  "$SANDBOX/repo-08.origin" -b main -q
+git clone        "$SANDBOX/repo-08.origin" "$SANDBOX/repo-08" -q
+identity         "$SANDBOX/repo-08"
+echo "# Eta"  > "$SANDBOX/repo-08/README.md"
+commit           "$SANDBOX/repo-08" "initial commit"
+git -C           "$SANDBOX/repo-08" push origin main -q
+
+# merged-feature: create, push, merge back to main via merge commit, then push main
+git -C           "$SANDBOX/repo-08" checkout -b merged-feature -q
+echo "feature"  > "$SANDBOX/repo-08/feature.txt"
+commit           "$SANDBOX/repo-08" "feat: implement feature"
+git -C           "$SANDBOX/repo-08" push origin merged-feature -q
+git -C           "$SANDBOX/repo-08" checkout main -q
+git -C           "$SANDBOX/repo-08" merge merged-feature --no-ff -m "Merge merged-feature into main" -q
+git -C           "$SANDBOX/repo-08" push origin main -q
+# Now merged-feature has ahead=0, behind=1 vs origin/main → is_merged=true
+
+# active-feature: branched from current main, has 1 new commit not yet merged
+git -C           "$SANDBOX/repo-08" checkout -b active-feature -q
+echo "wip"  > "$SANDBOX/repo-08/wip.txt"
+commit           "$SANDBOX/repo-08" "wip: start new feature"
+git -C           "$SANDBOX/repo-08" push origin active-feature -q
+git -C           "$SANDBOX/repo-08" checkout main -q
+# active-feature has ahead=1 vs origin/main → is_merged=false
+
 echo ""
 echo "Done. Add these paths to gitover with the 'A' key:"
 echo ""
@@ -219,3 +248,4 @@ echo "  $SANDBOX/repo-04 : ↑0 ↓2 (2 commits behind upstream)"
 echo "  $SANDBOX/repo-05 : feature branch, ↑2 ahead of trunk"
 echo "  $SANDBOX/repo-06 : detached HEAD"
 echo "  $SANDBOX/repo-07 : merge conflict"
+echo "  $SANDBOX/repo-08 : merged-feature (✓, ahead=0 vs trunk) + active-feature (↑1 vs trunk)"
