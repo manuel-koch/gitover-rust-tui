@@ -51,7 +51,10 @@ pub enum OpRequest {
     DiscardFile(String),
     /// Fast-forward pull of a local branch without checking it out.
     /// `upstream` is the remote-tracking ref, e.g. "origin/feature-x".
-    PullBranch { name: String, upstream: String },
+    PullBranch {
+        name: String,
+        upstream: String,
+    },
     /// Run a custom shell command from config (already interpolated).
     RunRepoCommand {
         name: String,
@@ -176,9 +179,12 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
             )
         }
 
-        OpRequest::PullBranch { name, upstream } => {
-            run_git(git_bin, repo_path, &["branch", "-f", name, upstream], &mut lines)
-        }
+        OpRequest::PullBranch { name, upstream } => run_git(
+            git_bin,
+            repo_path,
+            &["branch", "-f", name, upstream],
+            &mut lines,
+        ),
 
         OpRequest::DiscardFile(path) => {
             let abs = std::path::PathBuf::from(repo_path).join(path);

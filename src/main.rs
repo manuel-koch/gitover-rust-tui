@@ -217,7 +217,7 @@ where
         // Drain completed git-operation results
         loop {
             match op_rx.try_recv() {
-                Ok(result) => handle_op_result(app, dirty_rx, result),
+                Ok(result) => handle_op_result(app, result),
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
             }
@@ -1163,11 +1163,7 @@ fn launch_repo_cmd(
 }
 
 /// Handle a completed op result: log output, clear busy indicator, refresh.
-fn handle_op_result(
-    app: &mut App,
-    dirty_rx: &mut std::sync::mpsc::Receiver<String>,
-    result: OpResult,
-) {
+fn handle_op_result(app: &mut App, result: OpResult) {
     app.operations.remove(&result.repo_path);
     if !result.success {
         app.log_error(format!(
@@ -1185,7 +1181,6 @@ fn handle_op_result(
     refresh_single_repo(app, &result.repo_path);
     app.reload_history_if_open(true);
     app.refresh_branches_for_repo(&result.repo_path.clone());
-    *dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
 }
 
 fn handle_menu_key(
@@ -1500,7 +1495,14 @@ fn dispatch_branch_menu_action(
                 .map(|u| u.branch.clone())
                 .unwrap_or_else(|| format!("origin/{}", branch.name));
             app.close_menu();
-            launch_op(app, op_tx, OpRequest::PullBranch { name: branch.name, upstream });
+            launch_op(
+                app,
+                op_tx,
+                OpRequest::PullBranch {
+                    name: branch.name,
+                    upstream,
+                },
+            );
         }
         _ => {}
     }
