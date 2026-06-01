@@ -190,6 +190,7 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
 - Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area; coloured with focused/unfocused border colour
 - History reloads automatically when the selected repo changes while the pane is open
 - History reloads automatically after a git operation completes on the shown repo
+- When switching repos, if the active filter (e.g., "behind trunk") is not applicable to the new repo (no ahead/behind commits), the view automatically falls back to showing the full branch history
 - Filtered views available from the action menu:
   - Ahead of upstream / trunk — commits in HEAD not yet in the remote ref
   - Behind upstream / trunk — commits in the remote ref not yet merged locally
