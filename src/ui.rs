@@ -24,14 +24,12 @@ use std::time::Instant;
 use crate::app::{App, AppMode, Focus, LogLevel, RepoOperation};
 use crate::git::RepoStatus;
 
-/// Popup width (percent of terminal width) for the repo/log action menu.
-pub const ACTION_MENU_WIDTH_PCT: u16 = 60;
-/// Popup width (percent of terminal width) for the file action menu.
-pub const FILE_ACTION_MENU_WIDTH_PCT: u16 = 80;
 /// Height (rows) of the header panel — used for layout and popup positioning.
 pub const HEADER_HEIGHT: u16 = 3;
 /// Total rows consumed by fixed panels (header only; footer was removed).
 const FIXED_PANE_HEIGHT: u16 = HEADER_HEIGHT;
+/// Maximum width of the action menu popup as a percentage of the owning pane width.
+pub const ACTION_MENU_MAX_WIDTH_PCT: u16 = 80;
 /// Popup width (percent of terminal width) for branch-select and new-branch dialogs.
 pub const BRANCH_SELECT_WIDTH_PCT: u16 = 80;
 /// Minimum height (rows) for the branch-select popup.
@@ -1773,9 +1771,9 @@ fn draw_confirm_remove(frame: &mut Frame, app: &App) {
 
 // ── Action menu popup ─────────────────────────────────────────────────────
 
-fn draw_action_menu(frame: &mut Frame, app: &mut App) {
-    let t = app.theme();
-    let title = match app.mode {
+/// Build the title string for the action menu based on the current app mode.
+fn action_menu_title(app: &App) -> String {
+    match app.mode {
         AppMode::LogActionMenu => " Output Log ".to_string(),
         AppMode::FileActionMenu => {
             let file_name = app
@@ -1801,17 +1799,64 @@ fn draw_action_menu(frame: &mut Frame, app: &mut App) {
                 .unwrap_or_default();
             format!(" Actions — {repo_name} ")
         }
-    };
-    let width = if app.mode == AppMode::FileActionMenu {
-        FILE_ACTION_MENU_WIDTH_PCT
-    } else {
-        ACTION_MENU_WIDTH_PCT
-    };
+    }
+}
+
+/// Return the pane rect the action menu should be anchored to.
+fn action_menu_pane(app: &App) -> Rect {
+    let areas = app.cached_pane_areas.as_ref();
+    match app.mode {
+        AppMode::LogActionMenu => areas
+            .and_then(|a| a.log)
+            .or_else(|| areas.map(|a| a.repos))
+            .unwrap_or_default(),
+        AppMode::FileActionMenu => areas
+            .and_then(|a| a.file_status)
+            .or_else(|| areas.map(|a| a.repos))
+            .unwrap_or_default(),
+        _ => areas.map(|a| a.repos).unwrap_or_default(),
+    }
+}
+
+/// Compute the full `Rect` for the action menu popup, centered on the current pane.
+/// Width is derived from content (title + menu items), clamped to 80% of the pane width.
+pub fn action_menu_area(app: &App) -> Rect {
+    let title = action_menu_title(app);
+    let title_display_width = title.chars().count() as u16;
+    let max_label_width = app
+        .menu_items
+        .iter()
+        .filter(|i| !i.is_separator)
+        .map(|i| i.label.chars().count() as u16)
+        .max()
+        .unwrap_or(0);
+    // 4 = key column (Constraint::Length(4)), 2 = left+right borders
+    let natural_width = (title_display_width + 2).max(max_label_width + 6);
+    let pane = action_menu_pane(app);
+    let max_allowed = (pane.width * ACTION_MENU_MAX_WIDTH_PCT / 100).max(10);
+    let width = natural_width.min(max_allowed).max(10);
+    let n = app.menu_items.len() as u16;
+    // +2 for top/bottom borders; clamp to pane height.
+    let height = ((n + 2).min(pane.height)).max(3);
+    pane_top_rect(width, height, pane)
+}
+
+/// Position a popup of `width × height` at the top edge of `pane`, horizontally centered.
+pub fn pane_top_rect(width: u16, height: u16, pane: Rect) -> Rect {
+    let x = pane.x + (pane.width.saturating_sub(width)) / 2;
+    Rect {
+        x,
+        y: pane.y,
+        width: width.min(pane.width),
+        height: height.min(pane.height),
+    }
+}
+
+fn draw_action_menu(frame: &mut Frame, app: &mut App) {
+    let t = app.theme();
+    let title = action_menu_title(app);
     let n = app.menu_items.len();
-    // Cap height to available screen space; +2 for top/bottom borders.
-    let max_height = frame.area().height.saturating_sub(HEADER_HEIGHT);
-    let height = ((n as u16 + 2).min(max_height)).max(3);
-    let area = top_centered_rect(width, height, HEADER_HEIGHT, frame.area());
+    let area = action_menu_area(app);
     frame.render_widget(Clear, area);
 
     let block = Block::default()

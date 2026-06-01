@@ -436,12 +436,7 @@ fn handle_mouse_event(
                 app.mode,
                 AppMode::ActionMenu | AppMode::FileActionMenu | AppMode::BranchActionMenu
             ) {
-                let terminal_area = app
-                    .cached_pane_areas
-                    .as_ref()
-                    .map(|a| a.terminal)
-                    .unwrap_or_default();
-                if let Some(item_idx) = menu_item_under_mouse(app, mouse, terminal_area) {
+                if let Some(item_idx) = menu_item_under_mouse(app, mouse) {
                     if let Some(item) = app.menu_items.get(item_idx).cloned() {
                         if !item.is_separator {
                             if matches!(app.mode, AppMode::FileActionMenu) {
@@ -864,31 +859,16 @@ fn history_row_under_mouse(
     }
 }
 
-pub fn menu_item_under_mouse(
-    app: &App,
-    mouse: &MouseEvent,
-    terminal_area: ratatui::layout::Rect,
-) -> Option<usize> {
-    // Mirror the geometry used in draw_action_menu exactly.
-    let width = if matches!(app.mode, AppMode::FileActionMenu) {
-        ui::FILE_ACTION_MENU_WIDTH_PCT
-    } else {
-        ui::ACTION_MENU_WIDTH_PCT
-    };
-    let n = app.menu_items.len() as u16;
-    let max_height = terminal_area.height.saturating_sub(ui::HEADER_HEIGHT);
-    let height = ((n + 2).min(max_height)).max(3);
-    let area = ui::top_centered_rect(width, height, ui::HEADER_HEIGHT, terminal_area);
+pub fn menu_item_under_mouse(app: &App, mouse: &MouseEvent) -> Option<usize> {
+    let area = ui::action_menu_area(app);
     let (col, row) = (mouse.column, mouse.row);
 
-    // Check if click is inside the menu area
     if col < area.x || col >= area.x + area.width || row < area.y || row >= area.y + area.height {
         return None;
     }
 
-    // Content starts after the border (1 line top border)
     let inner_top = area.y + 1;
-    let inner_bottom = area.y + area.height - 1; // -1 for bottom border
+    let inner_bottom = area.y + area.height - 1;
 
     if row < inner_top || row >= inner_bottom {
         return None;
