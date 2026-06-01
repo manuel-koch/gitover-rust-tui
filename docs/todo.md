@@ -17,16 +17,11 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Git Branches Pane
 
-- [x] Mark local/remote branches that have been merged to trunk.
-      This can be a hint for user to remove the local (abandoned) branch.
-- [x] Add action to action-menu in branches pane to remove selected local branch 
+- [ ]
 
 ## UX Polish
 
-- [x] Show action menu aligned to current pane ( not always at y of repositories pane ) 
-  - [x] Width of an action menu should be clamped at 80% width of the pane, use a
-        width that stems from the title/actions content length instead
-  - [x] Align action menu horizontally centered on current pane
+- [ ]
 
 ## UX Mouse Interaction
 

@@ -96,7 +96,6 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `F` | Force Push — pushes with `--force --set-upstream origin HEAD` (confirmation dialog shown first) |
 | `c` | Checkout Branch — shows a list of local and remote branches; auto-stashes dirty changes before checkout, pops stash afterwards |
 | `n` | Create New Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
-| `x` | Delete Branch — shows list of local branches (excluding current); runs `git branch -D <name>` |
 | `h` | Commit History — opens the history pane for the selected repo (full log) |
 | `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
 | `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
@@ -289,6 +288,9 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - `←`/`Backspace` go to parent
   - `Space` selects current directory as repo to add
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
+- Action menus are sized and positioned relative to the pane they belong to:
+  width is derived from menu content (clamped at 80 % of the pane width) and the
+  popup is centered horizontally over the current pane
 - Multiple built-in themes selectable at runtime with `T`
 
 ## Mouse Interaction
@@ -307,7 +309,12 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 
 - Toggle with `b`; while open it replaces the Repositories pane; title shows "Branches — <repo path>"
 - Lists every local branch and every remote-only branch (remote branches not yet checked out locally)
-- Each branch row shows ahead/behind counts with respect to both its configured upstream and the trunk branch
+- Each branch row has a 3-character marker column followed by branch name, upstream ahead/behind, and trunk ahead/behind:
+  - `*  ` — current branch
+  - `✓  ` — branch has been fully merged to trunk (0 commits ahead, ≥1 behind); a hint to clean up the branch
+  - `*✓ ` — current branch that is also merged to trunk
+  - Upstream column shows `remote only` for branches that exist only on the remote
+  - Trunk column shows `is trunk` instead of ahead/behind numbers for the trunk branch itself
 - `c` directly checks out the highlighted branch without opening a selection dialog (auto-stash/pop applied)
 - `Enter` opens the per-branch action menu (see below)
 - Scrolling through the branch list updates the History pane (if open) to show commits for the highlighted branch;
@@ -319,14 +326,18 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 
 Opened with `Enter` on the highlighted branch row. Dismiss with `Esc`.
 
-| Key   | Action                                                                                      |
-|-------|---------------------------------------------------------------------------------------------|
-| `u`   | Commit History ahead of upstream — commits in this branch not yet in its upstream           |
-| `U`   | Commit History behind upstream — commits in the upstream not yet merged into this branch    |
-| `t`   | Commit History ahead of trunk — commits in this branch not yet in the trunk branch          |
-| `T`   | Commit History behind trunk — commits in the trunk branch not yet merged into this branch   |
-| `p`   | Pull — fast-forward pull of this branch from its upstream (shown only when branch is behind upstream) |
-| `Esc` | Dismiss menu                                                                                |
+| Key   | Action                                                                                                    |
+|-------|-----------------------------------------------------------------------------------------------------------|
+| `c`   | Checkout — checks out this branch with auto-stash/pop (shown only when not the current branch)            |
+| `n`   | Create branch here — prompts for a name and runs `git checkout -b <name> <this-branch>`                   |
+| `h`   | Commit History — opens the History pane for this branch (full log)                                        |
+| `u`   | Commit History ahead of upstream — commits in this branch not yet in its upstream                         |
+| `U`   | Commit History behind upstream — commits in the upstream not yet merged into this branch                  |
+| `t`   | Commit History ahead of trunk — commits in this branch not yet in the trunk branch                        |
+| `T`   | Commit History behind trunk — commits in the trunk branch not yet merged into this branch                 |
+| `p`   | Pull — fast-forward pull from upstream (shown only when branch is behind upstream with no local commits ahead) |
+| `d`   | Delete branch — removes the local branch with `git branch -D` after yes/no confirmation (not shown for the current branch, remote-only branches, or the trunk branch) |
+| `Esc` | Dismiss menu                                                                                              |
 
 ## Release Info
 
