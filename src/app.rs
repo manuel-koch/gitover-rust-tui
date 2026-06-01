@@ -149,8 +149,8 @@ pub enum AppMode {
     NewBranchInput,
     /// Confirmation dialog for force-push.
     ConfirmForcePush,
-    /// Confirmation dialog for deleting a branch.
-    ConfirmDeleteBranch,
+    /// Simple yes/no confirmation before deleting the branch selected in the Branches pane.
+    ConfirmDeleteLocalBranch,
     /// Commit history pane (h key).
     History,
     /// Log action menu (Enter on Output Log pane).
@@ -276,6 +276,9 @@ pub struct App {
     pub branch_selected: usize,
     /// Text being typed in the new-branch-name input.
     pub branch_input: String,
+    /// Base branch to branch off from when in NewBranchInput mode.
+    /// Empty string means branch from HEAD (repos-menu flow).
+    pub branch_input_base: String,
     /// Branch name staged for deletion (shown in confirm dialog).
     pub branch_to_delete: String,
 
@@ -412,6 +415,7 @@ impl App {
             branch_items: Vec::new(),
             branch_selected: 0,
             branch_input: String::new(),
+            branch_input_base: String::new(),
             branch_to_delete: String::new(),
             theme_idx: 0,
             history: Vec::new(),
@@ -853,7 +857,7 @@ impl App {
             }
             items.push(MenuItem::item("Checkout branch", 'c'));
             items.push(MenuItem::item("Create new branch", 'n'));
-            items.push(MenuItem::item("Delete branch", 'x'));
+
             items.push(MenuItem::item("Commit history", 'h'));
             if let Some(upstream) = &repo.upstream {
                 if upstream.ahead > 0 {
@@ -1110,6 +1114,14 @@ impl App {
 
     pub fn open_new_branch_input(&mut self) {
         self.branch_input.clear();
+        self.branch_input_base.clear();
+        self.mode = AppMode::NewBranchInput;
+    }
+
+    /// Open the new-branch name input, branching off `base` instead of HEAD.
+    pub fn open_new_branch_from_input(&mut self, base: String) {
+        self.branch_input.clear();
+        self.branch_input_base = base;
         self.mode = AppMode::NewBranchInput;
     }
 
@@ -1127,28 +1139,6 @@ impl App {
         self.restore_base_mode();
     }
 
-    // ── Delete branch confirm ─────────────────────────────────────────────────
-
-    /// Open the delete-branch flow: first show branch-select, then confirm.
-    pub fn open_delete_branch_select(&mut self) {
-        if self.repos.is_empty() {
-            return;
-        }
-        let repo = &self.repos[self.selected];
-        let current = &repo.branch;
-        let items: Vec<BranchItem> = repo
-            .local_branches
-            .iter()
-            .filter(|b| b.as_str() != current)
-            .map(|b| BranchItem {
-                name: b.clone(),
-                is_remote: false,
-            })
-            .collect();
-        self.branch_items = items;
-        self.branch_selected = 0;
-        self.mode = AppMode::ConfirmDeleteBranch;
-    }
 
     pub fn confirm_force_push(&mut self) {
         self.mode = AppMode::ConfirmForcePush;
@@ -1393,6 +1383,7 @@ impl App {
         if !branch.is_current {
             items.push(MenuItem::item("Checkout", 'c'));
         }
+        items.push(MenuItem::item("Create branch here", 'n'));
         items.push(MenuItem::item("Commit history", 'h'));
         if let Some(upstream) = &branch.upstream {
             if upstream.ahead > 0 {
@@ -1432,7 +1423,24 @@ impl App {
                 }
             }
         }
+        if !branch.is_current && !branch.is_remote_only && !branch.is_trunk {
+            items.push(MenuItem::separator());
+            items.push(MenuItem::item("Delete branch", 'd'));
+        }
         self.open_menu(items, AppMode::BranchActionMenu);
+    }
+
+    /// Open the yes/no confirmation dialog for deleting the currently selected local branch.
+    pub fn open_confirm_delete_local_branch(&mut self) {
+        let Some(branch) = self.branch_info_list.get(self.branches_pane_selected) else {
+            return;
+        };
+        if branch.is_current || branch.is_remote_only || branch.is_trunk {
+            return;
+        }
+        self.branch_to_delete = branch.name.clone();
+        self.restore_base_mode();
+        self.mode = AppMode::ConfirmDeleteLocalBranch;
     }
 
     /// Return the total number of visible rows in the history pane:

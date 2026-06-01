@@ -568,6 +568,13 @@ pub struct BranchInfo {
     pub is_remote_only: bool,
     pub upstream: Option<AheadBehind>,
     pub trunk: Option<AheadBehind>,
+    /// True when all commits on this branch are already reachable from trunk (ahead == 0)
+    /// and trunk has since moved forward (behind > 0). Indicates the branch is a candidate
+    /// for deletion. Excludes branches sitting exactly at the trunk tip (the trunk branch itself).
+    pub is_merged: bool,
+    /// True when this branch is the local counterpart of the resolved trunk ref
+    /// (e.g. local `main` when trunk is `origin/main`). Such branches must not be deleted.
+    pub is_trunk: bool,
 }
 
 /// Return all local branches with their ahead/behind counts vs upstream and trunk.
@@ -575,6 +582,10 @@ pub struct BranchInfo {
 pub fn get_branches_with_ahead_behind(path: &str) -> Result<Vec<BranchInfo>> {
     let repo = Repository::open(path)?;
     let trunk_pair = resolve_trunk_ref(&repo);
+    // Local branch name that is the counterpart of the trunk ref (e.g. "main" from "origin/main").
+    let trunk_local_name: Option<String> = trunk_pair
+        .as_ref()
+        .map(|(_, display)| display.split('/').next_back().unwrap_or(display).to_string());
     let mut result = Vec::new();
 
     let branches = repo.branches(Some(git2::BranchType::Local))?;
@@ -610,12 +621,18 @@ pub fn get_branches_with_ahead_behind(path: &str) -> Result<Vec<BranchInfo>> {
             })
         });
 
+        let is_merged = trunk
+            .as_ref()
+            .is_some_and(|ab| ab.ahead == 0 && ab.behind > 0);
+        let is_trunk = trunk_local_name.as_deref() == Some(name.as_str());
         result.push(BranchInfo {
             name,
             is_current,
             is_remote_only: false,
             upstream,
             trunk,
+            is_merged,
+            is_trunk,
         });
     }
 
@@ -653,12 +670,18 @@ pub fn get_branches_with_ahead_behind(path: &str) -> Result<Vec<BranchInfo>> {
                         branch: trunk_name.clone(),
                     })
                 });
+                let is_merged = trunk
+                    .as_ref()
+                    .is_some_and(|ab| ab.ahead == 0 && ab.behind > 0);
+                let is_trunk = trunk_local_name.as_deref() == Some(short.as_str());
                 Some(BranchInfo {
                     name: short,
                     is_current: false,
                     is_remote_only: true,
                     upstream: None,
                     trunk,
+                    is_merged,
+                    is_trunk,
                 })
             })
             .collect();

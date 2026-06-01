@@ -36,6 +36,8 @@ pub enum OpRequest {
         is_remote: bool,
     },
     CreateBranch(String),
+    /// Create a new branch off a specific base ref: `git checkout -b <name> <base>`.
+    CreateBranchFrom { name: String, base: String },
     DeleteBranch(String),
     /// Stage a file: `git add -- <path>` (path relative to repo root).
     StageFile(String),
@@ -72,7 +74,9 @@ impl OpRequest {
             OpRequest::Push => "push".into(),
             OpRequest::ForcePush => "force push".into(),
             OpRequest::CheckoutBranch { .. } => "checkout".into(),
-            OpRequest::CreateBranch(_) => "create branch".into(),
+            OpRequest::CreateBranch(_) | OpRequest::CreateBranchFrom { .. } => {
+                "create branch".into()
+            }
             OpRequest::DeleteBranch(_) => "delete branch".into(),
             OpRequest::StageFile(_) => "stage file".into(),
             OpRequest::UnstageFile(_) => "unstage file".into(),
@@ -153,6 +157,13 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
         OpRequest::CreateBranch(name) => {
             run_git(git_bin, repo_path, &["checkout", "-b", name], &mut lines)
         }
+
+        OpRequest::CreateBranchFrom { name, base } => run_git(
+            git_bin,
+            repo_path,
+            &["checkout", "-b", name, base],
+            &mut lines,
+        ),
 
         OpRequest::DeleteBranch(name) => {
             run_git(git_bin, repo_path, &["branch", "-D", name], &mut lines)

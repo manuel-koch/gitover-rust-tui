@@ -320,8 +320,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == AppMode::ConfirmForcePush {
         draw_confirm_force_push(frame, app);
     }
-    if app.mode == AppMode::ConfirmDeleteBranch {
-        draw_branch_select(frame, app, true);
+
+    if app.mode == AppMode::ConfirmDeleteLocalBranch {
+        draw_confirm_delete_local_branch(frame, app);
     }
     if app.mode == AppMode::PopupMessage {
         draw_popup_message(frame, app);
@@ -874,15 +875,16 @@ fn draw_branches_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default()
             };
 
-            let marker = if branch.is_current {
-                "* "
-            } else if branch.is_remote_only {
-                "⇡ "
-            } else {
-                "  "
+            let marker = match (branch.is_current, branch.is_merged) {
+                (true, true) => "*✓ ",
+                (true, false) => "*  ",
+                (false, true) => "✓  ",
+                (false, false) => "   ",
             };
             let name_style = if branch.is_current {
                 Style::default().fg(t.branch).add_modifier(Modifier::BOLD)
+            } else if branch.is_merged {
+                Style::default().fg(t.placeholder)
             } else if branch.is_remote_only {
                 Style::default().fg(t.branch_remote)
             } else {
@@ -909,15 +911,25 @@ fn draw_branches_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                 }
             };
 
-            let trunk_text = match &branch.trunk {
-                None => "-".to_string(),
-                Some(ab) => format!("↑{} ↓{} {}", ab.ahead, ab.behind, ab.branch),
+            let trunk_text = if branch.is_trunk {
+                "is trunk".to_string()
+            } else {
+                match &branch.trunk {
+                    None => "-".to_string(),
+                    Some(ab) => format!("↑{} ↓{} {}", ab.ahead, ab.behind, ab.branch),
+                }
             };
-            let trunk_style = match &branch.trunk {
-                Some(ab) if ab.behind > 0 => Style::default().fg(t.trunk_behind),
-                Some(ab) if ab.ahead > 0 => Style::default().fg(t.sync_warning),
-                Some(_) => Style::default().fg(t.sync_ok),
-                None => Style::default().fg(t.placeholder),
+            let trunk_style = if branch.is_trunk {
+                Style::default().fg(t.placeholder)
+            } else if branch.is_merged {
+                Style::default().fg(t.sync_ok)
+            } else {
+                match &branch.trunk {
+                    Some(ab) if ab.behind > 0 => Style::default().fg(t.trunk_behind),
+                    Some(ab) if ab.ahead > 0 => Style::default().fg(t.sync_warning),
+                    Some(_) => Style::default().fg(t.sync_ok),
+                    None => Style::default().fg(t.placeholder),
+                }
             };
 
             Row::new(vec![
@@ -1769,6 +1781,57 @@ fn draw_confirm_remove(frame: &mut Frame, app: &App) {
     );
 }
 
+// ── Confirm delete local branch dialog ───────────────────────────────────
+
+fn draw_confirm_delete_local_branch(frame: &mut Frame, app: &App) {
+    let t = app.theme();
+    let area = centered_rect(60, 7, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Delete Branch? ")
+        .border_style(Style::default().fg(t.popup_border_danger))
+        .title_style(
+            Style::default()
+                .fg(t.popup_border_danger)
+                .add_modifier(Modifier::BOLD),
+        );
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new("Delete this local branch?"),
+        chunks[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            app.branch_to_delete.clone(),
+            Style::default().fg(t.popup_target),
+        )),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("y/Enter", Style::default().fg(t.popup_confirm_danger)),
+            Span::raw(" delete    "),
+            Span::styled("n/Esc", Style::default().fg(t.popup_cancel)),
+            Span::raw(" cancel"),
+        ])),
+        chunks[3],
+    );
+}
+
 // ── Action menu popup ─────────────────────────────────────────────────────
 
 /// Build the title string for the action menu based on the current app mode.
@@ -2031,7 +2094,9 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
 
 fn draw_new_branch_input(frame: &mut Frame, app: &App) {
     let t = app.theme();
-    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, 7, frame.area());
+    let has_base = !app.branch_input_base.is_empty();
+    let height = if has_base { 9 } else { 7 };
+    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, height, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -2041,23 +2106,45 @@ fn draw_new_branch_input(frame: &mut Frame, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let mut constraints = vec![
+        Constraint::Length(1), // "Branch name:" label
+        Constraint::Length(1), // text input
+        Constraint::Min(0),    // spacer
+    ];
+    if has_base {
+        constraints.push(Constraint::Length(1)); // "from: <base>" line
+        constraints.push(Constraint::Length(1)); // blank separator
+    }
+    constraints.push(Constraint::Length(1)); // key hints
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1),
-        ])
+        .constraints(constraints)
         .split(inner);
 
     frame.render_widget(Paragraph::new("Branch name:"), chunks[0]);
-    // Show the input with a trailing cursor
     let display = format!("{}▍", app.branch_input);
     frame.render_widget(
         Paragraph::new(Span::styled(display, Style::default().fg(t.input_text))),
         chunks[1],
     );
+
+    let hint_idx = if has_base {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled("from: ", Style::default().fg(t.placeholder)),
+                Span::styled(
+                    app.branch_input_base.clone(),
+                    Style::default().fg(t.input_text),
+                ),
+            ])),
+            chunks[3],
+        );
+        5
+    } else {
+        3
+    };
+
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("Enter", Style::default().fg(t.popup_confirm)),
@@ -2065,7 +2152,7 @@ fn draw_new_branch_input(frame: &mut Frame, app: &App) {
             Span::styled("Esc", Style::default().fg(t.popup_cancel)),
             Span::raw(" cancel"),
         ])),
-        chunks[3],
+        chunks[hint_idx],
     );
 }
 

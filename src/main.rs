@@ -347,9 +347,10 @@ where
                         handle_confirm_force_push_key(app, op_tx, key.code);
                     }
                 }
-                AppMode::ConfirmDeleteBranch => {
+
+                AppMode::ConfirmDeleteLocalBranch => {
                     if let Event::Key(key) = &ev {
-                        handle_confirm_delete_branch_key(app, op_tx, key.code);
+                        handle_confirm_delete_local_branch_key(app, op_tx, key.code);
                     }
                 }
                 AppMode::History => {
@@ -1256,10 +1257,7 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
             app.close_menu();
             app.open_new_branch_input();
         }
-        'x' => {
-            app.close_menu();
-            app.open_delete_branch_select();
-        }
+
         'h' => {
             app.close_menu();
             app.open_history(app::HistoryFilter::Full);
@@ -1484,6 +1482,32 @@ fn dispatch_branch_menu_action(
                 },
             );
         }
+        'n' => {
+            let base = branch.name.clone();
+            app.close_menu();
+            app.open_new_branch_from_input(base);
+        }
+        'd' => {
+            app.open_confirm_delete_local_branch();
+        }
+        _ => {}
+    }
+}
+
+fn handle_confirm_delete_local_branch_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+) {
+    match key {
+        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+            let name = app.branch_to_delete.clone();
+            app.restore_base_mode();
+            launch_op(app, op_tx, OpRequest::DeleteBranch(name));
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            app.restore_base_mode();
+        }
         _ => {}
     }
 }
@@ -1523,8 +1547,13 @@ fn handle_new_branch_key(
         KeyCode::Enter => {
             let name = app.sanitised_branch_name();
             if !name.is_empty() {
+                let base = app.branch_input_base.clone();
                 app.close_new_branch_input();
-                launch_op(app, op_tx, OpRequest::CreateBranch(name));
+                if base.is_empty() {
+                    launch_op(app, op_tx, OpRequest::CreateBranch(name));
+                } else {
+                    launch_op(app, op_tx, OpRequest::CreateBranchFrom { name, base });
+                }
             }
         }
         KeyCode::Backspace => {
@@ -1552,27 +1581,6 @@ fn handle_confirm_force_push_key(
     }
 }
 
-fn handle_confirm_delete_branch_key(
-    app: &mut App,
-    op_tx: &std::sync::mpsc::Sender<OpResult>,
-    key: KeyCode,
-) {
-    match key {
-        KeyCode::Down => app.branch_select_next(),
-        KeyCode::Up => app.branch_select_previous(),
-        KeyCode::Esc => {
-            app.restore_base_mode();
-        }
-        KeyCode::Enter => {
-            if let Some(item) = app.selected_branch_item().cloned() {
-                app.branch_to_delete = item.name.clone();
-                app.restore_base_mode();
-                launch_op(app, op_tx, OpRequest::DeleteBranch(item.name));
-            }
-        }
-        _ => {}
-    }
-}
 
 fn handle_confirm_remove_key(
     app: &mut App,

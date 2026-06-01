@@ -17,8 +17,9 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Git Branches Pane
 
-- [ ] Mark local/remote branches that have been merged to trunk.
+- [x] Mark local/remote branches that have been merged to trunk.
       This can be a hint for user to remove the local (abandoned) branch.
+- [x] Add action to action-menu in branches pane to remove selected local branch 
 
 ## UX Polish
 
