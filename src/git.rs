@@ -583,9 +583,13 @@ pub fn get_branches_with_ahead_behind(path: &str) -> Result<Vec<BranchInfo>> {
     let repo = Repository::open(path)?;
     let trunk_pair = resolve_trunk_ref(&repo);
     // Local branch name that is the counterpart of the trunk ref (e.g. "main" from "origin/main").
-    let trunk_local_name: Option<String> = trunk_pair
-        .as_ref()
-        .map(|(_, display)| display.split('/').next_back().unwrap_or(display).to_string());
+    let trunk_local_name: Option<String> = trunk_pair.as_ref().map(|(_, display)| {
+        display
+            .split('/')
+            .next_back()
+            .unwrap_or(display)
+            .to_string()
+    });
     let mut result = Vec::new();
 
     let branches = repo.branches(Some(git2::BranchType::Local))?;

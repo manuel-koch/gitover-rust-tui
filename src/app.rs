@@ -1139,7 +1139,6 @@ impl App {
         self.restore_base_mode();
     }
 
-
     pub fn confirm_force_push(&mut self) {
         self.mode = AppMode::ConfirmForcePush;
     }

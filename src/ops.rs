@@ -37,7 +37,10 @@ pub enum OpRequest {
     },
     CreateBranch(String),
     /// Create a new branch off a specific base ref: `git checkout -b <name> <base>`.
-    CreateBranchFrom { name: String, base: String },
+    CreateBranchFrom {
+        name: String,
+        base: String,
+    },
     DeleteBranch(String),
     /// Stage a file: `git add -- <path>` (path relative to repo root).
     StageFile(String),

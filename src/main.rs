@@ -1581,7 +1581,6 @@ fn handle_confirm_force_push_key(
     }
 }
 
-
 fn handle_confirm_remove_key(
     app: &mut App,
     dirty_rx: &mut std::sync::mpsc::Receiver<String>,

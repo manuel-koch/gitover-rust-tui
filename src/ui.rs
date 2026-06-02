@@ -1810,10 +1810,7 @@ fn draw_confirm_delete_local_branch(frame: &mut Frame, app: &App) {
         ])
         .split(inner);
 
-    frame.render_widget(
-        Paragraph::new("Delete this local branch?"),
-        chunks[0],
-    );
+    frame.render_widget(Paragraph::new("Delete this local branch?"), chunks[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(
             app.branch_to_delete.clone(),
