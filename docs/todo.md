@@ -21,7 +21,16 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## UX Polish
 
-- [ ]
+- [ ] When using "A" keypress to add a repositiory, the popup dialog to select a repo should stay open after
+      a "space" keypress, allowing to add more repos.
+
+- [ ] Change the title of the "space" action in the add-repo file-picker from "select repo" to "add repo".
+
+- [ ] Add a boolean config option for `config.yaml` to adjust how paths are sorted: `general.case_sensitive_path_sorting`
+  - [ ] In the file-picker popup, apply the sorting-flag for paths.
+  - [ ] In the repositories pane, apply the sorting-flag for repo paths.
+  - [ ] In the status pane, apply the sorting-flag for commit paths.
+  - [ ] In the history pane, apply the sorting-flag for commit paths.
 
 ## UX Mouse Interaction
 
