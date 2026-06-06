@@ -32,6 +32,10 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
   - [ ] In the status pane, apply the sorting-flag for commit paths.
   - [ ] In the history pane, apply the sorting-flag for commit paths.
 
+- [ ] Add action "clear" to log-output pane
+
+- [ ] Allow drag'n'drop on panes, so that displayed text can be selected and copied to clipboard
+
 ## UX Mouse Interaction
 
 - [ ]
