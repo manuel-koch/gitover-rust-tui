@@ -27,6 +27,8 @@
 - `general.debug_log`: path to the debug log file; supports `~` and `${VAR}` expansion. Appended to if
   it already exists, created otherwise. Can be overridden by `--debug-log` CLI flag. App terminates if
   any variable cannot be resolved
+- `general.case_sensitive_path_sorting`: when `true`, paths are sorted case-sensitively across all panes
+  (repositories, status files, history commit files); defaults to `false` (case-insensitive)
 - `repo_commands`: list of commands that can be run for current repository
   - `repo_commands[].name`: Description of the command, will be shown in action menu
   - `repo_commands[].cmd`: The command line to be executed; supports `${VAR}` substitution in two steps:
@@ -47,14 +49,15 @@
   - `↑`/`↓` navigate the directory list
   - `→` / `Enter` navigates into the selected directory
   - `←` / `Backspace` goes to the parent directory
-  - `Space` confirms the current directory as the repo to add — this allows adding a
+  - `Space` adds the current directory as a tracked repo and keeps the picker open,
+    allowing multiple repos to be added in one session; this also lets you add a
     child repo even when its parent directory is itself a git repo
   - Hint bar at the bottom of the picker progressively hides navigation groups when the
     terminal is too narrow, always keeping the `Space` / `Esc` hints visible
   - Auto-discovers and adds git submodules when a repo is added
   - Newly added repo is immediately selected in the Repositories pane
 - Remove a repository from the app ( not from disk ! ) with `D`; shows a confirmation dialog before removing
-- Repo list is kept sorted by absolute path
+- Repo list is kept sorted by absolute path; case-insensitive by default, configurable via `general.case_sensitive_path_sorting`
 - Repo list is persisted across sessions
 - On first launch with an empty state file, the current working directory is automatically
   added as a tracked repo if it is a git repository
@@ -123,7 +126,7 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 
 - Toggle with `s`; title shows "Status Details — <repo path>"
 - Lists each changed file with a single-letter status code (C/S/M/D/U) in its status colour followed by the file path
-- Files sorted by priority: Conflict → Staged → Modified → Deleted → Untracked, then alphabetically within each group
+- Files sorted by priority: Conflict → Staged → Modified → Deleted → Untracked, then alphabetically within each group; case-insensitive by default, configurable via `general.case_sensitive_path_sorting`
 - Scrolls when file count exceeds panel height; cursor always stays visible
 - Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area; coloured with focused/unfocused border colour
 - Tab focus moves to this pane when opened; Tab cycles back to Repositories
@@ -154,8 +157,8 @@ Dismiss the menu with `Esc` or by clicking outside it.
 - Automatically shown when a git operation fails, so error output is immediately visible
 - Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area
 - Pressing `Enter` when the Output Log pane has focus opens the log action menu
-  - Menu entry "Copy log output" copies the entire log content to system clipboard
-  - After copying, shows a transient popup notification "Log output copied to clipboard!" that auto-dismisses after 2 seconds
+  - `c` — "Copy log output": copies the entire log content to system clipboard; shows a transient popup "Log output copied to clipboard!" that auto-dismisses after 2 seconds
+  - `x` — "Clear log": clears all log entries and resets scroll position to tail; shows a brief "Log cleared" header flash
 
 ## Debug Logging
 
@@ -184,6 +187,7 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
 - Each commit row is followed by file sub-rows aligned with the timestamp column:
   - Format: `<change-identifier>  <path>` (two spaces between code and path)
   - A = added (blue), M = modified (green), D = deleted (red), R = renamed (yellow)
+  - File sub-rows within each commit are sorted alphabetically by path; case-insensitive by default, configurable via `general.case_sensitive_path_sorting`
 - `↑`/`↓` and `PgUp`/`PgDn` scroll through commits and file rows
 - `Shift-↑` / `Shift-↓` (or `,` / `.`) jump directly to the previous/next commit header row, skipping file sub-rows; `,`/`.` are provided as alternatives for terminals that intercept Shift+Arrow (e.g. Zed)
 - Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area; coloured with focused/unfocused border colour
@@ -286,7 +290,7 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - `↑`/`↓` navigate in list
   - `→`/`Enter` descend into directory
   - `←`/`Backspace` go to parent
-  - `Space` selects current directory as repo to add
+  - `Space` adds current directory as repo and keeps the picker open for further selections
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
 - Action menus are sized and positioned relative to the pane they belong to:
   width is derived from menu content (clamped at 80 % of the pane width) and the

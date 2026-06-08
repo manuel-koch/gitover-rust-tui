@@ -60,9 +60,10 @@ A missing file is valid — defaults are used.
 
 ```yaml
 general:
-  git: /usr/local/bin/git        # optional: override git executable path
-  auto_fetch_interval: 600       # seconds between background fetches (0 = disabled)
-  debug_log: ~/logs/gitover.log  # optional: persistent debug log (supports ~ and ${VAR})
+  git: /usr/local/bin/git              # optional: override git executable path
+  auto_fetch_interval: 600             # seconds between background fetches (0 = disabled)
+  debug_log: ~/logs/gitover.log        # optional: persistent debug log (supports ~ and ${VAR})
+  case_sensitive_path_sorting: false   # optional: true = case-sensitive path sort (default: false)
 
 repo_commands:
   - name: Open in editor

@@ -21,20 +21,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## UX Polish
 
-- [x] When using "A" keypress to add a repositiory, the popup dialog to select a repo should stay open after
-      a "space" keypress, allowing to add more repos.
-
-- [x] Change the title of the "space" action in the add-repo file-picker from "select repo" to "add repo".
-
-- [x] Add a boolean config option for `config.yaml` to adjust how paths are sorted: `general.case_sensitive_path_sorting`
-  - [x] use case-insensitive sorting by default
-  - [x] In the repositories pane, apply the sorting-flag for repo paths.
-  - [x] In the status pane, apply the sorting-flag for commit paths.
-  - [x] In the history pane, apply the sorting-flag for commit paths.
-
 - [ ] In the file-picker popup, apply the sorting-flag for paths. (blocked: ratatui-explorer sorts internally, no API to override)
-
-- [x] Add action "clear" to log-output pane
 
 - [ ] Allow drag'n'drop on panes, so that displayed text can be selected and copied to clipboard
 
