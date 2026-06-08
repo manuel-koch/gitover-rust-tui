@@ -100,10 +100,13 @@ impl HistoryFilter {
 
 /// Load the commit history for the repository at `path`.
 /// Returns up to `limit` commits, newest first, optionally filtered.
+/// Files within each commit entry are sorted by path; `case_sensitive_sort`
+/// controls whether the comparison is case-sensitive.
 pub fn get_commit_history(
     path: &str,
     filter: &HistoryFilter,
     limit: usize,
+    case_sensitive_sort: bool,
 ) -> Result<Vec<CommitEntry>> {
     let repo = Repository::open(path)?;
     let mut revwalk = repo.revwalk()?;
@@ -225,6 +228,13 @@ pub fn get_commit_history(
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_default();
                 deltas.push(CommitFileDelta { kind, path });
+            }
+            if case_sensitive_sort {
+                deltas.sort_unstable_by(|a, b| a.path.cmp(&b.path));
+            } else {
+                deltas.sort_unstable_by(|a, b| {
+                    a.path.to_lowercase().cmp(&b.path.to_lowercase())
+                });
             }
             deltas
         };
@@ -353,7 +363,7 @@ impl RepoStatus {
     }
 }
 
-pub fn get_repo_status(path: &str) -> Result<RepoStatus> {
+pub fn get_repo_status(path: &str, case_sensitive_sort: bool) -> Result<RepoStatus> {
     let repo = Repository::open(path)?;
 
     let branch = get_branch_name(&repo);
@@ -420,12 +430,18 @@ pub fn get_repo_status(path: &str) -> Result<RepoStatus> {
     let merged_branches = get_merged_branches(&repo);
 
     // Sort files: Conflict → Staged → Modified → Deleted → Untracked,
-    // then alphabetically within each group.
+    // then alphabetically within each group (case-sensitivity controlled by flag).
     files.sort_by(|a, b| {
         a.status
             .sort_priority()
             .cmp(&b.status.sort_priority())
-            .then_with(|| a.path.cmp(&b.path))
+            .then_with(|| {
+                if case_sensitive_sort {
+                    a.path.cmp(&b.path)
+                } else {
+                    a.path.to_lowercase().cmp(&b.path.to_lowercase())
+                }
+            })
     });
 
     Ok(RepoStatus {

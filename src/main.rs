@@ -1692,7 +1692,8 @@ fn add_repo_to_app(
     new_path: &str,
     dirty_rx: &mut std::sync::mpsc::Receiver<String>,
 ) {
-    if let Ok(status) = git::get_repo_status(new_path) {
+    let case_sensitive_sort = app.config.general.case_sensitive_path_sorting;
+    if let Ok(status) = git::get_repo_status(new_path, case_sensitive_sort) {
         app.repos.push(status);
         app.sort_repos();
 
@@ -1708,7 +1709,7 @@ fn add_repo_to_app(
                     if let Some(sub_path) = sub.path().to_str() {
                         let full = format!("{}/{}", new_path, sub_path);
                         if app.state.add_repo(&full) {
-                            if let Ok(s) = git::get_repo_status(&full) {
+                            if let Ok(s) = git::get_repo_status(&full, case_sensitive_sort) {
                                 app.repos.push(s);
                             }
                         }
@@ -1729,10 +1730,11 @@ fn refresh_repos(app: &mut App) {
     let started = Instant::now();
     app.log(format!("scanning {} repo(s)", paths.len()));
 
+    let case_sensitive_sort = app.config.general.case_sensitive_path_sorting;
     app.repos = paths
         .iter()
         .map(|p| {
-            git::get_repo_status(p)
+            git::get_repo_status(p, case_sensitive_sort)
                 .unwrap_or_else(|e| git::RepoStatus::error_entry(p, format!("{e}")))
         })
         .collect();
@@ -1768,8 +1770,9 @@ fn parse_path_flag(args: &[String], flag: &str) -> Option<std::path::PathBuf> {
 }
 
 fn refresh_single_repo(app: &mut App, path: &str) {
+    let case_sensitive_sort = app.config.general.case_sensitive_path_sorting;
     if let Some(repo) = app.repos.iter_mut().find(|r| r.path == path) {
-        match git::get_repo_status(path) {
+        match git::get_repo_status(path, case_sensitive_sort) {
             Ok(fresh) => *repo = fresh,
             Err(e) => *repo = git::RepoStatus::error_entry(path, format!("{e}")),
         }

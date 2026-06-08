@@ -1144,8 +1144,10 @@ impl App {
 
     /// Load commit history into the history pane, resetting scroll and selection.
     fn load_history(&mut self, path: String, filter: HistoryFilter) {
-        self.history = crate::git::get_commit_history(&path, &filter, HISTORY_COMMIT_LIMIT)
-            .unwrap_or_default();
+        let case_sensitive_sort = self.config.general.case_sensitive_path_sorting;
+        self.history =
+            crate::git::get_commit_history(&path, &filter, HISTORY_COMMIT_LIMIT, case_sensitive_sort)
+                .unwrap_or_default();
         self.history_repo_path = path;
         self.history_filter = filter;
         self.history_selected = 0;
@@ -1207,6 +1209,7 @@ impl App {
             HistoryFilter::AheadOf(r) | HistoryFilter::BehindOf(r) => Some(r.clone()),
             _ => None,
         };
+        let case_sensitive_sort = self.config.general.case_sensitive_path_sorting;
         let (commits, effective_filter) = if let Some(stored) = stored_ref {
             let is_ahead = matches!(filter, HistoryFilter::AheadOf(_));
             let make = |r: &str| -> HistoryFilter {
@@ -1239,8 +1242,9 @@ impl App {
             candidates
                 .into_iter()
                 .find_map(|f| {
-                    let c = crate::git::get_commit_history(&current_path, &f, HISTORY_COMMIT_LIMIT)
-                        .unwrap_or_default();
+                    let c =
+                        crate::git::get_commit_history(&current_path, &f, HISTORY_COMMIT_LIMIT, case_sensitive_sort)
+                            .unwrap_or_default();
                     if !c.is_empty() || matches!(f, HistoryFilter::Full) {
                         Some((c, f))
                     } else {
@@ -1250,7 +1254,7 @@ impl App {
                 .unwrap_or((Vec::new(), HistoryFilter::Full))
         } else {
             let commits =
-                crate::git::get_commit_history(&current_path, &filter, HISTORY_COMMIT_LIMIT)
+                crate::git::get_commit_history(&current_path, &filter, HISTORY_COMMIT_LIMIT, case_sensitive_sort)
                     .unwrap_or_default();
             (commits, filter)
         };
@@ -1718,11 +1722,15 @@ impl App {
         self.theme_idx = (self.theme_idx + 1) % crate::theme::THEMES.len();
     }
 
-    /// Sort the repo list by absolute path (case-insensitive).
-    /// Call this after any operation that adds entries to self.repos.
+    /// Sort the repo list by absolute path.
+    /// Uses case-insensitive comparison unless `general.case_sensitive_path_sorting` is set.
     pub fn sort_repos(&mut self) {
-        self.repos
-            .sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+        if self.config.general.case_sensitive_path_sorting {
+            self.repos.sort_by(|a, b| a.path.cmp(&b.path));
+        } else {
+            self.repos
+                .sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+        }
     }
 }
 

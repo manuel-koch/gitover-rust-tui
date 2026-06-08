@@ -201,7 +201,7 @@ fn integration_clean_repo() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let path = make_repo(&tmp.path().to_path_buf(), "main");
 
-    let status = get_repo_status(&path).expect("get_repo_status");
+    let status = get_repo_status(&path, false).expect("get_repo_status");
 
     assert_eq!(status.branch, "main");
     assert!(status.is_clean(), "fresh repo should be clean");
@@ -222,7 +222,7 @@ fn integration_untracked_file() {
     // Add an untracked file (not staged)
     fs::write(tmp.path().join("new.txt"), "untracked").unwrap();
 
-    let status = get_repo_status(&path).expect("get_repo_status");
+    let status = get_repo_status(&path, false).expect("get_repo_status");
 
     assert!(!status.is_clean());
     assert_eq!(status.added, 1, "should have 1 untracked file");
@@ -243,7 +243,7 @@ fn integration_staged_file() {
     index.add_path(std::path::Path::new("staged.txt")).unwrap();
     index.write().unwrap();
 
-    let status = get_repo_status(&path).expect("get_repo_status");
+    let status = get_repo_status(&path, false).expect("get_repo_status");
 
     assert!(!status.is_clean());
     assert_eq!(status.staged, 1);
@@ -261,7 +261,7 @@ fn integration_modified_file() {
     // Modify the committed file (don't stage)
     fs::write(tmp.path().join("README.md"), "modified content").unwrap();
 
-    let status = get_repo_status(&path).expect("get_repo_status");
+    let status = get_repo_status(&path, false).expect("get_repo_status");
 
     assert!(!status.is_clean());
     assert_eq!(status.modified, 1);
@@ -280,7 +280,7 @@ fn integration_unborn_branch() {
     git2::Repository::init(&dir).expect("init repo");
 
     let path = dir.to_string_lossy().to_string();
-    let status = get_repo_status(&path).expect("get_repo_status on unborn branch");
+    let status = get_repo_status(&path, false).expect("get_repo_status on unborn branch");
 
     // Should show the branch name (e.g. "master" or "main"), not "detached"
     assert!(!status.branch.is_empty());
@@ -292,7 +292,7 @@ fn integration_unborn_branch() {
 fn integration_invalid_path_returns_error_entry() {
     let path = "/nonexistent/path/to/repo";
     // get_repo_status should return Err for invalid path
-    assert!(get_repo_status(path).is_err());
+    assert!(get_repo_status(path, false).is_err());
 
     // error_entry helper should produce a displayable placeholder
     let entry = RepoStatus::error_entry(path, "test error");
@@ -312,7 +312,7 @@ fn integration_local_branches_listed() {
     let commit = repo.find_commit(head.target().unwrap()).unwrap();
     repo.branch("feature-x", &commit, false).unwrap();
 
-    let status = get_repo_status(&path).expect("get_repo_status");
+    let status = get_repo_status(&path, false).expect("get_repo_status");
 
     assert!(
         status.local_branches.contains(&"main".to_string()),

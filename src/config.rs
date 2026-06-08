@@ -55,6 +55,10 @@ pub struct GeneralConfig {
     /// file (appended if it already exists). Overridden by `--debug-log` CLI flag.
     #[serde(default)]
     pub debug_log: Option<String>,
+    /// When true, paths are sorted case-sensitively across all panes.
+    /// Defaults to false (case-insensitive sorting).
+    #[serde(default)]
+    pub case_sensitive_path_sorting: bool,
 }
 
 impl GeneralConfig {
