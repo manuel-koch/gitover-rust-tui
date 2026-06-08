@@ -25,6 +25,14 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 - [ ] Allow drag'n'drop on panes, so that displayed text can be selected and copied to clipboard
 
+- [ ] Allow drag'n'drop of pane vertical divider between status-pane/commit-pane and diff-pane.
+      This should work like resizing the repositories-pane.
+      Don't preserve the selected x-position of the divider in state ( like repositories-pane height ), startup position of divider will still be at 50% view width.
+
+- [ ] Allow action-menu popup to be greater than the pane from which
+      it got started, e.g. to overlap the pane vertically below it
+      (partly) too.
+
 ## UX Mouse Interaction
 
 - [ ]
@@ -53,7 +61,11 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Status-File / Commit-History-File Diff
 
-- [ ]
+- [x] Add action ( title "Save as patch and revert file" ) to status-pane action-menu
+      to save current file change as patch ( using original path + ".patch" postfix )
+      and revert the changed file.
+- [x] When current file in status-pane matches *.patch then show a apply-patch action in
+      action-menu of status-pane.
 
 ## Testing & Quality
 

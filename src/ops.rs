@@ -67,6 +67,15 @@ pub enum OpRequest {
         /// When true, spawn without waiting and discard output.
         background: bool,
     },
+    /// Save the current diff of a file as `<file_path>.patch` (relative to repo root),
+    /// then revert the file to its HEAD state.
+    SavePatchAndRevert {
+        file_path: String,
+    },
+    /// Apply a patch file using `git apply <file_path>` (path relative to repo root).
+    ApplyPatch {
+        file_path: String,
+    },
 }
 
 impl OpRequest {
@@ -87,6 +96,8 @@ impl OpRequest {
             OpRequest::DiscardFile(_) => "discard file".into(),
             OpRequest::PullBranch { name, .. } => format!("pull branch {name}"),
             OpRequest::RunRepoCommand { name, .. } => name.clone(),
+            OpRequest::SavePatchAndRevert { .. } => "save patch and revert".into(),
+            OpRequest::ApplyPatch { .. } => "apply patch".into(),
         }
     }
 }
@@ -212,6 +223,50 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
                     false
                 }
             }
+        }
+
+        OpRequest::SavePatchAndRevert { file_path } => {
+            let diff_output = Command::new(git_bin)
+                .current_dir(repo_path)
+                .args(["diff", "HEAD", "--", file_path])
+                .output();
+
+            match diff_output {
+                Ok(output) if !output.stdout.is_empty() => {
+                    let patch_file_path = format!("{file_path}.patch");
+                    let absolute_patch_path =
+                        std::path::PathBuf::from(repo_path).join(&patch_file_path);
+                    match std::fs::write(&absolute_patch_path, &output.stdout) {
+                        Ok(()) => {
+                            lines.push(format!("saved patch to {patch_file_path}"));
+                            // Unstage if staged, then restore working-tree state
+                            run_git(git_bin, repo_path, &["reset", "--", file_path], &mut lines);
+                            run_git(
+                                git_bin,
+                                repo_path,
+                                &["checkout", "--", file_path],
+                                &mut lines,
+                            )
+                        }
+                        Err(error) => {
+                            lines.push(format!("error saving patch: {error}"));
+                            false
+                        }
+                    }
+                }
+                Ok(_) => {
+                    lines.push(format!("no diff found for {file_path}"));
+                    false
+                }
+                Err(error) => {
+                    lines.push(format!("error getting diff: {error}"));
+                    false
+                }
+            }
+        }
+
+        OpRequest::ApplyPatch { file_path } => {
+            run_git(git_bin, repo_path, &["apply", "--", file_path], &mut lines)
         }
 
         OpRequest::RunRepoCommand {

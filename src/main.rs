@@ -1385,6 +1385,26 @@ fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpRe
             app.close_menu();
             launch_op(app, op_tx, OpRequest::DiscardFile(file.path));
         }
+        'p' => {
+            app.close_menu();
+            launch_op(
+                app,
+                op_tx,
+                OpRequest::SavePatchAndRevert {
+                    file_path: file.path,
+                },
+            );
+        }
+        'P' => {
+            app.close_menu();
+            launch_op(
+                app,
+                op_tx,
+                OpRequest::ApplyPatch {
+                    file_path: file.path,
+                },
+            );
+        }
         _ => {}
     }
 }

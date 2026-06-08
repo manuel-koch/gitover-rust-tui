@@ -975,27 +975,30 @@ impl App {
     /// Open the per-file action menu for the currently selected file.
     /// Menu items are built based on the file's status.
     pub fn open_file_action_menu(&mut self) {
-        let file_status = match self
+        let entry = match self
             .selected_files()
             .get(self.file_status_selected)
-            .map(|f| f.status.clone())
+            .cloned()
         {
-            Some(s) => s,
+            Some(e) => e,
             None => return,
         };
 
         let mut items = Vec::new();
-        match file_status {
+        match entry.status {
             FileStatusKind::Staged => {
                 items.push(MenuItem::item("Unstage file", 'u'));
+                items.push(MenuItem::item("Save as patch and revert file", 'p'));
             }
             FileStatusKind::Modified => {
                 items.push(MenuItem::item("Stage file", 's'));
                 items.push(MenuItem::item("Revert file", 'r'));
+                items.push(MenuItem::item("Save as patch and revert file", 'p'));
             }
             FileStatusKind::Deleted => {
                 items.push(MenuItem::item("Stage deletion", 's'));
                 items.push(MenuItem::item("Revert file", 'r'));
+                items.push(MenuItem::item("Save as patch and revert file", 'p'));
             }
             FileStatusKind::Conflict => {
                 items.push(MenuItem::item("Revert file", 'r'));
@@ -1004,6 +1007,9 @@ impl App {
                 items.push(MenuItem::item("Stage file", 's'));
                 items.push(MenuItem::item("Discard file", 'd'));
             }
+        }
+        if entry.path.ends_with(".patch") {
+            items.push(MenuItem::item("Apply patch", 'P'));
         }
 
         self.open_menu(items, AppMode::FileActionMenu);
