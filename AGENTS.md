@@ -73,6 +73,10 @@ docs/
 Makefile        — build, lint, format, test, release, install, tag-version targets
 ```
 
+### Coding Conventions
+
+- Use full, descriptive names for variables, functions, methods, and types — never abbreviations (e.g. `case_sensitive_sort` not `cs`, `repo_path` not `rp`, `format_timestamp` not `fmt_ts`). Exception: universally idiomatic Rust short-names such as `new`, `len`, `fmt`, `cmp`, `eq`.
+
 ### Guidelines for Implementation, Testing and Bugfixing
 
 - Avoid Code Smells
