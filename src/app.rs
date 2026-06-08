@@ -1012,9 +1012,20 @@ impl App {
     /// Open the log action menu for the Output Log pane.
     pub fn open_log_action_menu(&mut self) {
         self.open_menu(
-            vec![MenuItem::item("Copy log output", ' ')],
+            vec![
+                MenuItem::item("Copy log output", 'c'),
+                MenuItem::item("Clear log", 'x'),
+            ],
             AppMode::LogActionMenu,
         );
+    }
+
+    /// Clear all log lines and reset the scroll position.
+    pub fn clear_log(&mut self) {
+        self.log.clear();
+        self.log_offset = 0;
+        self.log_follow = true;
+        self.set_header_flash("Log cleared");
     }
 
     /// Copy the entire Output Log content to the system clipboard.
@@ -1145,9 +1156,13 @@ impl App {
     /// Load commit history into the history pane, resetting scroll and selection.
     fn load_history(&mut self, path: String, filter: HistoryFilter) {
         let case_sensitive_sort = self.config.general.case_sensitive_path_sorting;
-        self.history =
-            crate::git::get_commit_history(&path, &filter, HISTORY_COMMIT_LIMIT, case_sensitive_sort)
-                .unwrap_or_default();
+        self.history = crate::git::get_commit_history(
+            &path,
+            &filter,
+            HISTORY_COMMIT_LIMIT,
+            case_sensitive_sort,
+        )
+        .unwrap_or_default();
         self.history_repo_path = path;
         self.history_filter = filter;
         self.history_selected = 0;
@@ -1242,9 +1257,13 @@ impl App {
             candidates
                 .into_iter()
                 .find_map(|f| {
-                    let c =
-                        crate::git::get_commit_history(&current_path, &f, HISTORY_COMMIT_LIMIT, case_sensitive_sort)
-                            .unwrap_or_default();
+                    let c = crate::git::get_commit_history(
+                        &current_path,
+                        &f,
+                        HISTORY_COMMIT_LIMIT,
+                        case_sensitive_sort,
+                    )
+                    .unwrap_or_default();
                     if !c.is_empty() || matches!(f, HistoryFilter::Full) {
                         Some((c, f))
                     } else {
@@ -1253,9 +1272,13 @@ impl App {
                 })
                 .unwrap_or((Vec::new(), HistoryFilter::Full))
         } else {
-            let commits =
-                crate::git::get_commit_history(&current_path, &filter, HISTORY_COMMIT_LIMIT, case_sensitive_sort)
-                    .unwrap_or_default();
+            let commits = crate::git::get_commit_history(
+                &current_path,
+                &filter,
+                HISTORY_COMMIT_LIMIT,
+                case_sensitive_sort,
+            )
+            .unwrap_or_default();
             (commits, filter)
         };
         self.history = commits;

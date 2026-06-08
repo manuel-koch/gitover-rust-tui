@@ -232,9 +232,7 @@ pub fn get_commit_history(
             if case_sensitive_sort {
                 deltas.sort_unstable_by(|a, b| a.path.cmp(&b.path));
             } else {
-                deltas.sort_unstable_by(|a, b| {
-                    a.path.to_lowercase().cmp(&b.path.to_lowercase())
-                });
+                deltas.sort_unstable_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
             }
             deltas
         };

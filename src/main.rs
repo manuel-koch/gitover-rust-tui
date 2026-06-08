@@ -1226,7 +1226,23 @@ fn handle_log_menu_key(app: &mut App, _op_tx: &std::sync::mpsc::Sender<OpResult>
         KeyCode::PageDown => app.menu_next_page(),
         KeyCode::PageUp => app.menu_previous_page(),
         KeyCode::Esc => app.close_menu(),
-        KeyCode::Enter => app.copy_log_to_clipboard(), // copy_log_to_clipboard sets mode to PopupMessage
+        KeyCode::Enter => {
+            if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {
+                dispatch_log_menu_action(app, item.key);
+            }
+        }
+        KeyCode::Char(character) => dispatch_log_menu_action(app, character),
+        _ => {}
+    }
+}
+
+fn dispatch_log_menu_action(app: &mut App, key: char) {
+    match key {
+        'c' => app.copy_log_to_clipboard(),
+        'x' => {
+            app.close_menu();
+            app.clear_log();
+        }
         _ => {}
     }
 }
