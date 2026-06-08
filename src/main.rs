@@ -1083,7 +1083,7 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
             OpRequest::Fetch => app::RepoOperation::Fetching,
             OpRequest::Pull | OpRequest::PullBranch { .. } => app::RepoOperation::Pulling,
             OpRequest::Push | OpRequest::ForcePush => app::RepoOperation::Pushing,
-            _ => app::RepoOperation::Fetching,
+            _ => app::RepoOperation::Working,
         },
     );
     app.log(format!("run '{label}' in {path}"));

@@ -31,6 +31,7 @@ pub enum RepoOperation {
     Pulling,
     Pushing,
     Rebasing,
+    Working,
 }
 
 impl RepoOperation {
@@ -41,6 +42,7 @@ impl RepoOperation {
             RepoOperation::Pulling => "pulling",
             RepoOperation::Pushing => "pushing",
             RepoOperation::Rebasing => "rebasing",
+            RepoOperation::Working => "working",
         }
     }
 }
