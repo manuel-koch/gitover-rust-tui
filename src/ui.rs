@@ -1718,7 +1718,7 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
         spans.push(Span::raw(" parent  "));
     }
     spans.push(Span::styled("Space", kc));
-    spans.push(Span::raw(" select repo  "));
+    spans.push(Span::raw(" add repo  "));
     spans.push(Span::styled("Esc", ks));
     spans.push(Span::raw(" cancel"));
     frame.render_widget(Paragraph::new(Line::from(spans)), inner_chunks[1]);

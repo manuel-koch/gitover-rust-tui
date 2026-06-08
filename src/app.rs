@@ -767,9 +767,6 @@ impl App {
             eprintln!("gitover: failed to save state: {e}");
         }
 
-        self.file_explorer = None;
-        self.restore_base_mode();
-
         if added {
             Ok(Some(path.to_string()))
         } else {

@@ -1620,7 +1620,7 @@ fn handle_picker_event(
                 }
             }
 
-            // Space: select the current directory as a repo
+            // Space: add the current directory as a repo, keep picker open
             KeyCode::Char(' ') => {
                 if let Some(path) = app.picker_selected_path() {
                     match app.add_repo_path(&path) {
@@ -1628,11 +1628,10 @@ fn handle_picker_event(
                             add_repo_to_app(app, &new_path, dirty_rx);
                         }
                         Ok(None) => {
-                            // Already tracked — close picker
+                            // Already tracked — stay open so user can navigate further
                         }
-                        Err(e) => {
-                            // Not a valid git repo — show nothing, stay open
-                            let _ = e;
+                        Err(_e) => {
+                            // Not a valid git repo — stay open
                         }
                     }
                 }
