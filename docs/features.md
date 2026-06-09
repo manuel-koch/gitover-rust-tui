@@ -138,11 +138,17 @@ Available actions depend on the file's current git status:
 
 | File status | Actions |
 |-------------|---------|
-| Staged | **Unstage file** — `git reset -- <path>` |
-| Modified | **Stage file** — `git add -- <path>`; **Revert file** — `git checkout -- <path>` |
-| Deleted | **Stage deletion** — `git add -- <path>`; **Revert file** — `git checkout -- <path>` |
+| Staged | **Unstage file** — `git reset -- <path>`; **Save as patch and revert file** |
+| Modified | **Stage file** — `git add -- <path>`; **Revert file** — `git checkout -- <path>`; **Save as patch and revert file** |
+| Deleted | **Stage deletion** — `git add -- <path>`; **Revert file** — `git checkout -- <path>`; **Save as patch and revert file** |
 | Conflict | **Revert file** — `git reset -- <path>` followed by `git checkout -- <path>` |
 | Untracked | **Stage file** — `git add -- <path>`; **Discard file** — deletes the file from disk |
+
+**Save as patch and revert file** (`p`): saves the current diff as `<file>.patch` (relative to the repo root) then reverts the file to HEAD. Staged changes are unstaged first.
+
+When the selected file has a `.patch` extension, an additional action is available:
+
+**Apply patch** (`P`): applies the patch file via `git apply`. First attempts a plain apply; if that fails, retries with `--ignore-whitespace`. Applies with `--ignore-whitespace` to tolerate trailing-whitespace differences in context lines.
 
 Dismiss the menu with `Esc` or by clicking outside it.
 
@@ -278,6 +284,10 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - When optional panes (Status Details, History, Output Log) are shown or hidden the custom pane height is preserved so re-opening any of them restores the last user-set size
   - The custom size is not saved to the state file (it is terminal-size dependent and would not be meaningful across sessions)
   - A ↕ indicator appears on the divider when the mouse hovers over it, signalling it is draggable
+- The Details pane can be resized by dragging the vertical divider between the Status Details / History panes and the Details pane
+  - Startup position is 50% of the terminal width; the custom width is not saved to state
+  - A ↔ indicator appears on the divider when the mouse hovers over it, signalling it is draggable
+  - Minimum width of 15 columns is enforced on both sides
 - Scroll indicators (▲ / ▼) in all scrollable panes use focused/unfocused border colours to match the pane border
 - App version shown in the header title (e.g. `Git Repository Overview  v0.1.0`)
 - Loading spinner in header while repos are being scanned
@@ -293,8 +303,8 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - `Space` adds current directory as repo and keeps the picker open for further selections
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
 - Action menus are sized and positioned relative to the pane they belong to:
-  width is derived from menu content (clamped at 80 % of the pane width) and the
-  popup is centered horizontally over the current pane
+  width is derived from menu content (clamped at 80 % of the pane width), the popup
+  is centered horizontally over the current pane
 - Multiple built-in themes selectable at runtime with `T`
 
 ## Mouse Interaction
