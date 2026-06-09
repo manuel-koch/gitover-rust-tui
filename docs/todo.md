@@ -27,7 +27,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
       This should work like resizing the repositories-pane.
       Don't preserve the selected x-position of the divider in state ( like repositories-pane height ), startup position of divider will still be at 50% view width.
 
-- [ ] Allow action-menu popup to be greater than the pane from which
+- [x] Allow action-menu popup to be greater than the pane from which
       it got started, e.g. to overlap the pane vertically below it
       (partly) too.
 

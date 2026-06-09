@@ -1923,19 +1923,27 @@ pub fn action_menu_area(app: &App) -> Rect {
     let max_allowed = (pane.width * ACTION_MENU_MAX_WIDTH_PCT / 100).max(10);
     let width = natural_width.min(max_allowed).max(10);
     let n = app.menu_items.len() as u16;
-    // +2 for top/bottom borders; clamp to pane height.
-    let height = ((n + 2).min(pane.height)).max(3);
+    // Height: allow the popup to extend below the originating pane down to the
+    // terminal bottom, so long menus are never truncated by pane boundaries.
+    let terminal = app
+        .cached_pane_areas
+        .as_ref()
+        .map(|a| a.terminal)
+        .unwrap_or(pane);
+    let available_height = (terminal.y + terminal.height).saturating_sub(pane.y);
+    let height = (n + 2).min(available_height).max(3);
     pane_top_rect(width, height, pane)
 }
 
 /// Position a popup of `width × height` at the top edge of `pane`, horizontally centered.
+/// The caller is responsible for clamping `height` to the available vertical space.
 pub fn pane_top_rect(width: u16, height: u16, pane: Rect) -> Rect {
     let x = pane.x + (pane.width.saturating_sub(width)) / 2;
     Rect {
         x,
         y: pane.y,
         width: width.min(pane.width),
-        height: height.min(pane.height),
+        height,
     }
 }
 
