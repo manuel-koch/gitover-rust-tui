@@ -385,6 +385,7 @@ gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
   | `repo-05` | Feature branch, 2 commits ahead of trunk (↑2 ↓0 trunk) |
   | `repo-06` | Detached HEAD (`detached <sha8>` in Branch column) |
   | `repo-07` | Active merge conflict (C count in Status column) |
+  | `repo-08` | Two branches: `merged-feature` (fully merged to trunk, shown with ✓) and `active-feature` (1 commit ahead of trunk) |
 
   Usage: `./create-sandbox-repos.sh [<base-dir>]`
 
