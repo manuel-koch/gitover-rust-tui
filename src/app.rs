@@ -354,6 +354,13 @@ pub struct App {
     pub dragging_repos_divider: bool,
     /// True when the mouse is hovering over the repos divider row.
     pub hover_repos_divider: bool,
+    /// User-overridden width for the Details pane (drag-to-resize).
+    /// None = 50% of terminal width. Not saved to state.
+    pub details_width_override: Option<u16>,
+    /// True while a mouse drag on the details vertical divider is in progress.
+    pub dragging_details_divider: bool,
+    /// True when the mouse is hovering over the details vertical divider column.
+    pub hover_details_divider: bool,
 }
 
 /// Maximum number of log lines retained.
@@ -448,6 +455,9 @@ impl App {
             repos_height_override: None,
             dragging_repos_divider: false,
             hover_repos_divider: false,
+            details_width_override: None,
+            dragging_details_divider: false,
+            hover_details_divider: false,
         }
     }
 

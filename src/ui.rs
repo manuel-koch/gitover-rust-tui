@@ -145,7 +145,11 @@ pub fn pane_areas(app: &App, total: Rect) -> PaneAreas {
         let combined_y = top_area.y;
         let combined_height = bottom_area.y + bottom_area.height - combined_y;
         let full_w = total.width;
-        let half_w = full_w / 2;
+        const DETAILS_MIN_W: u16 = 15;
+        let half_w = app
+            .details_width_override
+            .unwrap_or(full_w / 2)
+            .clamp(DETAILS_MIN_W, full_w.saturating_sub(DETAILS_MIN_W));
         let left_w = full_w - half_w;
         if let Some(ref mut r) = file_status {
             r.width = left_w;
@@ -261,7 +265,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         let combined_y = top_area.y;
         let combined_height = bottom_area.y + bottom_area.height - combined_y;
         let full_w = frame.area().width;
-        let half_w = full_w / 2;
+        const DETAILS_MIN_W: u16 = 15;
+        let half_w = app
+            .details_width_override
+            .unwrap_or(full_w / 2)
+            .clamp(DETAILS_MIN_W, full_w.saturating_sub(DETAILS_MIN_W));
         let left_w = full_w - half_w;
         if let Some(ref mut r) = file_status_area {
             r.width = left_w;
@@ -1505,6 +1513,25 @@ fn draw_details_panel(frame: &mut Frame, area: Rect, app: &mut App) {
             frame.render_widget(Paragraph::new(display), inner);
             draw_scroll_indicators(frame, inner, scroll > 0, scroll < max_scroll, focused, t);
         }
+    }
+
+    // Drag-handle indicator on the left border when hovering or dragging.
+    if (app.hover_details_divider || app.dragging_details_divider) && area.height > 2 {
+        let indicator = Span::styled(
+            "↔",
+            Style::default()
+                .fg(t.border_focused)
+                .add_modifier(Modifier::BOLD),
+        );
+        frame.render_widget(
+            Paragraph::new(indicator),
+            Rect {
+                x: area.x,
+                y: area.y + area.height / 2,
+                width: 1,
+                height: 1,
+            },
+        );
     }
 }
 

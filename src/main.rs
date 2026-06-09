@@ -517,6 +517,15 @@ fn handle_mouse_event(
                 return;
             }
 
+            // Details-divider drag: start drag when clicking on the left border
+            // of the details pane.
+            if matches!(app.mode, AppMode::Normal | AppMode::History)
+                && is_details_divider(app, mouse)
+            {
+                app.dragging_details_divider = true;
+                return;
+            }
+
             let now = std::time::Instant::now();
             let pos = (mouse.column, mouse.row);
             let is_double_click = app
@@ -544,11 +553,18 @@ fn handle_mouse_event(
             if app.dragging_repos_divider {
                 update_repos_height_from_drag(app, mouse);
             }
+            if app.dragging_details_divider {
+                update_details_width_from_drag(app, mouse);
+            }
         }
         MouseEventKind::Up(MouseButton::Left) => {
             if app.dragging_repos_divider {
                 update_repos_height_from_drag(app, mouse);
                 app.dragging_repos_divider = false;
+            }
+            if app.dragging_details_divider {
+                update_details_width_from_drag(app, mouse);
+                app.dragging_details_divider = false;
             }
         }
         // NOTE: Moved events (no button held) require the terminal to honour the
@@ -557,8 +573,9 @@ fn handle_mouse_event(
         // on the repos divider is never triggered there. Drag (button-held motion) uses
         // `?1002h` which iTerm2 does support, so drag itself works fine in iTerm2.
         MouseEventKind::Moved => {
-            app.hover_repos_divider = matches!(app.mode, AppMode::Normal | AppMode::History)
-                && is_repos_divider(app, mouse);
+            let in_base_mode = matches!(app.mode, AppMode::Normal | AppMode::History);
+            app.hover_repos_divider = in_base_mode && is_repos_divider(app, mouse);
+            app.hover_details_divider = in_base_mode && is_details_divider(app, mouse);
         }
         MouseEventKind::ScrollUp => {
             if matches!(app.mode, AppMode::ActionMenu) {
@@ -621,6 +638,29 @@ fn update_repos_height_from_drag(app: &mut App, mouse: &MouseEvent) {
         .saturating_sub(open_panes * 3)
         .max(MIN_REPOS);
     app.repos_height_override = Some(new_height.clamp(MIN_REPOS, max_h));
+}
+
+/// Returns true when the mouse is on the left border column of the details pane
+/// (the vertical divider between the left panes and the details pane).
+fn is_details_divider(app: &App, mouse: &MouseEvent) -> bool {
+    let Some(areas) = &app.cached_pane_areas else {
+        return false;
+    };
+    let Some(diff) = areas.diff else {
+        return false;
+    };
+    mouse.column == diff.x && mouse.row >= diff.y && mouse.row < diff.y + diff.height
+}
+
+/// Recompute `details_width_override` so the left edge of the details pane tracks the mouse column.
+fn update_details_width_from_drag(app: &mut App, mouse: &MouseEvent) {
+    let Some(areas) = app.cached_pane_areas.clone() else {
+        return;
+    };
+    let full_w = areas.terminal.width;
+    const MIN_W: u16 = 15;
+    let new_w = (areas.terminal.x + full_w).saturating_sub(mouse.column);
+    app.details_width_override = Some(new_w.clamp(MIN_W, full_w.saturating_sub(MIN_W)));
 }
 
 /// Determine which pane a mouse click landed on and set focus accordingly.
