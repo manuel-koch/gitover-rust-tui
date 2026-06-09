@@ -23,8 +23,6 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 - [ ] In the file-picker popup, apply the sorting-flag for paths. (blocked: ratatui-explorer sorts internally, no API to override)
 
-- [ ] Allow drag'n'drop on panes, so that displayed text can be selected and copied to clipboard
-
 - [ ] Allow drag'n'drop of pane vertical divider between status-pane/commit-pane and diff-pane.
       This should work like resizing the repositories-pane.
       Don't preserve the selected x-position of the divider in state ( like repositories-pane height ), startup position of divider will still be at 50% view width.

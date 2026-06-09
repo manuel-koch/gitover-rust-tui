@@ -299,6 +299,10 @@ In the action menu, `Esc` dismisses the menu without taking any action.
 
 ## Mouse Interaction
 
+- **Selecting and copying text**: since gitover captures mouse events, the terminal cannot do native text
+  selection by default. Hold **Option** (macOS) while dragging to bypass the app's mouse capture and
+  select text normally; then copy with **Cmd-C** or the terminal context menu. This works in iTerm2 and
+  Terminal.app; other terminals may use a different modifier.
 - Left-click on a pane sets focus to that pane
 - Mouse wheel over any pane gives focus to that pane first, then scrolls its content
 - Left-click inside the Status Details pane selects the file under the cursor; scroll position is preserved
