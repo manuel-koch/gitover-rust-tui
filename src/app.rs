@@ -149,8 +149,10 @@ pub enum AppMode {
     BranchSelect,
     /// Text input for creating a new branch.
     NewBranchInput,
-    /// Confirmation dialog for force-push.
+    /// Confirmation dialog for force-push of HEAD.
     ConfirmForcePush,
+    /// Confirmation dialog for force-push of a specific branch from the Branches pane.
+    ConfirmForcePushBranch,
     /// Simple yes/no confirmation before deleting the branch selected in the Branches pane.
     ConfirmDeleteLocalBranch,
     /// Commit history pane (h key).
@@ -283,6 +285,8 @@ pub struct App {
     pub branch_input_base: String,
     /// Branch name staged for deletion (shown in confirm dialog).
     pub branch_to_delete: String,
+    /// Branch name staged for force-push from the Branches pane (shown in confirm dialog).
+    pub branch_to_force_push: String,
 
     /// Index into `theme::THEMES` for the active theme.
     pub theme_idx: usize,
@@ -426,6 +430,7 @@ impl App {
             branch_input: String::new(),
             branch_input_base: String::new(),
             branch_to_delete: String::new(),
+            branch_to_force_push: String::new(),
             theme_idx: 0,
             history: Vec::new(),
             show_history,
@@ -853,31 +858,28 @@ impl App {
             return;
         }
         let repo = &self.repos[self.selected];
-        let has_upstream = repo.upstream.is_some();
         let has_error = repo.error.is_some();
 
         let mut items = Vec::new();
         if !has_error {
             items.push(MenuItem::item("Fetch", 'f'));
-            items.push(MenuItem::item("Pull", 'p'));
-            if has_upstream {
-                items.push(MenuItem::item("Push", 'P'));
-                items.push(MenuItem::item("Force Push", 'F'));
-            }
-            items.push(MenuItem::item("Checkout branch", 'c'));
-            items.push(MenuItem::item("Create new branch", 'n'));
+            items.push(MenuItem::item("Pull Branch", 'p'));
+            items.push(MenuItem::item("Push Branch", 'P'));
+            items.push(MenuItem::item("Force Push Branch", 'F'));
+            items.push(MenuItem::item("Checkout Branch", 'c'));
+            items.push(MenuItem::item("Create Branch", 'n'));
 
-            items.push(MenuItem::item("Commit history", 'h'));
+            items.push(MenuItem::item("Commit History", 'h'));
             if let Some(upstream) = &repo.upstream {
                 if upstream.ahead > 0 {
                     items.push(MenuItem::item(
-                        format!("History: ahead of {}", upstream.branch),
+                        format!("History: Ahead of {}", upstream.branch),
                         'u',
                     ));
                 }
                 if upstream.behind > 0 {
                     items.push(MenuItem::item(
-                        format!("History: behind {}", upstream.branch),
+                        format!("History: Behind {}", upstream.branch),
                         'U',
                     ));
                 }
@@ -892,13 +894,13 @@ impl App {
                 if trunk.branch != upstream_branch {
                     if trunk.ahead > 0 {
                         items.push(MenuItem::item(
-                            format!("History: ahead of {}", trunk.branch),
+                            format!("History: Ahead of {}", trunk.branch),
                             't',
                         ));
                     }
                     if trunk.behind > 0 {
                         items.push(MenuItem::item(
-                            format!("History: behind {}", trunk.branch),
+                            format!("History: Behind {}", trunk.branch),
                             'T',
                         ));
                     }
@@ -999,29 +1001,29 @@ impl App {
         let mut items = Vec::new();
         match entry.status {
             FileStatusKind::Staged => {
-                items.push(MenuItem::item("Unstage file", 'u'));
-                items.push(MenuItem::item("Save as patch and revert file", 'p'));
+                items.push(MenuItem::item("Unstage File", 'u'));
+                items.push(MenuItem::item("Save as Patch and Revert File", 'p'));
             }
             FileStatusKind::Modified => {
-                items.push(MenuItem::item("Stage file", 's'));
-                items.push(MenuItem::item("Revert file", 'r'));
-                items.push(MenuItem::item("Save as patch and revert file", 'p'));
+                items.push(MenuItem::item("Stage File", 's'));
+                items.push(MenuItem::item("Revert File", 'r'));
+                items.push(MenuItem::item("Save as Patch and Revert File", 'p'));
             }
             FileStatusKind::Deleted => {
-                items.push(MenuItem::item("Stage deletion", 's'));
-                items.push(MenuItem::item("Revert file", 'r'));
-                items.push(MenuItem::item("Save as patch and revert file", 'p'));
+                items.push(MenuItem::item("Stage Deletion", 's'));
+                items.push(MenuItem::item("Revert File", 'r'));
+                items.push(MenuItem::item("Save as Patch and Revert File", 'p'));
             }
             FileStatusKind::Conflict => {
-                items.push(MenuItem::item("Revert file", 'r'));
+                items.push(MenuItem::item("Revert File", 'r'));
             }
             FileStatusKind::Untracked => {
-                items.push(MenuItem::item("Stage file", 's'));
-                items.push(MenuItem::item("Discard file", 'd'));
+                items.push(MenuItem::item("Stage File", 's'));
+                items.push(MenuItem::item("Discard File", 'd'));
             }
         }
         if entry.path.ends_with(".patch") {
-            items.push(MenuItem::item("Apply patch", 'P'));
+            items.push(MenuItem::item("Apply Patch", 'P'));
         }
 
         self.open_menu(items, AppMode::FileActionMenu);
@@ -1031,8 +1033,8 @@ impl App {
     pub fn open_log_action_menu(&mut self) {
         self.open_menu(
             vec![
-                MenuItem::item("Copy log output", 'c'),
-                MenuItem::item("Clear log", 'x'),
+                MenuItem::item("Copy Log Output", 'c'),
+                MenuItem::item("Clear Log", 'x'),
             ],
             AppMode::LogActionMenu,
         );
@@ -1167,6 +1169,11 @@ impl App {
 
     pub fn confirm_force_push(&mut self) {
         self.mode = AppMode::ConfirmForcePush;
+    }
+
+    pub fn confirm_force_push_branch(&mut self, name: String) {
+        self.branch_to_force_push = name;
+        self.mode = AppMode::ConfirmForcePushBranch;
     }
 
     // ── Git History ───────────────────────────────────────────────────────────
@@ -1424,23 +1431,33 @@ impl App {
         if !branch.is_current {
             items.push(MenuItem::item("Checkout", 'c'));
         }
-        items.push(MenuItem::item("Create branch here", 'n'));
-        items.push(MenuItem::item("Commit history", 'h'));
+        // Sync ops: pull then push — mirrors the repos-pane order (Pull / Push / Force Push).
+        if let Some(upstream) = &branch.upstream {
+            if upstream.behind > 0 && upstream.ahead == 0 {
+                items.push(MenuItem::item("Pull Branch (fast-forward)", 'p'));
+            }
+        }
+        if !branch.is_remote_only {
+            let can_push = branch.upstream.as_ref().is_none_or(|u| u.ahead > 0);
+            if can_push {
+                items.push(MenuItem::item("Push Branch", 'P'));
+                items.push(MenuItem::item("Force Push Branch", 'F'));
+            }
+        }
+        items.push(MenuItem::item("Create Branch", 'n'));
+        items.push(MenuItem::item("Commit History", 'h'));
         if let Some(upstream) = &branch.upstream {
             if upstream.ahead > 0 {
                 items.push(MenuItem::item(
-                    format!("History: ahead of {}", upstream.branch),
+                    format!("History: Ahead of {}", upstream.branch),
                     'u',
                 ));
             }
             if upstream.behind > 0 {
                 items.push(MenuItem::item(
-                    format!("History: behind {}", upstream.branch),
+                    format!("History: Behind {}", upstream.branch),
                     'U',
                 ));
-                if upstream.ahead == 0 {
-                    items.push(MenuItem::item("Pull (fast-forward)", 'p'));
-                }
             }
         }
         let upstream_branch = branch
@@ -1452,13 +1469,13 @@ impl App {
             if trunk.branch != upstream_branch {
                 if trunk.ahead > 0 {
                     items.push(MenuItem::item(
-                        format!("History: ahead of {}", trunk.branch),
+                        format!("History: Ahead of {}", trunk.branch),
                         't',
                     ));
                 }
                 if trunk.behind > 0 {
                     items.push(MenuItem::item(
-                        format!("History: behind {}", trunk.branch),
+                        format!("History: Behind {}", trunk.branch),
                         'T',
                     ));
                 }
@@ -1466,7 +1483,7 @@ impl App {
         }
         if !branch.is_current && !branch.is_remote_only && !branch.is_trunk {
             items.push(MenuItem::separator());
-            items.push(MenuItem::item("Delete branch", 'd'));
+            items.push(MenuItem::item("Delete Branch", 'd'));
         }
         self.open_menu(items, AppMode::BranchActionMenu);
     }

@@ -348,6 +348,12 @@ where
                     }
                 }
 
+                AppMode::ConfirmForcePushBranch => {
+                    if let Event::Key(key) = &ev {
+                        handle_confirm_force_push_branch_key(app, op_tx, key.code);
+                    }
+                }
+
                 AppMode::ConfirmDeleteLocalBranch => {
                     if let Event::Key(key) = &ev {
                         handle_confirm_delete_local_branch_key(app, op_tx, key.code);
@@ -1122,7 +1128,10 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
         match &request {
             OpRequest::Fetch => app::RepoOperation::Fetching,
             OpRequest::Pull | OpRequest::PullBranch { .. } => app::RepoOperation::Pulling,
-            OpRequest::Push | OpRequest::ForcePush => app::RepoOperation::Pushing,
+            OpRequest::Push
+            | OpRequest::ForcePush
+            | OpRequest::PushBranch { .. }
+            | OpRequest::ForcePushBranch { .. } => app::RepoOperation::Pushing,
             _ => app::RepoOperation::Working,
         },
     );
@@ -1558,6 +1567,16 @@ fn dispatch_branch_menu_action(
                 },
             );
         }
+        'P' => {
+            let name = branch.name.clone();
+            app.close_menu();
+            launch_op(app, op_tx, OpRequest::PushBranch { name });
+        }
+        'F' => {
+            let name = branch.name.clone();
+            app.close_menu();
+            app.confirm_force_push_branch(name);
+        }
         'n' => {
             let base = branch.name.clone();
             app.close_menu();
@@ -1649,6 +1668,24 @@ fn handle_confirm_force_push_key(
         KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
             app.restore_base_mode();
             launch_op(app, op_tx, OpRequest::ForcePush);
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            app.restore_base_mode();
+        }
+        _ => {}
+    }
+}
+
+fn handle_confirm_force_push_branch_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+) {
+    match key {
+        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+            let name = app.branch_to_force_push.clone();
+            app.restore_base_mode();
+            launch_op(app, op_tx, OpRequest::ForcePushBranch { name });
         }
         KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
             app.restore_base_mode();

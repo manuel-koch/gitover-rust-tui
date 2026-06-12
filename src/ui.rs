@@ -328,6 +328,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == AppMode::ConfirmForcePush {
         draw_confirm_force_push(frame, app);
     }
+    if app.mode == AppMode::ConfirmForcePushBranch {
+        draw_confirm_force_push_branch(frame, app);
+    }
 
     if app.mode == AppMode::ConfirmDeleteLocalBranch {
         draw_confirm_delete_local_branch(frame, app);
@@ -2225,6 +2228,53 @@ fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
     frame.render_widget(Paragraph::new("Force-push current branch?"), chunks[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(target, Style::default().fg(t.popup_target))),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("y/Enter", Style::default().fg(t.popup_confirm_danger)),
+            Span::raw(" confirm    "),
+            Span::styled("n/Esc", Style::default().fg(t.popup_cancel)),
+            Span::raw(" cancel"),
+        ])),
+        chunks[3],
+    );
+}
+
+fn draw_confirm_force_push_branch(frame: &mut Frame, app: &App) {
+    let t = app.theme();
+    let branch = &app.branch_to_force_push;
+    let area = centered_rect(60, 7, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Force Push Branch? ")
+        .border_style(Style::default().fg(t.popup_border_danger))
+        .title_style(
+            Style::default()
+                .fg(t.popup_border_danger)
+                .add_modifier(Modifier::BOLD),
+        );
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(Paragraph::new("Force-push branch to origin?"), chunks[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            branch.clone(),
+            Style::default().fg(t.popup_target),
+        )),
         chunks[1],
     );
     frame.render_widget(

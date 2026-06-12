@@ -36,7 +36,8 @@ commit() {     # git add -A + commit with message "$2" inside repo "$1"
 
 for d in repo-01 repo-01.origin repo-02 repo-03 repo-03.origin \
          repo-04 repo-04.origin repo-05 repo-05.origin \
-         repo-06 repo-07 repo-08 repo-08.origin _tmp; do
+         repo-06 repo-07 repo-08 repo-08.origin \
+         repo-09 repo-09.origin _tmp; do
     rm -rf "$SANDBOX/$d"
 done
 
@@ -238,6 +239,35 @@ git -C           "$SANDBOX/repo-08" push origin active-feature -q
 git -C           "$SANDBOX/repo-08" checkout main -q
 # active-feature has ahead=1 vs origin/main → is_merged=false
 
+# ── repo-09: local branches never pushed to origin ─────────────────────────
+# Shows:  current branch with no upstream (push available in both repo and branch
+#         action menus); non-current branch also never pushed (push available in
+#         branch action menu)
+
+echo "  repo-09 — current + non-current local branches never pushed to origin"
+git init --bare       "$SANDBOX/repo-09.origin" -b main -q
+git clone             "$SANDBOX/repo-09.origin" "$SANDBOX/repo-09" -q
+identity              "$SANDBOX/repo-09"
+echo "# Theta"      > "$SANDBOX/repo-09/README.md"
+commit                "$SANDBOX/repo-09" "initial commit"
+git -C                "$SANDBOX/repo-09" push origin main -q
+
+# draft-notes: a non-current branch, never pushed (no upstream)
+git -C                "$SANDBOX/repo-09" checkout -b draft-notes -q
+echo "draft note 1" > "$SANDBOX/repo-09/notes-1.md"
+commit                "$SANDBOX/repo-09" "draft: first note"
+echo "draft note 2" > "$SANDBOX/repo-09/notes-2.md"
+commit                "$SANDBOX/repo-09" "draft: second note"
+
+# feature/wip: current branch, never pushed (no upstream) — leave HEAD here
+git -C                "$SANDBOX/repo-09" checkout main -q
+git -C                "$SANDBOX/repo-09" checkout -b feature/wip -q
+echo "wip change 1" > "$SANDBOX/repo-09/wip-1.md"
+commit                "$SANDBOX/repo-09" "wip: first change"
+echo "wip change 2" > "$SANDBOX/repo-09/wip-2.md"
+commit                "$SANDBOX/repo-09" "wip: second change"
+# HEAD = feature/wip, upstream = none → push shown in repo menu + branch menu
+
 echo ""
 echo "Done. Add these paths to gitover with the 'A' key:"
 echo ""
@@ -249,3 +279,4 @@ echo "  $SANDBOX/repo-05 : feature branch, ↑2 ahead of trunk"
 echo "  $SANDBOX/repo-06 : detached HEAD"
 echo "  $SANDBOX/repo-07 : merge conflict"
 echo "  $SANDBOX/repo-08 : merged-feature (✓, ahead=0 vs trunk) + active-feature (↑1 vs trunk)"
+echo "  $SANDBOX/repo-09 : feature/wip (current, never pushed) + draft-notes (non-current, never pushed)"

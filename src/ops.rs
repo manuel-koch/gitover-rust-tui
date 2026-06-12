@@ -60,6 +60,14 @@ pub enum OpRequest {
         name: String,
         upstream: String,
     },
+    /// Push a specific local branch (not necessarily HEAD) to origin.
+    PushBranch {
+        name: String,
+    },
+    /// Force-push a specific local branch (not necessarily HEAD) to origin.
+    ForcePushBranch {
+        name: String,
+    },
     /// Run a custom shell command from config (already interpolated).
     RunRepoCommand {
         name: String,
@@ -95,6 +103,8 @@ impl OpRequest {
             OpRequest::RevertFile { .. } => "revert file".into(),
             OpRequest::DiscardFile(_) => "discard file".into(),
             OpRequest::PullBranch { name, .. } => format!("pull branch {name}"),
+            OpRequest::PushBranch { name } => format!("push branch {name}"),
+            OpRequest::ForcePushBranch { name } => format!("force push branch {name}"),
             OpRequest::RunRepoCommand { name, .. } => name.clone(),
             OpRequest::SavePatchAndRevert { .. } => "save patch and revert".into(),
             OpRequest::ApplyPatch { .. } => "apply patch".into(),
@@ -208,6 +218,20 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
             git_bin,
             repo_path,
             &["branch", "-f", name, upstream],
+            &mut lines,
+        ),
+
+        OpRequest::PushBranch { name } => run_git(
+            git_bin,
+            repo_path,
+            &["push", "--set-upstream", "origin", name],
+            &mut lines,
+        ),
+
+        OpRequest::ForcePushBranch { name } => run_git(
+            git_bin,
+            repo_path,
+            &["push", "--force", "--set-upstream", "origin", name],
             &mut lines,
         ),
 
