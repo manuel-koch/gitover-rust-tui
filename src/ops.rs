@@ -84,6 +84,11 @@ pub enum OpRequest {
     ApplyPatch {
         file_path: String,
     },
+    /// Create a new commit (or amend the last one) with the given message.
+    Commit {
+        message: String,
+        amend: bool,
+    },
 }
 
 impl OpRequest {
@@ -108,6 +113,8 @@ impl OpRequest {
             OpRequest::RunRepoCommand { name, .. } => name.clone(),
             OpRequest::SavePatchAndRevert { .. } => "save patch and revert".into(),
             OpRequest::ApplyPatch { .. } => "apply patch".into(),
+            OpRequest::Commit { amend: true, .. } => "amend commit".into(),
+            OpRequest::Commit { .. } => "commit".into(),
         }
     }
 }
@@ -291,6 +298,15 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
 
         OpRequest::ApplyPatch { file_path } => {
             run_git(git_bin, repo_path, &["apply", "--", file_path], &mut lines)
+        }
+
+        OpRequest::Commit { message, amend } => {
+            let mut args = vec!["commit"];
+            if *amend {
+                args.push("--amend");
+            }
+            args.extend_from_slice(&["-m", message.as_str()]);
+            run_git(git_bin, repo_path, &args, &mut lines)
         }
 
         OpRequest::RunRepoCommand {

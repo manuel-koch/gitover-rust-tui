@@ -325,6 +325,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == AppMode::NewBranchInput {
         draw_new_branch_input(frame, app);
     }
+    if app.mode == AppMode::CommitMessageInput {
+        draw_commit_message_input(frame, app);
+    }
     if app.mode == AppMode::ConfirmForcePush {
         draw_confirm_force_push(frame, app);
     }
@@ -2159,6 +2162,82 @@ fn draw_branch_select(frame: &mut Frame, app: &App, delete_mode: bool) {
     let table = Table::new(rows, [Constraint::Length(9), Constraint::Fill(1)])
         .block(Block::default().borders(Borders::NONE));
     frame.render_widget(table, inner);
+}
+
+// ── Commit message input popup ─────────────────────────────────────────────
+
+fn draw_commit_message_input(frame: &mut Frame, app: &App) {
+    let t = app.theme();
+    let staged = app.staged_file_count();
+    let title = if app.commit_is_amend {
+        format!(
+            " Amend Commit ({staged} staged + {} from HEAD) ",
+            app.commit_head_file_count
+        )
+    } else {
+        format!(" Commit ({staged} staged) ")
+    };
+
+    let height = 14_u16.min(frame.area().height.saturating_sub(HEADER_HEIGHT + 2));
+    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, height, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(t.popup_border));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // "Commit message:" label
+            Constraint::Min(2),    // text area
+            Constraint::Length(1), // key hints
+        ])
+        .split(inner);
+
+    frame.render_widget(Paragraph::new("Commit message:"), chunks[0]);
+
+    // Split message into display lines and append cursor to the last one.
+    let text_area_height = chunks[1].height as usize;
+    let raw_lines: Vec<&str> = app.commit_message.split('\n').collect();
+    let total_lines = raw_lines.len();
+    // Scroll so the cursor (last line) is always visible.
+    let scroll_offset = total_lines.saturating_sub(text_area_height);
+    let visible: Vec<Line> = raw_lines
+        .iter()
+        .enumerate()
+        .skip(scroll_offset)
+        .take(text_area_height)
+        .map(|(i, line)| {
+            if i == total_lines - 1 {
+                Line::from(Span::styled(
+                    format!("{line}▍"),
+                    Style::default().fg(t.input_text),
+                ))
+            } else {
+                Line::from(Span::styled(
+                    line.to_string(),
+                    Style::default().fg(t.input_text),
+                ))
+            }
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(visible), chunks[1]);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Enter", Style::default().fg(t.popup_confirm)),
+            Span::raw(" confirm    "),
+            Span::styled("Shift-↵ / Alt-↵", Style::default().fg(t.popup_confirm)),
+            Span::raw(" newline    "),
+            Span::styled("Esc", Style::default().fg(t.popup_cancel)),
+            Span::raw(" cancel"),
+        ])),
+        chunks[2],
+    );
 }
 
 // ── New branch input popup ─────────────────────────────────────────────────

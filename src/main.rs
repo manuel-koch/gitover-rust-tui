@@ -342,6 +342,11 @@ where
                         handle_new_branch_key(app, op_tx, key.code, key.modifiers);
                     }
                 }
+                AppMode::CommitMessageInput => {
+                    if let Event::Key(key) = &ev {
+                        handle_commit_message_key(app, op_tx, key.code, key.modifiers);
+                    }
+                }
                 AppMode::ConfirmForcePush => {
                     if let Event::Key(key) = &ev {
                         handle_confirm_force_push_key(app, op_tx, key.code);
@@ -1132,6 +1137,7 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
             | OpRequest::ForcePush
             | OpRequest::PushBranch { .. }
             | OpRequest::ForcePushBranch { .. } => app::RepoOperation::Pushing,
+            OpRequest::Commit { .. } => app::RepoOperation::Committing,
             _ => app::RepoOperation::Working,
         },
     );
@@ -1410,6 +1416,14 @@ fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpRe
     };
 
     match key {
+        'c' => {
+            app.close_menu();
+            app.open_commit_input();
+        }
+        'a' => {
+            app.close_menu();
+            app.open_amend_input();
+        }
         's' => {
             app.close_menu();
             launch_op(app, op_tx, OpRequest::StageFile(file.path));
@@ -1655,6 +1669,40 @@ fn handle_new_branch_key(
             app.branch_input.pop();
         }
         KeyCode::Char(c) => app.branch_input.push(c),
+        _ => {}
+    }
+}
+
+fn handle_commit_message_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    match key {
+        KeyCode::Esc => {
+            app.commit_message.clear();
+            app.restore_base_mode();
+        }
+        KeyCode::Enter => {
+            if modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) {
+                app.commit_message.push('\n');
+            } else {
+                let message = app.commit_message.trim().to_string();
+                if !message.is_empty() {
+                    let amend = app.commit_is_amend;
+                    app.commit_message.clear();
+                    app.restore_base_mode();
+                    launch_op(app, op_tx, OpRequest::Commit { message, amend });
+                }
+            }
+        }
+        KeyCode::Backspace => {
+            app.commit_message.pop();
+        }
+        KeyCode::Char(c) => {
+            app.commit_message.push(c);
+        }
         _ => {}
     }
 }

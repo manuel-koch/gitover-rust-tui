@@ -31,6 +31,7 @@ pub enum RepoOperation {
     Pulling,
     Pushing,
     Rebasing,
+    Committing,
     Working,
 }
 
@@ -42,6 +43,7 @@ impl RepoOperation {
             RepoOperation::Pulling => "pulling",
             RepoOperation::Pushing => "pushing",
             RepoOperation::Rebasing => "rebasing",
+            RepoOperation::Committing => "committing",
             RepoOperation::Working => "working",
         }
     }
@@ -149,6 +151,8 @@ pub enum AppMode {
     BranchSelect,
     /// Text input for creating a new branch.
     NewBranchInput,
+    /// Text-area popup for composing a commit message (new commit or amend).
+    CommitMessageInput,
     /// Confirmation dialog for force-push of HEAD.
     ConfirmForcePush,
     /// Confirmation dialog for force-push of a specific branch from the Branches pane.
@@ -287,6 +291,12 @@ pub struct App {
     pub branch_to_delete: String,
     /// Branch name staged for force-push from the Branches pane (shown in confirm dialog).
     pub branch_to_force_push: String,
+    /// Commit message being composed in the CommitMessageInput popup.
+    pub commit_message: String,
+    /// When true the CommitMessageInput popup runs `git commit --amend`.
+    pub commit_is_amend: bool,
+    /// Number of files changed in the HEAD commit; populated when opening the amend dialog.
+    pub commit_head_file_count: usize,
 
     /// Index into `theme::THEMES` for the active theme.
     pub theme_idx: usize,
@@ -431,6 +441,9 @@ impl App {
             branch_input_base: String::new(),
             branch_to_delete: String::new(),
             branch_to_force_push: String::new(),
+            commit_message: String::new(),
+            commit_is_amend: false,
+            commit_head_file_count: 0,
             theme_idx: 0,
             history: Vec::new(),
             show_history,
@@ -1001,6 +1014,8 @@ impl App {
         let mut items = Vec::new();
         match entry.status {
             FileStatusKind::Staged => {
+                items.push(MenuItem::item("Commit", 'c'));
+                items.push(MenuItem::item("Amend Commit", 'a'));
                 items.push(MenuItem::item("Unstage File", 'u'));
                 items.push(MenuItem::item("Save as Patch and Revert File", 'p'));
             }
@@ -1174,6 +1189,32 @@ impl App {
     pub fn confirm_force_push_branch(&mut self, name: String) {
         self.branch_to_force_push = name;
         self.mode = AppMode::ConfirmForcePushBranch;
+    }
+
+    /// Number of staged files in the currently selected repo.
+    pub fn staged_file_count(&self) -> usize {
+        self.repos.get(self.selected).map(|r| r.staged).unwrap_or(0)
+    }
+
+    /// Open the commit message dialog for a fresh commit.
+    pub fn open_commit_input(&mut self) {
+        self.commit_message = String::new();
+        self.commit_is_amend = false;
+        self.mode = AppMode::CommitMessageInput;
+    }
+
+    /// Open the commit message dialog pre-filled with the HEAD commit message for amending.
+    pub fn open_amend_input(&mut self) {
+        let path = match self.repos.get(self.selected) {
+            Some(r) => r.path.clone(),
+            None => return,
+        };
+        self.commit_message = crate::git::get_head_commit_message(&path)
+            .map(|m| m.trim_end().to_string())
+            .unwrap_or_default();
+        self.commit_head_file_count = crate::git::get_head_commit_file_count(&path);
+        self.commit_is_amend = true;
+        self.mode = AppMode::CommitMessageInput;
     }
 
     // ── Git History ───────────────────────────────────────────────────────────

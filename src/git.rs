@@ -266,6 +266,30 @@ pub fn get_commit_history(
     Ok(entries)
 }
 
+/// Return the full commit message of HEAD (summary + blank line + body), or `None`
+/// if the repository has no commits or the path cannot be opened.
+pub fn get_head_commit_message(path: &str) -> Option<String> {
+    let repo = Repository::open(path).ok()?;
+    let commit = repo.head().ok()?.peel_to_commit().ok()?;
+    Some(commit.message()?.to_string())
+}
+
+/// Return the number of files changed in the HEAD commit (diff vs its first parent).
+/// Returns 0 when the repository has no commits or the path cannot be opened.
+pub fn get_head_commit_file_count(path: &str) -> usize {
+    (|| -> Option<usize> {
+        let repo = Repository::open(path).ok()?;
+        let commit = repo.head().ok()?.peel_to_commit().ok()?;
+        let tree = commit.tree().ok()?;
+        let parent_tree = commit.parents().next().and_then(|p| p.tree().ok());
+        let diff = repo
+            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+            .ok()?;
+        Some(diff.deltas().count())
+    })()
+    .unwrap_or(0)
+}
+
 /// One entry in a repo's changed-files list — drives the detail panel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileStatusKind {
