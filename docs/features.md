@@ -98,7 +98,7 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `P` | Push — pushes current branch; automatically sets upstream (`--set-upstream origin HEAD`) if not configured |
 | `F` | Force Push — pushes with `--force --set-upstream origin HEAD` (confirmation dialog shown first) |
 | `c` | Checkout Branch — shows a list of local and remote branches; auto-stashes dirty changes before checkout, pops stash afterwards |
-| `n` | Create New Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
+| `n` | Create Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
 | `h` | Commit History — opens the history pane for the selected repo (full log) |
 | `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
 | `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
@@ -185,7 +185,7 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
 
 ## Git History Pane
 
-- Toggle with `h`; also opened via action menu entries `H` / `u` / `U` / `t` / `T`
+- Toggle with `h`; also opened via action menu entries `h` / `u` / `U` / `t` / `T`
 - Title shows pane name, commit position indicator, and active filter — e.g. `Commit History [3/42]` or `Commit History [3/42] (ahead of origin/main)`
 - Displays commit history for the current branch, newest commit first, up to 200 commits
 - Two-column table layout: short hash (8 chars, yellow) | rest of row as a single styled line
@@ -347,14 +347,16 @@ Opened with `Enter` on the highlighted branch row. Dismiss with `Esc`.
 | Key   | Action                                                                                                    |
 |-------|-----------------------------------------------------------------------------------------------------------|
 | `c`   | Checkout — checks out this branch with auto-stash/pop (shown only when not the current branch)            |
-| `n`   | Create branch here — prompts for a name and runs `git checkout -b <name> <this-branch>`                   |
+| `p`   | Pull Branch (fast-forward) — fast-forward pull from upstream (shown only when branch is behind upstream with no local commits ahead) |
+| `P`   | Push Branch — pushes this branch to origin with `--set-upstream`; shown for any local branch that has no upstream yet or is ahead of its upstream |
+| `F`   | Force Push Branch — force-pushes this branch to origin (confirmation dialog shown first); same visibility condition as Push Branch |
+| `n`   | Create Branch — prompts for a name and runs `git checkout -b <name> <this-branch>`                        |
 | `h`   | Commit History — opens the History pane for this branch (full log)                                        |
-| `u`   | Commit History ahead of upstream — commits in this branch not yet in its upstream                         |
-| `U`   | Commit History behind upstream — commits in the upstream not yet merged into this branch                  |
-| `t`   | Commit History ahead of trunk — commits in this branch not yet in the trunk branch                        |
-| `T`   | Commit History behind trunk — commits in the trunk branch not yet merged into this branch                 |
-| `p`   | Pull — fast-forward pull from upstream (shown only when branch is behind upstream with no local commits ahead) |
-| `d`   | Delete branch — removes the local branch with `git branch -D` after yes/no confirmation (not shown for the current branch, remote-only branches, or the trunk branch) |
+| `u`   | Commit History Ahead of upstream — commits in this branch not yet in its upstream                         |
+| `U`   | Commit History Behind upstream — commits in the upstream not yet merged into this branch                  |
+| `t`   | Commit History Ahead of trunk — commits in this branch not yet in the trunk branch                        |
+| `T`   | Commit History Behind trunk — commits in the trunk branch not yet merged into this branch                 |
+| `d`   | Delete Branch — removes the local branch with `git branch -D` after yes/no confirmation (not shown for the current branch, remote-only branches, or the trunk branch) |
 | `Esc` | Dismiss menu                                                                                              |
 
 ## Release Info
