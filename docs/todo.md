@@ -7,7 +7,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Bugs
 
-- [ ] Added "repo-01.origin" from sandbox repos, nothing happened. Re-started gitover,
+- [x] Added "repo-01.origin" from sandbox repos, nothing happened. Re-started gitover,
       now "repo-01.origin" was shown in repositories with an error message:
       "cannot status. This operation is not allowed against bare repositories."
       I guess adding such a repo should not be possible in the first place.

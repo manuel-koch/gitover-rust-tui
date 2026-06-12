@@ -788,8 +788,12 @@ impl App {
         if !std::path::Path::new(path).is_dir() {
             return Err(format!("Not a directory: {path}"));
         }
-        if git2::Repository::open(path).is_err() {
-            return Err(format!("Not a git repository: {path}"));
+        match git2::Repository::open(path) {
+            Err(_) => return Err(format!("Not a git repository: {path}")),
+            Ok(repo) if repo.is_bare() => {
+                return Err(format!("Bare repositories are not supported: {path}"))
+            }
+            Ok(_) => {}
         }
 
         let added = self.state.add_repo(path);
