@@ -158,8 +158,16 @@ pub fn get_commit_history(
             }
         }
         HistoryFilter::BranchAheadOf { branch, of } => {
-            let local = repo.find_branch(branch, git2::BranchType::Local)?;
-            if let Some(oid) = local.get().target() {
+            let branch_oid = repo
+                .find_branch(branch, git2::BranchType::Local)
+                .ok()
+                .and_then(|b| b.get().target())
+                .or_else(|| {
+                    repo.find_reference(&format!("refs/remotes/origin/{branch}"))
+                        .ok()
+                        .and_then(|r| r.target())
+                });
+            if let Some(oid) = branch_oid {
                 revwalk.push(oid)?;
             }
             let hidden = repo
@@ -178,8 +186,16 @@ pub fn get_commit_history(
             if let Some(oid) = r.target() {
                 revwalk.push(oid)?;
             }
-            let local = repo.find_branch(branch, git2::BranchType::Local)?;
-            if let Some(oid) = local.get().target() {
+            let branch_oid = repo
+                .find_branch(branch, git2::BranchType::Local)
+                .ok()
+                .and_then(|b| b.get().target())
+                .or_else(|| {
+                    repo.find_reference(&format!("refs/remotes/origin/{branch}"))
+                        .ok()
+                        .and_then(|r| r.target())
+                });
+            if let Some(oid) = branch_oid {
                 revwalk.hide(oid)?;
             }
         }
