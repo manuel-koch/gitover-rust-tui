@@ -1589,7 +1589,7 @@ fn diff_line_to_ratatui(line: &str, t: &crate::theme::Theme) -> Line<'static> {
 
 fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
     let t = app.theme();
-    let height = 37_u16.min(frame.area().height.saturating_sub(HEADER_HEIGHT));
+    let height = 46_u16.min(frame.area().height.saturating_sub(HEADER_HEIGHT));
     let area = top_centered_rect(62, height, HEADER_HEIGHT, frame.area());
     app.help_overlay_area = Some(area);
 
@@ -1612,66 +1612,102 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
     let key_sty = Style::default().fg(t.help_key).add_modifier(Modifier::BOLD);
     let desc_sty = Style::default().fg(Color::DarkGray);
 
-    let kv = |k: &str, v: &'static str| -> Line<'static> {
-        Line::from(vec![
-            Span::styled(format!("  {:<20}", k), key_sty),
-            Span::styled(v, desc_sty),
-        ])
-    };
+    // Build one section: blank line + header + entries aligned to the widest key in that section.
+    // Uses chars().count() so Unicode arrows (↑↓) measure as one display column each.
+    let section =
+        |title: &'static str, entries: &[(&'static str, &'static str)]| -> Vec<Line<'static>> {
+            let key_width = entries
+                .iter()
+                .map(|(k, _)| k.chars().count())
+                .max()
+                .unwrap_or(0);
+            let mut section_lines: Vec<Line<'static>> = vec![
+                Line::raw(""),
+                Line::from(Span::styled(format!(" {title}"), sec)),
+            ];
+            for &(k, v) in entries {
+                section_lines.push(Line::from(vec![
+                    Span::styled(format!("  {k:<key_width$}  "), key_sty),
+                    Span::styled(v, desc_sty),
+                ]));
+            }
+            section_lines
+        };
 
     let build_info_sty = Style::default().fg(Color::DarkGray);
-    let lines: Vec<Line> = vec![
-        Line::from(Span::styled(
-            format!(
-                "  gitover v{} (commit {}, built {})",
-                env!("CARGO_PKG_VERSION"),
-                env!("GIT_SHORT_HASH"),
-                env!("BUILD_TIMESTAMP"),
-            ),
-            build_info_sty,
-        )),
-        Line::raw(""),
-        Line::from(Span::styled(" Navigation", sec)),
-        kv("Tab / Shift-Tab", "cycle focus"),
-        kv("↑ / ↓", "move up / down"),
-        kv("Shift-↑ / Shift-↓", "prev / next commit (History pane)"),
-        kv(", / .", "prev / next commit (History pane)"),
-        kv("PgUp / PgDn", "move up / down fast"),
-        Line::raw(""),
-        Line::from(Span::styled(" Toggle Panes", sec)),
-        kv("s", "File Status"),
-        kv("b", "Branches"),
-        kv("h", "Commit History"),
-        kv("d", "Details"),
-        kv("l", "Output Log"),
-        Line::raw(""),
-        Line::from(Span::styled(" Repositories", sec)),
-        kv("f", "Fetch"),
-        kv("p", "Pull"),
-        kv("P", "Push"),
-        kv("c", "Checkout Branch"),
-        kv("Enter", "Action Menu"),
-        kv("A", "Add Repository"),
-        kv("D", "Remove Repository"),
-        kv("r", "Refresh Repository Info"),
-        Line::raw(""),
-        Line::from(Span::styled(" Branches Pane", sec)),
-        kv("c", "Checkout selected Branch"),
-        kv("Enter", "Branch Action Menu"),
-        kv("Esc / b", "Close Branches"),
-        Line::raw(""),
-        Line::from(Span::styled(" Global", sec)),
-        kv("Alt-f", "Fetch All Repositories"),
-        kv("Ctrl-C", "Quit Application"),
-        Line::raw(""),
-        Line::from(vec![
-            Span::raw("  "),
-            Span::styled("Esc", key_sty),
-            Span::styled("  or  ", desc_sty),
-            Span::styled("Enter", key_sty),
-            Span::styled("   close help popup", desc_sty),
-        ]),
-    ];
+    let mut lines: Vec<Line> = vec![Line::from(Span::styled(
+        format!(
+            "  gitover v{} (commit {}, built {})",
+            env!("CARGO_PKG_VERSION"),
+            env!("GIT_SHORT_HASH"),
+            env!("BUILD_TIMESTAMP"),
+        ),
+        build_info_sty,
+    ))];
+
+    lines.extend(section(
+        "Navigation",
+        &[
+            ("Tab / Shift-Tab", "cycle focus"),
+            ("↑ / ↓", "move up / down"),
+            ("Shift-↑ / Shift-↓", "prev / next commit (History pane)"),
+            (", / .", "prev / next commit (History pane)"),
+            ("PgUp / PgDn", "move up / down fast"),
+        ],
+    ));
+    lines.extend(section(
+        "Toggle Panes",
+        &[
+            ("s", "File Status"),
+            ("b", "Branches"),
+            ("h", "Commit History"),
+            ("d", "Details"),
+            ("l", "Output Log"),
+        ],
+    ));
+    lines.extend(section(
+        "Repositories",
+        &[
+            ("f", "Fetch"),
+            ("p", "Pull Branch"),
+            ("P", "Push Branch"),
+            ("F", "Force Push Branch"),
+            ("c", "Checkout Branch"),
+            ("n", "Create Branch"),
+            ("Enter", "Action Menu"),
+            ("A", "Add Repository"),
+            ("D", "Remove Repository"),
+            ("r", "Refresh Repository Info"),
+        ],
+    ));
+    lines.extend(section(
+        "Branches Pane",
+        &[
+            ("c", "Checkout selected Branch"),
+            ("p", "Pull Branch (fast-forward)"),
+            ("P", "Push Branch"),
+            ("F", "Force Push Branch"),
+            ("n", "Create Branch"),
+            ("Enter", "Branch Action Menu"),
+            ("Esc / b", "Close Branches Pane"),
+        ],
+    ));
+    lines.extend(section(
+        "Global",
+        &[
+            ("Alt-f", "Fetch All Repositories"),
+            ("Ctrl-C", "Quit Application"),
+        ],
+    ));
+
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Esc", key_sty),
+        Span::styled("  or  ", desc_sty),
+        Span::styled("Enter", key_sty),
+        Span::styled("   close help popup", desc_sty),
+    ]));
 
     let total_lines = lines.len();
     let visible = inner.height as usize;
