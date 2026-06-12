@@ -17,11 +17,14 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Git Branches Pane
 
-- [ ]
+- [ ] Allow push changes on a branch that is not current branch ( if that is possible in git ? )
+  - [ ] The action should only be shown when branch is ahead of upstream or has no upstream yet
+  - [ ] Add an action with keypress "P" to branches-pane action-menu to push current selected branch
 
 ## UX Polish
 
-- [ ] In the file-picker popup, apply the sorting-flag for paths. (blocked: ratatui-explorer sorts internally, no API to override)
+- [ ] In the file-picker popup, apply the sorting-flag for paths.
+      (blocked: ratatui-explorer sorts internally, no API to override)
 
 
 ## UX Mouse Interaction
