@@ -97,8 +97,10 @@ Makefile        — build, lint, format, test, release, install, tag-version tar
 ### Development workflow
 
 After implementing new functionality or fixing bugs, run the test suite to verify
-all tests still succeed.
+all tests still succeed and run linter of the project to verify no code smell was left.
+
 For new features come up with appropriate test case(s) to verify them.
+
 For bugfixes check whether there is an existing test case that could be improved to
 verify the fix or introduce new test case(s) to verify the fix.
 If unclear whether to introduce new test case(s), ask user for clarification.
