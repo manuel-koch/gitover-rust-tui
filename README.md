@@ -9,13 +9,13 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 - Live status for all tracked repos in a single table
   - current branch, ahead/behind upstream and trunk
   - change counter: staged / conflict / modified / deleted / untracked
-- Background git operations: fetch, pull, push, force-push, checkout, create & delete branch
+- Background git operations: fetch, pull, push, force-push, checkout, create & delete branch, commit & amend commit, undo commit
 - Fetch all repos in parallel (`Alt-f`)
 - Status Details pane — per-file change list with priority sorting and scroll indicators
 - Commit History pane — full log or filtered ahead/behind upstream & trunk; file sub-rows per commit; `,`/`.` jump between commits
 - Details pane — diff of selected file, or full commit details (hash, author, change summary, word-wrapped message) with position indicator
 - Output Log pane — timestamped, severity-coloured git command output with auto-follow
-- Per-file actions: stage, unstage, revert, discard
+- Per-file actions: stage, unstage, revert, discard, commit, amend commit
 - Branches pane — full list of local and remote-only branches with ahead/behind counts; direct checkout and branch action menu
 - Help overlay (`?`) — Show available keybindings
 - Custom repo commands configurable per project

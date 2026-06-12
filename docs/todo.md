@@ -7,10 +7,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Bugs
 
-- [x] Added "repo-01.origin" from sandbox repos, nothing happened. Re-started gitover,
-      now "repo-01.origin" was shown in repositories with an error message:
-      "cannot status. This operation is not allowed against bare repositories."
-      I guess adding such a repo should not be possible in the first place.
+- [ ]
 
 ## Git Status Columns
 
@@ -22,16 +19,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Git Branches Pane
 
-- [x] Add new commit action to status-pane action-menu when current file is staged.
-  - [x] Popup title includes number of staged files.
-  - [x] Open a popup dialog to enter the (optionally multiline ) commit message.
-  - [x] While user writes commit message, treat shift-enter or alt-enter as newline in the
-        commit message rather then accepting/commiting the popup.
-
-- [x] Add amend-commit action to status-pane action-menu when current file is staged.
-  - [x] Popup title includes number of staged files and file count of former commit.
-  - [x] Pre-fill the commit message dialog with the HEAD commit message.
-  - [x] Runs `git commit --amend -m <message>`.
+- [ ]
 
 ## UX Polish
 
@@ -44,10 +32,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Git Commit History Pane
 
-- [x] Enter key on commit title row opens action-menu in commit-history-pane
-      ( for now: only show if history is filtered on current branch, and commit is HEAD )
-  - [x] Add action to undo HEAD commit, convert all changes of HEAD commit as local changes in worktree
-    - [x] Show this action only if current commit is HEAD
+- [ ]
 
 ## Git Details Pane
 

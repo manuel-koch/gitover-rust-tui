@@ -63,6 +63,8 @@
   added as a tracked repo if it is a git repository
 - Invalid or missing repo paths are shown as error rows: repo name in the first column,
   full error message spanning all remaining columns
+- Bare repositories are rejected when adding: an error is logged immediately
+  and the path is not tracked
 
 ## Repository Table
 
@@ -138,7 +140,7 @@ Available actions depend on the file's current git status:
 
 | File status | Actions |
 |-------------|---------|
-| Staged | **Unstage file** — `git reset -- <path>`; **Save as patch and revert file** |
+| Staged | **Commit** — opens commit message dialog; **Amend Commit** — opens amend commit dialog pre-filled with HEAD message; **Unstage File** — `git reset -- <path>`; **Save as Patch and Revert File** |
 | Modified | **Stage file** — `git add -- <path>`; **Revert file** — `git checkout -- <path>`; **Save as patch and revert file** |
 | Deleted | **Stage deletion** — `git add -- <path>`; **Revert file** — `git checkout -- <path>`; **Save as patch and revert file** |
 | Conflict | **Revert file** — `git reset -- <path>` followed by `git checkout -- <path>` |
@@ -151,6 +153,13 @@ When the selected file has a `.patch` extension, an additional action is availab
 **Apply patch** (`P`): applies the patch file via `git apply`. First attempts a plain apply; if that fails, retries with `--ignore-whitespace`. Applies with `--ignore-whitespace` to tolerate trailing-whitespace differences in context lines.
 
 Dismiss the menu with `Esc` or by clicking outside it.
+
+**Commit** (`c`) and **Amend Commit** (`a`) are shown when the selected file is staged and open a multiline commit message popup:
+
+- Title shows `Commit (N staged)` or `Amend Commit (N staged + M from HEAD)` where N is the current staged-file count and M is the number of files changed in the HEAD commit
+- `Enter` submits the commit; `Shift-↵` / `Alt-↵` inserts a newline into the message; `Esc` cancels
+- Amend Commit pre-fills the message with the current HEAD commit message
+- Runs `git commit -m <message>` or `git commit --amend -m <message>`
 
 ## Output Log Pane
 
@@ -204,6 +213,16 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
   - Ahead of upstream / trunk — commits in HEAD not yet in the remote ref
   - Behind upstream / trunk — commits in the remote ref not yet merged locally
 - `h` closes the pane; `Tab` cycles focus between panes without closing it
+- `Enter` on a commit header row opens the per-commit action menu.
+  Only available when the full current-branch history is shown and the selected commit is HEAD.
+
+### Per-commit Action Menu
+
+Opened with `Enter` on the HEAD commit row. Dismiss with `Esc`.
+
+| Key | Action |
+|-----|--------|
+| `u` | Undo Commit — runs `git reset --mixed HEAD~1`; removes the HEAD commit and leaves all its changes as unstaged working-tree modifications (no data is lost; `git reflog` can recover the commit) |
 
 ## Details Pane
 
