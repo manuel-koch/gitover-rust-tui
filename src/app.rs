@@ -161,6 +161,8 @@ pub enum AppMode {
     ConfirmDeleteLocalBranch,
     /// Commit history pane (h key).
     History,
+    /// Per-commit action menu (Enter on a commit header row in the History pane).
+    HistoryActionMenu,
     /// Log action menu (Enter on Output Log pane).
     LogActionMenu,
     /// Per-file action menu (Enter or double-click on a file in the File Status pane).
@@ -1056,6 +1058,24 @@ impl App {
                 MenuItem::item("Clear Log", 'x'),
             ],
             AppMode::LogActionMenu,
+        );
+    }
+
+    /// Open the per-commit action menu for the currently selected history row.
+    /// Only opens when:
+    /// - the history shows the full current-branch log (HistoryFilter::Full), and
+    /// - the selected row is a commit header row (not a file sub-row), and
+    /// - that commit is HEAD (index 0 in the Full filter).
+    pub fn open_history_action_menu(&mut self) {
+        let Some((commit_index, None)) = self.history_row_at(self.history_selected) else {
+            return;
+        };
+        if self.history_filter != HistoryFilter::Full || commit_index != 0 {
+            return;
+        }
+        self.open_menu(
+            vec![MenuItem::item("Undo Commit", 'u')],
+            AppMode::HistoryActionMenu,
         );
     }
 

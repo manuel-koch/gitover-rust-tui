@@ -369,6 +369,11 @@ where
                         handle_history_key(app, op_tx, key.code, key.modifiers);
                     }
                 }
+                AppMode::HistoryActionMenu => {
+                    if let Event::Key(key) = &ev {
+                        handle_history_menu_key(app, op_tx, key.code);
+                    }
+                }
                 AppMode::LogActionMenu => {
                     if let Event::Key(key) = &ev {
                         handle_log_menu_key(app, op_tx, key.code);
@@ -446,7 +451,10 @@ fn handle_mouse_event(
             // - click outside closes menu
             if matches!(
                 app.mode,
-                AppMode::ActionMenu | AppMode::FileActionMenu | AppMode::BranchActionMenu
+                AppMode::ActionMenu
+                    | AppMode::HistoryActionMenu
+                    | AppMode::FileActionMenu
+                    | AppMode::BranchActionMenu
             ) {
                 if let Some(item_idx) = menu_item_under_mouse(app, mouse) {
                     if let Some(item) = app.menu_items.get(item_idx).cloned() {
@@ -455,6 +463,8 @@ fn handle_mouse_event(
                                 dispatch_file_menu_action(app, op_tx, item.key);
                             } else if matches!(app.mode, AppMode::BranchActionMenu) {
                                 dispatch_branch_menu_action(app, op_tx, item.key);
+                            } else if matches!(app.mode, AppMode::HistoryActionMenu) {
+                                dispatch_history_menu_action(app, op_tx, item.key);
                             } else {
                                 activate_menu_item(app, op_tx, &item);
                             }
@@ -1138,6 +1148,7 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
             | OpRequest::PushBranch { .. }
             | OpRequest::ForcePushBranch { .. } => app::RepoOperation::Pushing,
             OpRequest::Commit { .. } => app::RepoOperation::Committing,
+            OpRequest::UndoCommit => app::RepoOperation::Working,
             _ => app::RepoOperation::Working,
         },
     );
@@ -1274,6 +1285,40 @@ fn activate_menu_item(
 }
 
 /// Handle key events for the log action menu.
+fn handle_history_menu_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+) {
+    match key {
+        KeyCode::Down => app.menu_next(),
+        KeyCode::Up => app.menu_previous(),
+        KeyCode::PageDown => app.menu_next_page(),
+        KeyCode::PageUp => app.menu_previous_page(),
+        KeyCode::Esc => app.close_menu(),
+        KeyCode::Enter => {
+            if let Some(item) = app.menu_items.get(app.menu_selected).cloned() {
+                if !item.is_separator {
+                    dispatch_history_menu_action(app, op_tx, item.key);
+                }
+            }
+        }
+        KeyCode::Char(c) => dispatch_history_menu_action(app, op_tx, c),
+        _ => {}
+    }
+}
+
+fn dispatch_history_menu_action(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: char,
+) {
+    if key == 'u' {
+        app.close_menu();
+        launch_op(app, op_tx, OpRequest::UndoCommit);
+    }
+}
+
 fn handle_log_menu_key(app: &mut App, _op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
     match key {
         KeyCode::Down => app.menu_next(),
@@ -2081,6 +2126,8 @@ fn handle_history_key(
         KeyCode::Enter => {
             if app.focus == Focus::Branches {
                 app.open_branch_action_menu();
+            } else if app.focus == Focus::History && app.show_history {
+                app.open_history_action_menu();
             } else if app.focus == Focus::Log && app.show_log {
                 app.open_log_action_menu();
             } else if app.focus == Focus::FileStatus && app.show_file_status {

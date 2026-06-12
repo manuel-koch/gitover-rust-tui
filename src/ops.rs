@@ -89,6 +89,9 @@ pub enum OpRequest {
         message: String,
         amend: bool,
     },
+    /// Undo the HEAD commit, leaving its changes as unstaged working-tree modifications.
+    /// Equivalent to `git reset --mixed HEAD~1`.
+    UndoCommit,
 }
 
 impl OpRequest {
@@ -115,6 +118,7 @@ impl OpRequest {
             OpRequest::ApplyPatch { .. } => "apply patch".into(),
             OpRequest::Commit { amend: true, .. } => "amend commit".into(),
             OpRequest::Commit { .. } => "commit".into(),
+            OpRequest::UndoCommit => "undo commit".into(),
         }
     }
 }
@@ -298,6 +302,10 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
 
         OpRequest::ApplyPatch { file_path } => {
             run_git(git_bin, repo_path, &["apply", "--", file_path], &mut lines)
+        }
+
+        OpRequest::UndoCommit => {
+            run_git(git_bin, repo_path, &["reset", "--mixed", "HEAD~1"], &mut lines)
         }
 
         OpRequest::Commit { message, amend } => {

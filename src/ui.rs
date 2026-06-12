@@ -313,6 +313,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if matches!(
         app.mode,
         AppMode::ActionMenu
+            | AppMode::HistoryActionMenu
             | AppMode::LogActionMenu
             | AppMode::FileActionMenu
             | AppMode::BranchActionMenu
@@ -1903,6 +1904,14 @@ fn draw_confirm_delete_local_branch(frame: &mut Frame, app: &App) {
 /// Build the title string for the action menu based on the current app mode.
 fn action_menu_title(app: &App) -> String {
     match app.mode {
+        AppMode::HistoryActionMenu => {
+            let hash = app
+                .history
+                .first()
+                .map(|c| c.short_hash.as_str())
+                .unwrap_or("");
+            format!(" Commit {hash} ")
+        }
         AppMode::LogActionMenu => " Output Log ".to_string(),
         AppMode::FileActionMenu => {
             let file_name = app
@@ -1935,6 +1944,10 @@ fn action_menu_title(app: &App) -> String {
 fn action_menu_pane(app: &App) -> Rect {
     let areas = app.cached_pane_areas.as_ref();
     match app.mode {
+        AppMode::HistoryActionMenu => areas
+            .and_then(|a| a.history)
+            .or_else(|| areas.map(|a| a.repos))
+            .unwrap_or_default(),
         AppMode::LogActionMenu => areas
             .and_then(|a| a.log)
             .or_else(|| areas.map(|a| a.repos))

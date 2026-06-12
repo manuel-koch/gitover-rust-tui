@@ -44,10 +44,10 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Git Commit History Pane
 
-- [ ] Enter key on commit title row opens action-menu in commit-history-pane
-      ( only if history is filtered on current branch )
-  - [ ] Add action to undo HEAD commit, convert all changes of HEAD commit as local changes in worktree
-    - [ ] Show this action only if current commit is HEAD
+- [x] Enter key on commit title row opens action-menu in commit-history-pane
+      ( for now: only show if history is filtered on current branch, and commit is HEAD )
+  - [x] Add action to undo HEAD commit, convert all changes of HEAD commit as local changes in worktree
+    - [x] Show this action only if current commit is HEAD
 
 ## Git Details Pane
 
