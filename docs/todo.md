@@ -24,7 +24,8 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 ## UX Polish
 
 - [ ] In the file-picker popup, apply the sorting-flag for paths.
-      (blocked: ratatui-explorer sorts internally, no API to override)
+      ( blocked: ratatui-explorer sorts internally, no API to override,
+      see https://github.com/tatounee/ratatui-explorer/issues/22 )
 
 ## UX Mouse Interaction
 
