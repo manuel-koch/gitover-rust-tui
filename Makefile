@@ -1,3 +1,5 @@
+REPO_ROOT := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
+
 .PHONY: lint format build build-and-run test release install clean rebuild tag-version outdated-dependencies upgrade-dependencies
 
 # Run cargo check/clippy and report all warnings
@@ -23,6 +25,11 @@ rebuild: clean build
 # Build debug binary and launch it
 build-and-run:
 	cargo run
+
+build-and-run-with-sandbox-repos: build
+	mkdir -p ~/tmp/gitover-sandbox
+	./create-sandbox-repos.sh ~/tmp/gitover-sandbox
+	cd ~/tmp/gitover-sandbox && $(REPO_ROOT)/target/debug/gitover --state gitover.state.yaml
 
 # Run all unit and integration tests
 test:

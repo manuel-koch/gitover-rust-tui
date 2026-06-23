@@ -7,7 +7,15 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Bugs
 
-- [ ]
+- [x] Pressing "space" in filepicker on a repo directory closes the file-picker instead of
+      keeping it open to add more repositiories.
+- [ ] Removing a repository breaks list of repositories.
+      The order of the remaining displayed repos is mixed afterwards and
+      some repos are have duplicated entries in the list.
+      E.g. I open `gitover --state gitover.state.yaml` in the sandbox
+      repositories base directory, add all repos.
+      Restart the app, delete "repo-02" ( it is second entry ). Afterwards
+      the list is mixed and has duplicate entries.
 
 ## Git Status Columns
 

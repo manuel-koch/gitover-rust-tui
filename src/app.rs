@@ -1862,3 +1862,45 @@ fn current_hms() -> String {
     use chrono::Local;
     Local::now().format("%H:%M:%S").to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn init_temp_repo(dir: &PathBuf) {
+        let repo = git2::Repository::init(dir).expect("git init");
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "Test").unwrap();
+        cfg.set_str("user.email", "test@example.com").unwrap();
+    }
+
+    #[test]
+    fn add_repo_path_does_not_close_file_picker() {
+        let tmp_state = tempfile::TempDir::new().unwrap();
+        let state_file = tmp_state.path().join("state.json");
+        let repo_dir = tmp_state.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        init_temp_repo(&repo_dir);
+
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        app.enter_pick_mode();
+
+        assert!(
+            matches!(app.mode, AppMode::FilePicker),
+            "expected FilePicker mode after enter_pick_mode"
+        );
+        assert!(app.file_explorer.is_some());
+
+        let _ = app.add_repo_path(repo_dir.to_str().unwrap());
+
+        assert!(
+            matches!(app.mode, AppMode::FilePicker),
+            "add_repo_path must not close the file picker"
+        );
+        assert!(
+            app.file_explorer.is_some(),
+            "file_explorer must remain set after add_repo_path"
+        );
+    }
+}
