@@ -837,7 +837,8 @@ impl App {
             eprintln!("gitover: failed to save state: {e}");
         }
         self.operations.remove(&path);
-        if self.selected > 0 && self.selected >= self.repos.len() - 1 {
+        self.repos.remove(self.selected);
+        if self.selected > 0 && self.selected >= self.repos.len() {
             self.selected -= 1;
         }
         self.restore_base_mode();
@@ -1873,6 +1874,45 @@ mod tests {
         let mut cfg = repo.config().unwrap();
         cfg.set_str("user.name", "Test").unwrap();
         cfg.set_str("user.email", "test@example.com").unwrap();
+    }
+
+    #[test]
+    fn remove_selected_removes_from_repos_immediately() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+
+        let repo_a = tmp.path().join("a");
+        let repo_b = tmp.path().join("b");
+        let repo_c = tmp.path().join("c");
+        for dir in [&repo_a, &repo_b, &repo_c] {
+            std::fs::create_dir_all(dir).unwrap();
+            init_temp_repo(dir);
+        }
+
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        for dir in [&repo_a, &repo_b, &repo_c] {
+            app.state.add_repo(dir.to_str().unwrap());
+        }
+
+        // Manually populate app.repos so remove_selected has data to work with.
+        app.repos = vec![
+            crate::git::RepoStatus::error_entry(repo_a.to_str().unwrap(), ""),
+            crate::git::RepoStatus::error_entry(repo_b.to_str().unwrap(), ""),
+            crate::git::RepoStatus::error_entry(repo_c.to_str().unwrap(), ""),
+        ];
+        app.selected = 1;
+
+        let removed = app.remove_selected();
+        assert!(removed.is_some());
+        assert_eq!(app.repos.len(), 2, "app.repos must shrink immediately");
+        assert!(
+            app.repos.iter().all(|r| r.path != repo_b.to_str().unwrap()),
+            "removed repo must not appear in app.repos"
+        );
+        assert!(
+            app.state.repos.iter().all(|p| p != repo_b.to_str().unwrap()),
+            "removed repo must not appear in state.repos"
+        );
     }
 
     #[test]
