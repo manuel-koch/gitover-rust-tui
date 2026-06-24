@@ -1,6 +1,6 @@
 REPO_ROOT := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
 
-.PHONY: lint format build build-and-run test release install clean rebuild tag-version outdated-dependencies upgrade-dependencies
+.PHONY: lint format build build-and-run test test-coverage release install clean rebuild tag-version outdated-dependencies upgrade-dependencies
 
 # Run cargo check/clippy and report all warnings
 lint:
@@ -34,6 +34,12 @@ build-and-run-with-sandbox-repos: build
 # Run all unit and integration tests
 test:
 	cargo test
+
+# Run all tests and print a per-file coverage summary.
+# Requires: cargo install cargo-llvm-cov
+#           rustup component add llvm-tools-preview
+test-coverage:
+	cargo llvm-cov --summary-only
 
 # Build optimized release binary (output: target/release/gitover)
 release:
