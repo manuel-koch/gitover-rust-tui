@@ -5,7 +5,11 @@
 ///
 /// The integration tests create a real temporary git repository via git2 and
 /// verify that `get_repo_status` returns sensible results for several scenarios.
-use gitover::git::{get_repo_status, FileEntry, FileStatusKind, RepoStatus};
+use gitover::git::{
+    get_branches_with_ahead_behind, get_commit_file_diff, get_commit_history,
+    get_file_diff, get_head_commit_file_count, get_head_commit_message, get_repo_status,
+    get_untracked_file_content, DeltaKind, FileEntry, FileStatusKind, HistoryFilter, RepoStatus,
+};
 use std::fs;
 use std::path::PathBuf;
 
@@ -36,6 +40,62 @@ fn file_status_sort_priority_order() {
     assert!(FileStatusKind::Staged.sort_priority() < FileStatusKind::Modified.sort_priority());
     assert!(FileStatusKind::Modified.sort_priority() < FileStatusKind::Deleted.sort_priority());
     assert!(FileStatusKind::Deleted.sort_priority() < FileStatusKind::Untracked.sort_priority());
+}
+
+#[test]
+fn delta_kind_codes() {
+    assert_eq!(DeltaKind::Added.code(), "A");
+    assert_eq!(DeltaKind::Modified.code(), "M");
+    assert_eq!(DeltaKind::Deleted.code(), "D");
+    assert_eq!(DeltaKind::Renamed.code(), "R");
+    assert_eq!(DeltaKind::Other.code(), "?");
+}
+
+#[test]
+fn history_filter_label_full_is_empty() {
+    assert_eq!(HistoryFilter::Full.label(), "");
+}
+
+#[test]
+fn history_filter_label_ahead_of() {
+    assert_eq!(
+        HistoryFilter::AheadOf("origin/main".to_string()).label(),
+        "ahead of origin/main"
+    );
+}
+
+#[test]
+fn history_filter_label_behind_of() {
+    assert_eq!(
+        HistoryFilter::BehindOf("origin/main".to_string()).label(),
+        "behind origin/main"
+    );
+}
+
+#[test]
+fn history_filter_label_branch_full() {
+    assert_eq!(
+        HistoryFilter::BranchFull("feature-x".to_string()).label(),
+        "feature-x"
+    );
+}
+
+#[test]
+fn history_filter_label_branch_ahead_of() {
+    let filter = HistoryFilter::BranchAheadOf {
+        branch: "feat".to_string(),
+        of: "origin/main".to_string(),
+    };
+    assert_eq!(filter.label(), "feat ahead of origin/main");
+}
+
+#[test]
+fn history_filter_label_branch_behind_of() {
+    let filter = HistoryFilter::BranchBehindOf {
+        branch: "feat".to_string(),
+        of: "origin/main".to_string(),
+    };
+    assert_eq!(filter.label(), "feat behind origin/main");
 }
 
 #[test]
@@ -329,4 +389,328 @@ fn integration_local_branches_listed() {
         v
     };
     assert_eq!(status.local_branches, sorted);
+}
+
+// ── Commit history integration tests ─────────────────────────────────────────
+
+fn make_repo_with_commits(dir: &PathBuf) -> String {
+    let repo = git2::Repository::init(dir).expect("git init");
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("user.name", "Test User").unwrap();
+    cfg.set_str("user.email", "test@example.com").unwrap();
+    drop(cfg);
+
+    // First commit: add README
+    let readme = dir.join("README.md");
+    fs::write(&readme, "hello").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("README.md")).unwrap();
+    index.write().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let sig = repo.signature().unwrap();
+    let first_oid = repo
+        .commit(
+            Some("refs/heads/main"),
+            &sig,
+            &sig,
+            "initial commit",
+            &tree,
+            &[],
+        )
+        .unwrap();
+
+    // Second commit: add another file
+    let second = dir.join("second.txt");
+    fs::write(&second, "content").unwrap();
+    index.add_path(std::path::Path::new("second.txt")).unwrap();
+    index.write().unwrap();
+    let tree_id2 = index.write_tree().unwrap();
+    let tree2 = repo.find_tree(tree_id2).unwrap();
+    let parent = repo.find_commit(first_oid).unwrap();
+    repo.commit(
+        Some("refs/heads/main"),
+        &sig,
+        &sig,
+        "add second file",
+        &tree2,
+        &[&parent],
+    )
+    .unwrap();
+
+    repo.set_head("refs/heads/main").unwrap();
+    dir.to_string_lossy().to_string()
+}
+
+#[test]
+fn commit_history_full_filter_returns_all_commits() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_commits(&tmp.path().to_path_buf());
+
+    let commits = get_commit_history(&path, &HistoryFilter::Full, 100, false)
+        .expect("get_commit_history");
+
+    assert_eq!(commits.len(), 2, "should return both commits");
+    // Most recent first (TIME sort)
+    assert_eq!(commits[0].summary, "add second file");
+    assert_eq!(commits[1].summary, "initial commit");
+    assert_eq!(commits[0].files.len(), 1, "second commit added one file");
+}
+
+#[test]
+fn commit_history_full_respects_limit() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_commits(&tmp.path().to_path_buf());
+
+    let commits =
+        get_commit_history(&path, &HistoryFilter::Full, 1, false).expect("get_commit_history");
+
+    assert_eq!(commits.len(), 1, "limit=1 should return only the newest commit");
+    assert_eq!(commits[0].summary, "add second file");
+}
+
+#[test]
+fn commit_history_invalid_path_returns_error() {
+    let result = get_commit_history("/nonexistent/path", &HistoryFilter::Full, 100, false);
+    assert!(result.is_err());
+}
+
+#[test]
+fn get_head_commit_message_returns_latest_commit_summary() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_commits(&tmp.path().to_path_buf());
+
+    let msg = get_head_commit_message(&path).expect("head commit message");
+    assert!(
+        msg.starts_with("add second file"),
+        "should return the HEAD (most recent) commit message, got: {msg}"
+    );
+}
+
+#[test]
+fn get_head_commit_message_returns_none_for_invalid_path() {
+    let msg = get_head_commit_message("/nonexistent/path");
+    assert!(msg.is_none());
+}
+
+#[test]
+fn get_head_commit_file_count_returns_correct_count() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_commits(&tmp.path().to_path_buf());
+
+    let count = get_head_commit_file_count(&path);
+    assert_eq!(count, 1, "HEAD commit (add second file) changed one file");
+}
+
+#[test]
+fn get_head_commit_file_count_returns_zero_for_invalid_path() {
+    let count = get_head_commit_file_count("/nonexistent/path");
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn get_untracked_file_content_reads_text_file() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+    let file_path = tmp.path().join("notes.txt");
+    fs::write(&file_path, "hello world\n").unwrap();
+
+    let content = get_untracked_file_content(&path, "notes.txt").expect("read untracked file");
+    assert_eq!(content, "hello world\n");
+}
+
+#[test]
+fn get_untracked_file_content_returns_binary_marker_for_binary() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+    let file_path = tmp.path().join("data.bin");
+    fs::write(&file_path, b"data\x00binary\x00here").unwrap();
+
+    let content = get_untracked_file_content(&path, "data.bin").expect("read binary file");
+    assert_eq!(content, "<binary file>");
+}
+
+#[test]
+fn get_untracked_file_content_errors_for_missing_file() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+    let result = get_untracked_file_content(&path, "does_not_exist.txt");
+    assert!(result.is_err());
+}
+
+// ── get_commit_history additional filter tests ────────────────────────────────
+
+#[test]
+fn commit_history_branch_full_filter_returns_commits() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_commits(&tmp.path().to_path_buf());
+
+    let commits = get_commit_history(&path, &HistoryFilter::BranchFull("main".to_string()), 100, false)
+        .expect("get_commit_history with BranchFull");
+
+    assert!(!commits.is_empty(), "BranchFull should return commits for 'main'");
+}
+
+// ── get_file_diff integration ─────────────────────────────────────────────────
+
+#[test]
+fn get_file_diff_returns_diff_for_modified_file() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+    fs::write(tmp.path().join("README.md"), "modified content\n").unwrap();
+
+    let diff = get_file_diff(&path, "README.md", "git").expect("get_file_diff");
+    assert!(diff.contains("modified content") || diff.contains("-hello"),
+        "diff must reference the changed content, got: {diff}");
+}
+
+#[test]
+fn get_file_diff_returns_empty_for_clean_file() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+    // File is unchanged — diff should be empty
+    let diff = get_file_diff(&path, "README.md", "git").expect("get_file_diff");
+    assert!(diff.is_empty(), "diff of clean file should be empty, got: {diff}");
+}
+
+// ── get_commit_file_diff integration ─────────────────────────────────────────
+
+#[test]
+fn get_commit_file_diff_shows_initial_file_addition() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_commits(&tmp.path().to_path_buf());
+
+    let commits = get_commit_history(&path, &HistoryFilter::Full, 100, false).unwrap();
+    let initial = &commits[commits.len() - 1]; // oldest commit
+
+    let diff = get_commit_file_diff(&path, &initial.short_hash, "README.md", "git")
+        .expect("get_commit_file_diff");
+    assert!(!diff.is_empty(), "diff of initial commit for README.md should not be empty");
+}
+
+// ── Deleted file in working tree ─────────────────────────────────────────────
+
+#[test]
+fn integration_deleted_file_shows_in_status() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+
+    fs::remove_file(tmp.path().join("README.md")).unwrap();
+
+    let status = get_repo_status(&path, false).expect("get_repo_status");
+    assert_eq!(status.deleted, 1, "should report 1 deleted file");
+    assert!(
+        status
+            .files
+            .iter()
+            .any(|f| f.status == FileStatusKind::Deleted),
+        "should have a Deleted entry"
+    );
+}
+
+// ── Modified/Deleted deltas and case-sensitive sort ───────────────────────────
+
+fn make_repo_with_file_modification(dir: &PathBuf) -> String {
+    let repo = git2::Repository::init(dir).expect("git init");
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("user.name", "Test User").unwrap();
+    cfg.set_str("user.email", "test@example.com").unwrap();
+    drop(cfg);
+
+    let readme = dir.join("README.md");
+    fs::write(&readme, "original").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("README.md")).unwrap();
+    index.write().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let sig = repo.signature().unwrap();
+    let first_oid = repo
+        .commit(
+            Some("refs/heads/main"),
+            &sig,
+            &sig,
+            "initial commit",
+            &tree,
+            &[],
+        )
+        .unwrap();
+
+    fs::write(&readme, "modified").unwrap();
+    index.add_path(std::path::Path::new("README.md")).unwrap();
+    index.write().unwrap();
+    let tree_id2 = index.write_tree().unwrap();
+    let tree2 = repo.find_tree(tree_id2).unwrap();
+    let parent = repo.find_commit(first_oid).unwrap();
+    repo.commit(
+        Some("refs/heads/main"),
+        &sig,
+        &sig,
+        "modify README",
+        &tree2,
+        &[&parent],
+    )
+    .unwrap();
+
+    repo.set_head("refs/heads/main").unwrap();
+    dir.to_string_lossy().to_string()
+}
+
+#[test]
+fn commit_history_includes_modified_delta() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_file_modification(&tmp.path().to_path_buf());
+
+    let history = get_commit_history(&path, &HistoryFilter::Full, 100, false)
+        .expect("get_commit_history");
+    assert_eq!(history.len(), 2);
+
+    let modify_commit = &history[0];
+    assert!(
+        modify_commit.files.iter().any(|d| d.kind == DeltaKind::Modified),
+        "modify commit should have a Modified delta"
+    );
+}
+
+#[test]
+fn commit_history_case_sensitive_sort_exercises_sort_closure() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo_with_file_modification(&tmp.path().to_path_buf());
+
+    let history = get_commit_history(&path, &HistoryFilter::Full, 100, true)
+        .expect("get_commit_history with case_sensitive_sort=true");
+    assert!(!history.is_empty());
+}
+
+// ── get_branches_with_ahead_behind ────────────────────────────────────────────
+
+#[test]
+fn get_branches_with_ahead_behind_returns_current_branch() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+
+    let branches = get_branches_with_ahead_behind(&path).expect("get_branches_with_ahead_behind");
+
+    assert!(!branches.is_empty(), "should have at least one branch");
+    let current = branches.iter().find(|b| b.is_current);
+    assert!(current.is_some(), "should have a current branch");
+    assert_eq!(current.unwrap().name, "main");
+}
+
+#[test]
+fn get_branches_with_ahead_behind_lists_all_local_branches() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = make_repo(&tmp.path().to_path_buf(), "main");
+
+    {
+        let repo = git2::Repository::open(&path).unwrap();
+        let head = repo.head().unwrap();
+        let commit = repo.find_commit(head.target().unwrap()).unwrap();
+        repo.branch("feature-y", &commit, false).unwrap();
+    } // repo dropped here so the path is no longer locked
+
+    let branches = get_branches_with_ahead_behind(&path).expect("get_branches_with_ahead_behind");
+    let names: Vec<_> = branches.iter().map(|b| b.name.as_str()).collect();
+    assert!(names.contains(&"main"), "should list main");
+    assert!(names.contains(&"feature-y"), "should list feature-y");
 }

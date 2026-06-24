@@ -91,7 +91,7 @@ Makefile        — build, lint, format, test, release, install, tag-version tar
 - Five Whys (Ohno)
 - Chain of Thought (CoT)
 - Occam’s Razor
-- TDD, Chicago School
+- Test Driven Design (TDD), Chicago School
 - Test Double: Mock (Meszaros)
 - Test Double: Spy (Meszaros)
 - Test Double: Stub (Meszaros)
@@ -107,15 +107,24 @@ For bugfixes check whether there is an existing test case that could be improved
 verify the fix or introduce new test case(s) to verify the fix.
 If unclear whether to introduce new test case(s), ask user for clarification.
 
+Coverage aim: **>80% line coverage** on testable files (`ui.rs` and `main.rs` are excluded because they require a live terminal).
+
 ```shell
-make lint          # cargo check + cargo clippy — fix all warnings before committing
-make format        # cargo fmt
-make test          # cargo test — all tests must pass
-make build         # cargo build (debug)
-make build-and-run # cargo run — quick manual test
-make release       # cargo build --release
-make install       # cargo install --path . → ~/.cargo/bin/gitover
-make tag-version   # tag HEAD with version from Cargo.toml
+make lint                         # cargo check + cargo clippy — fix all warnings before committing
+make format                       # cargo fmt — enforce consistent formatting
+make test                         # cargo test — all tests must pass
+make test-coverage                # run tests + print per-file coverage summary; fails if <80%
+make test-coverage-missing        # same as test-coverage but also prints uncovered line numbers
+make build                        # cargo build (debug)
+make rebuild                      # clean + build from scratch
+make build-and-run                # cargo run — quick manual test
+make build-and-run-with-sandbox-repos  # build + launch against ~/tmp/gitover-sandbox repos
+make clean                        # cargo clean — remove all build artifacts
+make release                      # cargo build --release
+make install                      # cargo install --path . → ~/.cargo/bin/gitover
+make tag-version                  # tag HEAD with version from Cargo.toml
+make outdated-dependencies        # cargo update --dry-run — show available upgrades
+make upgrade-dependencies         # cargo update — apply dependency upgrades to Cargo.lock
 ```
 
 ### Release notes

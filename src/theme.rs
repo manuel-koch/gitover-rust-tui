@@ -193,3 +193,29 @@ pub const DEFAULT: Theme = Theme {
 
 /// All available themes in cycle order.
 pub const THEMES: &[&Theme] = &[&DEFAULT];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::{DeltaKind, FileStatusKind};
+
+    #[test]
+    fn file_status_colour_maps_every_kind() {
+        let t = &DEFAULT;
+        assert_eq!(t.file_status_colour(&FileStatusKind::Staged), t.status_staged);
+        assert_eq!(t.file_status_colour(&FileStatusKind::Modified), t.status_modified);
+        assert_eq!(t.file_status_colour(&FileStatusKind::Deleted), t.status_deleted);
+        assert_eq!(t.file_status_colour(&FileStatusKind::Conflict), t.status_conflict);
+        assert_eq!(t.file_status_colour(&FileStatusKind::Untracked), t.status_untracked);
+    }
+
+    #[test]
+    fn delta_colour_maps_every_kind() {
+        let t = &DEFAULT;
+        assert_eq!(t.delta_colour(&DeltaKind::Added), t.delta_added);
+        assert_eq!(t.delta_colour(&DeltaKind::Modified), t.delta_modified);
+        assert_eq!(t.delta_colour(&DeltaKind::Deleted), t.delta_deleted);
+        assert_eq!(t.delta_colour(&DeltaKind::Renamed), t.delta_renamed);
+        assert_eq!(t.delta_colour(&DeltaKind::Other), t.delta_other);
+    }
+}

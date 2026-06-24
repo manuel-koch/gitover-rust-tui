@@ -2315,7 +2315,31 @@ fn current_hms() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::{CommitEntry, CommitFileDelta, DeltaKind};
     use std::path::PathBuf;
+
+    fn make_app() -> (App, tempfile::TempDir) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let app = App::new_with_overrides(None, Some(tmp.path().join("state.yaml")));
+        (app, tmp)
+    }
+
+    fn make_commit(file_count: usize) -> CommitEntry {
+        CommitEntry {
+            short_hash: "abc12345".to_string(),
+            timestamp: "2026-01-01 00:00:00".to_string(),
+            author: "Test".to_string(),
+            author_email: "test@example.com".to_string(),
+            summary: "Test commit".to_string(),
+            body: String::new(),
+            files: (0..file_count)
+                .map(|i| CommitFileDelta {
+                    kind: DeltaKind::Modified,
+                    path: format!("file{i}.txt"),
+                })
+                .collect(),
+        }
+    }
 
     fn init_temp_repo(dir: &PathBuf) {
         let repo = git2::Repository::init(dir).expect("git init");
@@ -2598,5 +2622,1695 @@ mod tests {
         );
         // Path is consumed even when skipped, so it won't linger.
         assert!(app.reselect_file_path.is_none(), "field must be cleared");
+    }
+
+    // ── sanitised_branch_name ─────────────────────────────────────────────────
+
+    #[test]
+    fn sanitised_branch_name_replaces_spaces_with_hyphens() {
+        let (mut app, _tmp) = make_app();
+        app.branch_input = "feature branch".to_string();
+        assert_eq!(app.sanitised_branch_name(), "feature-branch");
+    }
+
+    #[test]
+    fn sanitised_branch_name_strips_invalid_chars() {
+        let (mut app, _tmp) = make_app();
+        app.branch_input = "feat!@#ure".to_string();
+        assert_eq!(app.sanitised_branch_name(), "feature");
+    }
+
+    #[test]
+    fn sanitised_branch_name_keeps_allowed_chars() {
+        let (mut app, _tmp) = make_app();
+        app.branch_input = "feat/my-branch_v1.0".to_string();
+        assert_eq!(app.sanitised_branch_name(), "feat/my-branch_v1.0");
+    }
+
+    #[test]
+    fn sanitised_branch_name_trims_whitespace() {
+        let (mut app, _tmp) = make_app();
+        app.branch_input = "  main  ".to_string();
+        assert_eq!(app.sanitised_branch_name(), "main");
+    }
+
+    // ── spinner_frame ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn spinner_frame_ten_distinct_frames() {
+        let (mut app, _tmp) = make_app();
+        let frames: Vec<&str> = (0u64..10)
+            .map(|i| {
+                app.spinner_tick = i;
+                app.spinner_frame()
+            })
+            .collect();
+        let unique: std::collections::HashSet<_> = frames.iter().collect();
+        assert_eq!(unique.len(), 10, "all 10 frames must be distinct");
+    }
+
+    #[test]
+    fn spinner_frame_wraps_at_ten() {
+        let (mut app, _tmp) = make_app();
+        app.spinner_tick = 0;
+        let frame_zero = app.spinner_frame();
+        app.spinner_tick = 10;
+        assert_eq!(app.spinner_frame(), frame_zero);
+    }
+
+    // ── history_row_count ─────────────────────────────────────────────────────
+
+    #[test]
+    fn history_row_count_empty_history() {
+        let (app, _tmp) = make_app();
+        assert_eq!(app.history_row_count(), 0);
+    }
+
+    #[test]
+    fn history_row_count_one_commit_no_files() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0)];
+        assert_eq!(app.history_row_count(), 1);
+    }
+
+    #[test]
+    fn history_row_count_one_commit_with_files() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(3)];
+        assert_eq!(app.history_row_count(), 4); // 1 header + 3 files
+    }
+
+    #[test]
+    fn history_row_count_multiple_commits() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(2), make_commit(0), make_commit(1)];
+        assert_eq!(app.history_row_count(), 6); // (1+2)+(1+0)+(1+1)
+    }
+
+    // ── history_row_at ────────────────────────────────────────────────────────
+
+    #[test]
+    fn history_row_at_returns_none_for_empty_history() {
+        let (app, _tmp) = make_app();
+        assert!(app.history_row_at(0).is_none());
+    }
+
+    #[test]
+    fn history_row_at_commit_headers() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: 2 files → rows 0,1,2  |  commit 1: 1 file → rows 3,4
+        app.history = vec![make_commit(2), make_commit(1)];
+        assert_eq!(app.history_row_at(0), Some((0, None)));
+        assert_eq!(app.history_row_at(3), Some((1, None)));
+        assert!(app.history_row_at(5).is_none());
+    }
+
+    #[test]
+    fn history_row_at_file_sub_rows() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(2), make_commit(1)];
+        assert_eq!(app.history_row_at(1), Some((0, Some(0))));
+        assert_eq!(app.history_row_at(2), Some((0, Some(1))));
+        assert_eq!(app.history_row_at(4), Some((1, Some(0))));
+    }
+
+    // ── next_commit / previous_commit ─────────────────────────────────────────
+
+    #[test]
+    fn next_commit_moves_to_next_header() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: 2 files → rows 0-2  |  commit 1: header at row 3
+        app.history = vec![make_commit(2), make_commit(1)];
+        app.history_selected = 0;
+        app.next_commit();
+        assert_eq!(app.history_selected, 3);
+    }
+
+    #[test]
+    fn next_commit_at_last_commit_stays() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: 1 file → rows 0-1  |  commit 1: no files → row 2
+        app.history = vec![make_commit(1), make_commit(0)];
+        app.history_selected = 2; // commit 1 header
+        app.next_commit();
+        assert_eq!(app.history_selected, 2, "must not advance past last commit");
+    }
+
+    #[test]
+    fn previous_commit_from_file_row_goes_to_its_commit_header() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(2), make_commit(1)];
+        app.history_selected = 1; // file sub-row of commit 0
+        app.previous_commit();
+        assert_eq!(app.history_selected, 0); // commit 0 header
+    }
+
+    #[test]
+    fn previous_commit_from_header_goes_to_previous_header() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(2), make_commit(1)];
+        app.history_selected = 3; // commit 1 header
+        app.previous_commit();
+        assert_eq!(app.history_selected, 0); // commit 0 header
+    }
+
+    #[test]
+    fn previous_commit_at_first_header_stays() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(1), make_commit(0)];
+        app.history_selected = 0; // commit 0 header
+        app.previous_commit();
+        assert_eq!(app.history_selected, 0, "must not go before first commit");
+    }
+
+    // ── next / previous navigation (Repos focus) ──────────────────────────────
+
+    #[test]
+    fn next_repos_increments_selected() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.state.sections[0].repos.push("/b".to_string());
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        app.next();
+        assert_eq!(app.selected, 1);
+    }
+
+    #[test]
+    fn next_repos_clamps_at_last() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        app.next();
+        assert_eq!(app.selected, 0, "must not exceed last row");
+    }
+
+    #[test]
+    fn next_repos_resets_file_status_selection() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.state.sections[0].repos.push("/b".to_string());
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        app.file_status_selected = 5;
+        app.file_status_scroll = 3;
+        app.next();
+        assert_eq!(app.file_status_selected, 0);
+        assert_eq!(app.file_status_scroll, 0);
+    }
+
+    #[test]
+    fn previous_repos_decrements_selected() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.state.sections[0].repos.push("/b".to_string());
+        app.focus = Focus::Repos;
+        app.selected = 1;
+        app.previous();
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn previous_repos_clamps_at_zero() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        app.previous();
+        assert_eq!(app.selected, 0, "must not go below 0");
+    }
+
+    // ── next / previous (History focus) ──────────────────────────────────────
+
+    #[test]
+    fn next_history_increments_selected() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0), make_commit(0)];
+        app.focus = Focus::History;
+        app.history_selected = 0;
+        app.next();
+        assert_eq!(app.history_selected, 1);
+    }
+
+    #[test]
+    fn next_history_clamps_at_last() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0)];
+        app.focus = Focus::History;
+        app.history_selected = 0;
+        app.next();
+        assert_eq!(app.history_selected, 0);
+    }
+
+    #[test]
+    fn previous_history_decrements_selected() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0), make_commit(0)];
+        app.focus = Focus::History;
+        app.history_selected = 1;
+        app.previous();
+        assert_eq!(app.history_selected, 0);
+    }
+
+    // ── next / previous (Log focus) ───────────────────────────────────────────
+
+    #[test]
+    fn next_log_decrements_offset_toward_tail() {
+        let (mut app, _tmp) = make_app();
+        app.focus = Focus::Log;
+        app.log_offset = 2;
+        app.log_follow = false;
+        app.next();
+        assert_eq!(app.log_offset, 1);
+        assert!(!app.log_follow);
+    }
+
+    #[test]
+    fn next_log_at_offset_one_enables_follow() {
+        let (mut app, _tmp) = make_app();
+        app.focus = Focus::Log;
+        app.log_offset = 1;
+        app.log_follow = false;
+        app.next();
+        assert_eq!(app.log_offset, 0);
+        assert!(app.log_follow);
+    }
+
+    #[test]
+    fn previous_log_increments_offset_and_disables_follow() {
+        let (mut app, _tmp) = make_app();
+        app.log("line one".to_string());
+        app.log("line two".to_string());
+        app.focus = Focus::Log;
+        app.log_offset = 0;
+        app.log_follow = true;
+        app.previous();
+        assert_eq!(app.log_offset, 1);
+        assert!(!app.log_follow);
+    }
+
+    // ── next_page / previous_page ─────────────────────────────────────────────
+
+    #[test]
+    fn next_page_repos_jumps_by_page_step() {
+        let (mut app, _tmp) = make_app();
+        for i in 0..20 {
+            app.state.sections[0].repos.push(format!("/repo/{i}"));
+        }
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        app.next_page();
+        assert_eq!(app.selected, 10);
+    }
+
+    #[test]
+    fn next_page_repos_clamps_at_last() {
+        let (mut app, _tmp) = make_app();
+        for i in 0..3 {
+            app.state.sections[0].repos.push(format!("/repo/{i}"));
+        }
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        app.next_page();
+        assert_eq!(app.selected, 2);
+    }
+
+    #[test]
+    fn previous_page_repos_jumps_back() {
+        let (mut app, _tmp) = make_app();
+        for i in 0..20 {
+            app.state.sections[0].repos.push(format!("/repo/{i}"));
+        }
+        app.focus = Focus::Repos;
+        app.selected = 15;
+        app.previous_page();
+        assert_eq!(app.selected, 5);
+    }
+
+    #[test]
+    fn previous_page_repos_clamps_at_zero() {
+        let (mut app, _tmp) = make_app();
+        for i in 0..3 {
+            app.state.sections[0].repos.push(format!("/repo/{i}"));
+        }
+        app.focus = Focus::Repos;
+        app.selected = 2;
+        app.previous_page();
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn next_page_history_jumps_by_page_step() {
+        let (mut app, _tmp) = make_app();
+        for _ in 0..20 {
+            app.history.push(make_commit(0));
+        }
+        app.focus = Focus::History;
+        app.history_selected = 0;
+        app.next_page();
+        assert_eq!(app.history_selected, 10);
+    }
+
+    #[test]
+    fn previous_page_history_clamps_at_zero() {
+        let (mut app, _tmp) = make_app();
+        for _ in 0..5 {
+            app.history.push(make_commit(0));
+        }
+        app.focus = Focus::History;
+        app.history_selected = 3;
+        app.previous_page();
+        assert_eq!(app.history_selected, 0);
+    }
+
+    // ── focus_order / cycle_focus / cycle_focus_reverse ───────────────────────
+
+    #[test]
+    fn focus_order_with_no_panes_is_repos_only() {
+        let (mut app, _tmp) = make_app();
+        app.show_branches = false;
+        app.show_file_status = false;
+        app.show_history = false;
+        app.show_details = false;
+        app.show_log = false;
+        assert_eq!(app.focus_order(), vec![Focus::Repos]);
+    }
+
+    #[test]
+    fn focus_order_with_file_status_and_log() {
+        let (mut app, _tmp) = make_app();
+        app.show_branches = false;
+        app.show_file_status = true;
+        app.show_history = false;
+        app.show_details = false;
+        app.show_log = true;
+        assert_eq!(
+            app.focus_order(),
+            vec![Focus::Repos, Focus::FileStatus, Focus::Log]
+        );
+    }
+
+    #[test]
+    fn focus_order_branches_hides_file_status_entry() {
+        let (mut app, _tmp) = make_app();
+        app.show_branches = true;
+        app.show_file_status = true;
+        app.show_log = false;
+        app.show_history = false;
+        app.show_details = false;
+        let order = app.focus_order();
+        assert_eq!(order, vec![Focus::Branches]);
+    }
+
+    #[test]
+    fn cycle_focus_advances_to_next_pane() {
+        let (mut app, _tmp) = make_app();
+        app.show_branches = false;
+        app.show_file_status = true;
+        app.show_history = false;
+        app.show_details = false;
+        app.show_log = false;
+        app.focus = Focus::Repos;
+        app.cycle_focus();
+        assert_eq!(app.focus, Focus::FileStatus);
+    }
+
+    #[test]
+    fn cycle_focus_wraps_from_last_to_first() {
+        let (mut app, _tmp) = make_app();
+        app.show_branches = false;
+        app.show_file_status = true;
+        app.show_history = false;
+        app.show_details = false;
+        app.show_log = false;
+        app.focus = Focus::FileStatus;
+        app.cycle_focus();
+        assert_eq!(app.focus, Focus::Repos);
+    }
+
+    #[test]
+    fn cycle_focus_single_pane_stays_on_repos() {
+        let (mut app, _tmp) = make_app();
+        app.show_branches = false;
+        app.show_file_status = false;
+        app.show_history = false;
+        app.show_details = false;
+        app.show_log = false;
+        app.focus = Focus::Repos;
+        app.cycle_focus();
+        assert_eq!(app.focus, Focus::Repos);
+    }
+
+    #[test]
+    fn cycle_focus_reverse_goes_backward() {
+        let (mut app, _tmp) = make_app();
+        app.show_branches = false;
+        app.show_file_status = true;
+        app.show_history = false;
+        app.show_details = false;
+        app.show_log = false;
+        app.focus = Focus::FileStatus;
+        app.cycle_focus_reverse();
+        assert_eq!(app.focus, Focus::Repos);
+    }
+
+    // ── restore_base_mode / request_remove_selected / cancel_remove ───────────
+
+    #[test]
+    fn restore_base_mode_history_open_gives_history_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = true;
+        app.mode = AppMode::ActionMenu;
+        app.restore_base_mode();
+        assert!(matches!(app.mode, AppMode::History));
+    }
+
+    #[test]
+    fn restore_base_mode_history_closed_gives_normal_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = false;
+        app.mode = AppMode::ActionMenu;
+        app.restore_base_mode();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    #[test]
+    fn request_remove_selected_on_repo_enters_confirm_mode() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake/repo".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry("/fake/repo", "")];
+        app.selected = 0;
+        app.request_remove_selected();
+        assert!(matches!(app.mode, AppMode::ConfirmRemove));
+    }
+
+    #[test]
+    fn request_remove_selected_on_section_title_is_noop() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.selected = 0; // SectionTitle(1)
+        app.mode = AppMode::Normal;
+        app.request_remove_selected();
+        assert!(
+            matches!(app.mode, AppMode::Normal),
+            "mode must not change for section title"
+        );
+    }
+
+    #[test]
+    fn cancel_remove_restores_normal_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = false;
+        app.mode = AppMode::ConfirmRemove;
+        app.cancel_remove();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── menu navigation ───────────────────────────────────────────────────────
+
+    #[test]
+    fn menu_next_advances_to_next_item() {
+        let (mut app, _tmp) = make_app();
+        app.menu_items = vec![
+            MenuItem::item("A", 'a'),
+            MenuItem::item("B", 'b'),
+            MenuItem::item("C", 'c'),
+        ];
+        app.menu_selected = 0;
+        app.menu_next();
+        assert_eq!(app.menu_selected, 1);
+    }
+
+    #[test]
+    fn menu_next_skips_separator() {
+        let (mut app, _tmp) = make_app();
+        app.menu_items = vec![
+            MenuItem::item("A", 'a'),
+            MenuItem::separator(),
+            MenuItem::item("B", 'b'),
+        ];
+        app.menu_selected = 0;
+        app.menu_next();
+        assert_eq!(app.menu_selected, 2, "should skip separator and land on B");
+    }
+
+    #[test]
+    fn menu_next_stays_at_last_item() {
+        let (mut app, _tmp) = make_app();
+        app.menu_items = vec![MenuItem::item("A", 'a'), MenuItem::item("B", 'b')];
+        app.menu_selected = 1;
+        app.menu_next();
+        assert_eq!(app.menu_selected, 1, "must not advance past last item");
+    }
+
+    #[test]
+    fn menu_previous_goes_to_prior_item() {
+        let (mut app, _tmp) = make_app();
+        app.menu_items = vec![
+            MenuItem::item("A", 'a'),
+            MenuItem::item("B", 'b'),
+            MenuItem::item("C", 'c'),
+        ];
+        app.menu_selected = 2;
+        app.menu_previous();
+        assert_eq!(app.menu_selected, 1);
+    }
+
+    #[test]
+    fn menu_previous_skips_separator() {
+        let (mut app, _tmp) = make_app();
+        app.menu_items = vec![
+            MenuItem::item("A", 'a'),
+            MenuItem::separator(),
+            MenuItem::item("B", 'b'),
+        ];
+        app.menu_selected = 2;
+        app.menu_previous();
+        assert_eq!(app.menu_selected, 0, "should skip separator and land on A");
+    }
+
+    #[test]
+    fn menu_previous_stays_at_first_item() {
+        let (mut app, _tmp) = make_app();
+        app.menu_items = vec![MenuItem::item("A", 'a'), MenuItem::item("B", 'b')];
+        app.menu_selected = 0;
+        app.menu_previous();
+        assert_eq!(app.menu_selected, 0, "must not go before first item");
+    }
+
+    #[test]
+    fn menu_next_page_jumps_by_page_step() {
+        let (mut app, _tmp) = make_app();
+        app.menu_items = (0..20)
+            .map(|i| MenuItem::item(format!("item{i}"), 'x'))
+            .collect();
+        app.menu_selected = 0;
+        app.menu_next_page();
+        assert_eq!(app.menu_selected, 10);
+    }
+
+    #[test]
+    fn close_menu_restores_normal_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = false;
+        app.mode = AppMode::ActionMenu;
+        app.close_menu();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── selected_file_entry ───────────────────────────────────────────────────
+
+    #[test]
+    fn selected_file_entry_returns_file_at_index() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Staged),
+            ],
+        )];
+        app.selected = 0;
+        app.file_status_selected = 1;
+        let entry = app.selected_file_entry().unwrap();
+        assert_eq!(entry.path, "b.rs");
+    }
+
+    #[test]
+    fn selected_file_entry_returns_none_when_no_files() {
+        let (app, _tmp) = make_app();
+        assert!(app.selected_file_entry().is_none());
+    }
+
+    // ── log functions ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn log_appends_info_entry() {
+        let (mut app, _tmp) = make_app();
+        app.log("hello".to_string());
+        assert_eq!(app.log.len(), 1);
+        assert_eq!(app.log[0].text, "hello");
+        assert!(matches!(app.log[0].level, LogLevel::Info));
+    }
+
+    #[test]
+    fn log_debug_appends_debug_entry() {
+        let (mut app, _tmp) = make_app();
+        app.log_debug("dbg");
+        assert_eq!(app.log.len(), 1);
+        assert!(matches!(app.log[0].level, LogLevel::Debug));
+    }
+
+    #[test]
+    fn log_warn_appends_warn_entry() {
+        let (mut app, _tmp) = make_app();
+        app.log_warn("warn");
+        assert_eq!(app.log.len(), 1);
+        assert!(matches!(app.log[0].level, LogLevel::Warn));
+    }
+
+    #[test]
+    fn log_error_appends_error_entry() {
+        let (mut app, _tmp) = make_app();
+        app.log_error("err");
+        assert_eq!(app.log.len(), 1);
+        assert!(matches!(app.log[0].level, LogLevel::Error));
+    }
+
+    #[test]
+    fn log_caps_at_max_log_lines() {
+        let (mut app, _tmp) = make_app();
+        for i in 0..1010u64 {
+            app.log(format!("line {i}"));
+        }
+        assert_eq!(app.log.len(), 1000, "log must be capped at MAX_LOG_LINES");
+        assert_eq!(app.log[0].text, "line 10", "oldest entries must be dropped");
+    }
+
+    // ── toggle_file_status ────────────────────────────────────────────────────
+
+    #[test]
+    fn toggle_file_status_on_sets_focus_and_resets_scroll() {
+        let (mut app, _tmp) = make_app();
+        app.show_file_status = false;
+        app.file_status_selected = 5;
+        app.toggle_file_status();
+        assert!(app.show_file_status);
+        assert_eq!(app.file_status_selected, 0);
+        assert_eq!(app.file_status_scroll, 0);
+        assert_eq!(app.focus, Focus::FileStatus);
+    }
+
+    #[test]
+    fn toggle_file_status_off_resets_focus_if_was_file_status() {
+        let (mut app, _tmp) = make_app();
+        app.show_file_status = true;
+        app.focus = Focus::FileStatus;
+        app.toggle_file_status();
+        assert!(!app.show_file_status);
+        assert_eq!(app.focus, Focus::Repos);
+    }
+
+    // ── toggle_log ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn toggle_log_on_enables_follow_and_sets_focus() {
+        let (mut app, _tmp) = make_app();
+        app.show_log = false;
+        app.log_follow = false;
+        app.log_offset = 5;
+        app.toggle_log();
+        assert!(app.show_log);
+        assert!(app.log_follow);
+        assert_eq!(app.log_offset, 0);
+        assert_eq!(app.focus, Focus::Log);
+    }
+
+    #[test]
+    fn toggle_log_off_resets_focus_if_was_log() {
+        let (mut app, _tmp) = make_app();
+        app.show_log = true;
+        app.focus = Focus::Log;
+        app.toggle_log();
+        assert!(!app.show_log);
+        assert_eq!(app.focus, Focus::Repos);
+    }
+
+    // ── toggle_details ────────────────────────────────────────────────────────
+
+    #[test]
+    fn toggle_details_off_clears_content_and_resets_focus() {
+        let (mut app, _tmp) = make_app();
+        app.show_details = true;
+        app.focus = Focus::Details;
+        app.details_content = "some diff".to_string();
+        app.details_mode = DetailsMode::Diff;
+        app.toggle_details();
+        assert!(!app.show_details);
+        assert!(app.details_content.is_empty());
+        assert!(matches!(app.details_mode, DetailsMode::Empty));
+        assert_eq!(app.focus, Focus::Repos);
+    }
+
+    #[test]
+    fn toggle_details_on_sets_flag() {
+        let (mut app, _tmp) = make_app();
+        app.show_details = false;
+        app.toggle_details();
+        assert!(app.show_details);
+    }
+
+    // ── theme / next_theme ────────────────────────────────────────────────────
+
+    #[test]
+    fn theme_returns_valid_reference() {
+        let (app, _tmp) = make_app();
+        let t = app.theme();
+        let _ = t.border_focused; // does not panic
+    }
+
+    #[test]
+    fn next_theme_cycles_back_to_start() {
+        let (mut app, _tmp) = make_app();
+        let total = crate::theme::THEMES.len();
+        app.theme_idx = 0;
+        for _ in 0..total {
+            app.next_theme();
+        }
+        assert_eq!(app.theme_idx, 0, "must wrap back to 0 after full cycle");
+    }
+
+    // ── visible_rows ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn visible_rows_empty_state_returns_empty() {
+        let (app, _tmp) = make_app();
+        assert!(app.visible_rows().is_empty());
+    }
+
+    #[test]
+    fn visible_rows_default_section_repos_only() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.state.sections[0].repos.push("/b".to_string());
+        let rows = app.visible_rows();
+        assert_eq!(rows.len(), 2);
+        assert!(matches!(rows[0], VisibleRow::Repo(0)));
+        assert!(matches!(rows[1], VisibleRow::Repo(1)));
+    }
+
+    #[test]
+    fn visible_rows_named_section_adds_title_row() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        let rows = app.visible_rows();
+        assert_eq!(rows.len(), 2);
+        assert!(matches!(rows[0], VisibleRow::SectionTitle(1)));
+        assert!(matches!(rows[1], VisibleRow::Repo(0)));
+    }
+
+    #[test]
+    fn visible_rows_collapsed_section_hides_repos() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        app.state.sections[1].repos.push("/w2".to_string());
+        app.state.sections[1].collapsed = true;
+        let rows = app.visible_rows();
+        assert_eq!(rows.len(), 1, "collapsed section shows only its title");
+        assert!(matches!(rows[0], VisibleRow::SectionTitle(1)));
+    }
+
+    // ── selected_repo_idx / repos_pane_title ─────────────────────────────────
+
+    #[test]
+    fn selected_repo_idx_returns_idx_for_repo_row() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.selected = 0;
+        assert_eq!(app.selected_repo_idx(), Some(0));
+    }
+
+    #[test]
+    fn selected_repo_idx_returns_none_for_section_title() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.selected = 0; // SectionTitle(1)
+        assert_eq!(app.selected_repo_idx(), None);
+    }
+
+    #[test]
+    fn repos_pane_title_default_section() {
+        let (app, _tmp) = make_app();
+        assert_eq!(app.repos_pane_title(), "Repositories");
+    }
+
+    #[test]
+    fn repos_pane_title_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.selected = 0; // selects SectionTitle(1)
+        assert_eq!(app.repos_pane_title(), "Repositories ( Work )");
+    }
+
+    // ── collapse_current_section / expand_current_section ────────────────────
+
+    #[test]
+    fn collapse_current_section_collapses_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        app.selected = 0; // SectionTitle(1)
+        assert!(!app.state.sections[1].collapsed);
+        app.collapse_current_section();
+        assert!(app.state.sections[1].collapsed);
+    }
+
+    #[test]
+    fn collapse_current_section_noop_on_default_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.selected = 0; // Repo(0) → default section
+        app.collapse_current_section();
+        assert!(!app.state.sections[0].collapsed);
+    }
+
+    #[test]
+    fn expand_current_section_uncollapses_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].collapsed = true;
+        app.selected = 0; // SectionTitle(1)
+        app.expand_current_section();
+        assert!(!app.state.sections[1].collapsed);
+    }
+
+    // ── staged_file_count ─────────────────────────────────────────────────────
+
+    #[test]
+    fn staged_file_count_no_repo_returns_zero() {
+        let (app, _tmp) = make_app();
+        assert_eq!(app.staged_file_count(), 0);
+    }
+
+    #[test]
+    fn staged_file_count_returns_count_from_selected_repo() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        let mut repo = crate::git::RepoStatus::error_entry("/fake", "");
+        repo.staged = 4;
+        app.repos = vec![repo];
+        app.selected = 0;
+        assert_eq!(app.staged_file_count(), 4);
+    }
+
+    // ── details_line_count ────────────────────────────────────────────────────
+
+    #[test]
+    fn details_line_count_empty_mode_returns_zero() {
+        let (mut app, _tmp) = make_app();
+        app.details_mode = DetailsMode::Empty;
+        assert_eq!(app.details_line_count(), 0);
+    }
+
+    #[test]
+    fn details_line_count_diff_mode_counts_content_lines() {
+        let (mut app, _tmp) = make_app();
+        app.details_mode = DetailsMode::Diff;
+        app.details_content = "line1\nline2\nline3".to_string();
+        assert_eq!(app.details_line_count(), 3);
+    }
+
+    #[test]
+    fn details_line_count_commit_mode_counts_fixed_plus_body() {
+        let (mut app, _tmp) = make_app();
+        app.details_mode = DetailsMode::Commit;
+        app.history = vec![make_commit(0)]; // body is empty
+        app.history_selected = 0;
+        // 4 + body.lines().count().max(1) = 4 + 1 = 5
+        assert_eq!(app.details_line_count(), 5);
+    }
+
+    // ── open_repo_action_menu ─────────────────────────────────────────────────
+
+    #[test]
+    fn open_repo_action_menu_section_title_opens_section_menu() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.selected = 0; // SectionTitle(1)
+        app.open_repo_action_menu();
+        assert!(matches!(app.mode, AppMode::ActionMenu));
+        assert!(!app.menu_items.is_empty());
+    }
+
+    #[test]
+    fn open_repo_action_menu_repo_row_opens_repo_menu() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        let mut repo = crate::git::RepoStatus::error_entry("/fake", "");
+        repo.error = None;
+        app.repos = vec![repo];
+        app.selected = 0;
+        app.open_repo_action_menu();
+        assert!(matches!(app.mode, AppMode::ActionMenu));
+        assert!(!app.menu_items.is_empty());
+    }
+
+    #[test]
+    fn open_repo_action_menu_out_of_bounds_is_noop() {
+        let (mut app, _tmp) = make_app();
+        app.selected = 99; // no rows exist
+        app.mode = AppMode::Normal;
+        app.open_repo_action_menu();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── RepoOperation::label ──────────────────────────────────────────────────
+
+    #[test]
+    fn repo_operation_label_all_variants() {
+        assert_eq!(RepoOperation::Scanning.label(), "scanning");
+        assert_eq!(RepoOperation::Fetching.label(), "fetching");
+        assert_eq!(RepoOperation::Pulling.label(), "pulling");
+        assert_eq!(RepoOperation::Pushing.label(), "pushing");
+        assert_eq!(RepoOperation::Rebasing.label(), "rebasing");
+        assert_eq!(RepoOperation::Committing.label(), "committing");
+        assert_eq!(RepoOperation::Working.label(), "working");
+    }
+
+    // ── LogLevel::label / LogLine::formatted ──────────────────────────────────
+
+    #[test]
+    fn log_level_label_all_variants() {
+        assert_eq!(LogLevel::Debug.label(), "DEBUG");
+        assert_eq!(LogLevel::Info.label(), "INFO");
+        assert_eq!(LogLevel::Warn.label(), "WARN");
+        assert_eq!(LogLevel::Error.label(), "ERROR");
+    }
+
+    #[test]
+    fn log_line_formatted_contains_level_and_text() {
+        let line = LogLine::new("hello world");
+        let formatted = line.formatted();
+        assert!(
+            formatted.contains("INFO"),
+            "formatted must contain level label"
+        );
+        assert!(
+            formatted.contains("hello world"),
+            "formatted must contain the log text"
+        );
+    }
+
+    // ── next / previous (FileStatus and Details focus) ────────────────────────
+
+    #[test]
+    fn next_file_status_increments_selected() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+            ],
+        )];
+        app.selected = 0;
+        app.focus = Focus::FileStatus;
+        app.file_status_selected = 0;
+        app.next();
+        assert_eq!(app.file_status_selected, 1);
+    }
+
+    #[test]
+    fn next_file_status_clamps_at_last() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry("a.rs", crate::git::FileStatusKind::Modified)],
+        )];
+        app.selected = 0;
+        app.focus = Focus::FileStatus;
+        app.file_status_selected = 0;
+        app.next();
+        assert_eq!(app.file_status_selected, 0);
+    }
+
+    #[test]
+    fn previous_file_status_decrements_selected() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+            ],
+        )];
+        app.selected = 0;
+        app.focus = Focus::FileStatus;
+        app.file_status_selected = 1;
+        app.previous();
+        assert_eq!(app.file_status_selected, 0);
+    }
+
+    #[test]
+    fn next_details_increments_scroll() {
+        let (mut app, _tmp) = make_app();
+        app.details_mode = DetailsMode::Diff;
+        app.details_content = "line1\nline2\nline3".to_string();
+        app.details_scroll = 0;
+        app.focus = Focus::Details;
+        app.next();
+        assert_eq!(app.details_scroll, 1);
+    }
+
+    #[test]
+    fn previous_details_decrements_scroll() {
+        let (mut app, _tmp) = make_app();
+        app.details_mode = DetailsMode::Diff;
+        app.details_content = "line1\nline2\nline3".to_string();
+        app.details_scroll = 2;
+        app.focus = Focus::Details;
+        app.previous();
+        assert_eq!(app.details_scroll, 1);
+    }
+
+    // ── next_page / previous_page (FileStatus and Log focus) ──────────────────
+
+    #[test]
+    fn next_page_file_status_jumps_by_page_step() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        let files: Vec<_> = (0..20)
+            .map(|i| make_file_entry(&format!("f{i}.rs"), crate::git::FileStatusKind::Modified))
+            .collect();
+        app.repos = vec![make_repo_with_files("/fake", files)];
+        app.selected = 0;
+        app.focus = Focus::FileStatus;
+        app.file_status_selected = 0;
+        app.next_page();
+        assert_eq!(app.file_status_selected, 10);
+    }
+
+    #[test]
+    fn previous_page_file_status_clamps_at_zero() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        let files: Vec<_> = (0..5)
+            .map(|i| make_file_entry(&format!("f{i}.rs"), crate::git::FileStatusKind::Modified))
+            .collect();
+        app.repos = vec![make_repo_with_files("/fake", files)];
+        app.selected = 0;
+        app.focus = Focus::FileStatus;
+        app.file_status_selected = 3;
+        app.previous_page();
+        assert_eq!(app.file_status_selected, 0);
+    }
+
+    #[test]
+    fn next_page_log_decrements_offset_toward_tail() {
+        let (mut app, _tmp) = make_app();
+        for i in 0..30 {
+            app.log(format!("line {i}"));
+        }
+        app.focus = Focus::Log;
+        app.log_offset = 20;
+        app.log_follow = false;
+        app.next_page();
+        assert_eq!(app.log_offset, 10);
+    }
+
+    #[test]
+    fn previous_page_log_increments_offset_away_from_tail() {
+        let (mut app, _tmp) = make_app();
+        for i in 0..30 {
+            app.log(format!("line {i}"));
+        }
+        app.focus = Focus::Log;
+        app.log_offset = 5;
+        app.log_follow = false;
+        app.previous_page();
+        assert!(app.log_offset > 5, "offset should increase away from tail");
+    }
+
+    // ── open_file_action_menu ─────────────────────────────────────────────────
+
+    #[test]
+    fn open_file_action_menu_staged_shows_commit_items() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry("a.rs", crate::git::FileStatusKind::Staged)],
+        )];
+        app.selected = 0;
+        app.file_status_selected = 0;
+        app.open_file_action_menu();
+        assert!(matches!(app.mode, AppMode::FileActionMenu));
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(labels.contains(&"Commit"), "staged file should have Commit item");
+        assert!(
+            labels.contains(&"Unstage File"),
+            "staged file should have Unstage File item"
+        );
+    }
+
+    #[test]
+    fn open_file_action_menu_modified_shows_stage_items() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry(
+                "a.rs",
+                crate::git::FileStatusKind::Modified,
+            )],
+        )];
+        app.selected = 0;
+        app.file_status_selected = 0;
+        app.open_file_action_menu();
+        assert!(matches!(app.mode, AppMode::FileActionMenu));
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(labels.contains(&"Stage File"));
+        assert!(labels.contains(&"Revert File"));
+    }
+
+    #[test]
+    fn open_file_action_menu_untracked_shows_stage_and_discard() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry(
+                "a.rs",
+                crate::git::FileStatusKind::Untracked,
+            )],
+        )];
+        app.selected = 0;
+        app.file_status_selected = 0;
+        app.open_file_action_menu();
+        assert!(matches!(app.mode, AppMode::FileActionMenu));
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(labels.contains(&"Stage File"));
+        assert!(labels.contains(&"Discard File"));
+    }
+
+    #[test]
+    fn open_file_action_menu_conflict_shows_revert() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry(
+                "a.rs",
+                crate::git::FileStatusKind::Conflict,
+            )],
+        )];
+        app.selected = 0;
+        app.file_status_selected = 0;
+        app.open_file_action_menu();
+        assert!(matches!(app.mode, AppMode::FileActionMenu));
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(labels.contains(&"Revert File"));
+        assert!(!labels.contains(&"Stage File"), "conflict should not have Stage File");
+    }
+
+    #[test]
+    fn open_file_action_menu_deleted_shows_stage_deletion() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry(
+                "a.rs",
+                crate::git::FileStatusKind::Deleted,
+            )],
+        )];
+        app.selected = 0;
+        app.file_status_selected = 0;
+        app.open_file_action_menu();
+        assert!(matches!(app.mode, AppMode::FileActionMenu));
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(labels.contains(&"Stage Deletion"));
+    }
+
+    #[test]
+    fn open_file_action_menu_patch_file_adds_apply_item() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry("fix.patch", crate::git::FileStatusKind::Untracked)],
+        )];
+        app.selected = 0;
+        app.file_status_selected = 0;
+        app.open_file_action_menu();
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(
+            labels.contains(&"Apply Patch"),
+            "patch files should have Apply Patch item"
+        );
+    }
+
+    #[test]
+    fn open_file_action_menu_no_file_is_noop() {
+        let (mut app, _tmp) = make_app();
+        app.mode = AppMode::Normal;
+        app.open_file_action_menu(); // no files exist
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── open_log_action_menu / open_history_action_menu ───────────────────────
+
+    #[test]
+    fn open_log_action_menu_opens_log_menu() {
+        let (mut app, _tmp) = make_app();
+        app.open_log_action_menu();
+        assert!(matches!(app.mode, AppMode::LogActionMenu));
+        assert!(!app.menu_items.is_empty());
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(labels.contains(&"Copy Log Output"));
+        assert!(labels.contains(&"Clear Log"));
+    }
+
+    #[test]
+    fn open_history_action_menu_on_head_commit_opens_menu() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0), make_commit(0)];
+        app.history_filter = HistoryFilter::Full;
+        app.history_selected = 0; // HEAD commit (index 0)
+        app.open_history_action_menu();
+        assert!(matches!(app.mode, AppMode::HistoryActionMenu));
+        let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
+        assert!(labels.contains(&"Undo Commit"));
+    }
+
+    #[test]
+    fn open_history_action_menu_non_head_commit_is_noop() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0), make_commit(0)];
+        app.history_filter = HistoryFilter::Full;
+        app.history_selected = 1; // not HEAD
+        app.mode = AppMode::Normal;
+        app.open_history_action_menu();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    #[test]
+    fn open_history_action_menu_non_full_filter_is_noop() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0)];
+        app.history_filter = HistoryFilter::AheadOf("origin/main".to_string());
+        app.history_selected = 0;
+        app.mode = AppMode::Normal;
+        app.open_history_action_menu();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── clear_log ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn clear_log_empties_log_and_resets_scroll() {
+        let (mut app, _tmp) = make_app();
+        app.log("line 1".to_string());
+        app.log("line 2".to_string());
+        app.log_offset = 1;
+        app.log_follow = false;
+        app.clear_log();
+        assert!(app.log.is_empty(), "log must be empty after clear");
+        assert_eq!(app.log_offset, 0);
+        assert!(app.log_follow);
+    }
+
+    // ── App::new / cancel_pick / picker_selected_path ─────────────────────────
+
+    #[test]
+    fn app_new_does_not_panic() {
+        let app = App::new();
+        assert!(matches!(app.mode, AppMode::Normal));
+        assert!(app.repos.is_empty());
+    }
+
+    #[test]
+    fn cancel_pick_clears_file_explorer_and_restores_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = false;
+        app.enter_pick_mode();
+        assert!(matches!(app.mode, AppMode::FilePicker));
+        app.cancel_pick();
+        assert!(matches!(app.mode, AppMode::Normal));
+        assert!(app.file_explorer.is_none());
+    }
+
+    #[test]
+    fn picker_selected_path_returns_none_when_no_explorer() {
+        let (app, _tmp) = make_app();
+        assert!(app.picker_selected_path().is_none());
+    }
+
+    // ── reorder_repos_to_match_sections ──────────────────────────────────────
+
+    #[test]
+    fn reorder_repos_drops_stale_entries() {
+        let (mut app, _tmp) = make_app();
+        // State has "/a" only; repos has "/a" and "/b"
+        app.state.sections[0].repos.push("/a".to_string());
+        app.repos = vec![
+            crate::git::RepoStatus::error_entry("/a", ""),
+            crate::git::RepoStatus::error_entry("/b", ""),
+        ];
+        app.reorder_repos_to_match_sections();
+        assert_eq!(app.repos.len(), 1);
+        assert_eq!(app.repos[0].path, "/a");
+    }
+
+    // ── selected_files ────────────────────────────────────────────────────────
+
+    #[test]
+    fn selected_files_returns_files_for_selected_repo() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake".to_string());
+        app.repos = vec![make_repo_with_files(
+            "/fake",
+            vec![make_file_entry("a.rs", crate::git::FileStatusKind::Modified)],
+        )];
+        app.selected = 0;
+        let files = app.selected_files();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.rs");
+    }
+
+    #[test]
+    fn selected_files_returns_empty_when_no_repo_selected() {
+        let (app, _tmp) = make_app();
+        assert!(app.selected_files().is_empty());
+    }
+
+    // ── set_header_flash / tick_header_flash ──────────────────────────────────
+
+    #[test]
+    fn set_header_flash_stores_message() {
+        let (mut app, _tmp) = make_app();
+        app.set_header_flash("test message");
+        assert!(app.header_flash.is_some());
+        let (msg, _) = app.header_flash.as_ref().unwrap();
+        assert_eq!(msg, "test message");
+    }
+
+    #[test]
+    fn tick_header_flash_keeps_recent_flash() {
+        let (mut app, _tmp) = make_app();
+        app.set_header_flash("fresh message");
+        app.tick_header_flash();
+        assert!(
+            app.header_flash.is_some(),
+            "recent flash should not be cleared immediately"
+        );
+    }
+
+    // ── branch_select_next / previous / selected_branch_item / close ──────────
+
+    #[test]
+    fn branch_select_next_advances_selection() {
+        let (mut app, _tmp) = make_app();
+        app.branch_items = vec![
+            BranchItem { name: "a".to_string(), is_remote: false },
+            BranchItem { name: "b".to_string(), is_remote: false },
+        ];
+        app.branch_selected = 0;
+        app.branch_select_next();
+        assert_eq!(app.branch_selected, 1);
+    }
+
+    #[test]
+    fn branch_select_next_wraps_to_first() {
+        let (mut app, _tmp) = make_app();
+        app.branch_items = vec![
+            BranchItem { name: "a".to_string(), is_remote: false },
+            BranchItem { name: "b".to_string(), is_remote: false },
+        ];
+        app.branch_selected = 1;
+        app.branch_select_next();
+        assert_eq!(app.branch_selected, 0);
+    }
+
+    #[test]
+    fn branch_select_previous_goes_to_last_when_at_start() {
+        let (mut app, _tmp) = make_app();
+        app.branch_items = vec![
+            BranchItem { name: "a".to_string(), is_remote: false },
+            BranchItem { name: "b".to_string(), is_remote: false },
+        ];
+        app.branch_selected = 0;
+        app.branch_select_previous();
+        assert_eq!(app.branch_selected, 1);
+    }
+
+    #[test]
+    fn branch_select_previous_decrements() {
+        let (mut app, _tmp) = make_app();
+        app.branch_items = vec![
+            BranchItem { name: "a".to_string(), is_remote: false },
+            BranchItem { name: "b".to_string(), is_remote: false },
+        ];
+        app.branch_selected = 1;
+        app.branch_select_previous();
+        assert_eq!(app.branch_selected, 0);
+    }
+
+    #[test]
+    fn selected_branch_item_returns_current() {
+        let (mut app, _tmp) = make_app();
+        app.branch_items = vec![
+            BranchItem { name: "main".to_string(), is_remote: false },
+            BranchItem { name: "feat".to_string(), is_remote: false },
+        ];
+        app.branch_selected = 1;
+        let item = app.selected_branch_item().unwrap();
+        assert_eq!(item.name, "feat");
+    }
+
+    #[test]
+    fn close_branch_select_restores_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = false;
+        app.mode = AppMode::BranchSelect;
+        app.close_branch_select();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── check_popup_timeout ───────────────────────────────────────────────────
+
+    #[test]
+    fn check_popup_timeout_keeps_fresh_popup() {
+        let (mut app, _tmp) = make_app();
+        use std::time::Instant;
+        app.popup_message = Some("hello".to_string());
+        app.popup_show_time = Some(Instant::now());
+        app.mode = AppMode::PopupMessage;
+        app.check_popup_timeout();
+        assert!(app.popup_message.is_some(), "fresh popup should not be dismissed");
+    }
+
+    // ── section management ────────────────────────────────────────────────────
+
+    #[test]
+    fn open_create_section_input_sets_mode() {
+        let (mut app, _tmp) = make_app();
+        app.open_create_section_input();
+        assert!(matches!(app.mode, AppMode::SectionNameInput));
+        assert!(app.section_input.is_empty());
+        assert!(app.section_input_is_create);
+    }
+
+    #[test]
+    fn open_rename_section_input_is_noop_for_default_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.selected = 0; // Repo row → default section
+        app.mode = AppMode::Normal;
+        app.open_rename_section_input();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    #[test]
+    fn open_rename_section_input_sets_mode_for_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.selected = 0; // SectionTitle(1)
+        app.open_rename_section_input();
+        assert!(matches!(app.mode, AppMode::SectionNameInput));
+        assert_eq!(app.section_input, "Work");
+        assert!(!app.section_input_is_create);
+    }
+
+    #[test]
+    fn confirm_section_name_input_create_adds_section() {
+        let (mut app, _tmp) = make_app();
+        app.section_input = "NewSection".to_string();
+        app.section_input_is_create = true;
+        app.confirm_section_name_input();
+        assert!(app.state.sections.iter().any(|s| s.name.as_deref() == Some("NewSection")));
+    }
+
+    #[test]
+    fn confirm_section_name_input_empty_restores_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = false;
+        app.section_input = "   ".to_string(); // only whitespace
+        app.section_input_is_create = true;
+        app.confirm_section_name_input();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    #[test]
+    fn open_confirm_remove_section_sets_mode() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.selected = 0; // SectionTitle(1)
+        app.open_confirm_remove_section();
+        assert!(matches!(app.mode, AppMode::ConfirmRemoveSection));
+        assert_eq!(app.section_to_remove_idx, Some(1));
+    }
+
+    #[test]
+    fn open_confirm_remove_section_noop_for_default_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.selected = 0; // Repo row → default section
+        app.mode = AppMode::Normal;
+        app.open_confirm_remove_section();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── next_page / previous_page for Details ─────────────────────────────────
+
+    #[test]
+    fn next_page_details_jumps_scroll() {
+        let (mut app, _tmp) = make_app();
+        let lines: Vec<&str> = (0..30).map(|_| "line").collect();
+        app.details_content = lines.join("\n");
+        app.details_mode = DetailsMode::Diff;
+        app.details_scroll = 0;
+        app.focus = Focus::Details;
+        app.next_page();
+        assert_eq!(app.details_scroll, 10);
+    }
+
+    #[test]
+    fn previous_page_details_clamps_at_zero() {
+        let (mut app, _tmp) = make_app();
+        let lines: Vec<&str> = (0..30).map(|_| "line").collect();
+        app.details_content = lines.join("\n");
+        app.details_mode = DetailsMode::Diff;
+        app.details_scroll = 3;
+        app.focus = Focus::Details;
+        app.previous_page();
+        assert_eq!(app.details_scroll, 0);
+    }
+
+    // ── confirm_force_push / confirm_force_push_branch ────────────────────────
+
+    #[test]
+    fn confirm_force_push_sets_mode() {
+        let (mut app, _tmp) = make_app();
+        app.confirm_force_push();
+        assert!(matches!(app.mode, AppMode::ConfirmForcePush));
+    }
+
+    #[test]
+    fn confirm_force_push_branch_sets_mode_and_name() {
+        let (mut app, _tmp) = make_app();
+        app.confirm_force_push_branch("feat".to_string());
+        assert!(matches!(app.mode, AppMode::ConfirmForcePushBranch));
+        assert_eq!(app.branch_to_force_push, "feat");
+    }
+
+    // ── open_commit_input / commit_message_text ───────────────────────────────
+
+    #[test]
+    fn open_commit_input_sets_mode() {
+        let (mut app, _tmp) = make_app();
+        app.open_commit_input();
+        assert!(matches!(app.mode, AppMode::CommitMessageInput));
+        assert!(!app.commit_is_amend);
+    }
+
+    #[test]
+    fn commit_message_text_returns_textarea_content() {
+        let (mut app, _tmp) = make_app();
+        app.open_commit_input();
+        // Empty textarea produces empty string (single blank line).
+        let text = app.commit_message_text();
+        assert!(text.is_empty() || text == "\n" || text == "",
+            "empty textarea should give empty-ish string, got: {text:?}");
+    }
+
+    // ── close_new_branch_input ────────────────────────────────────────────────
+
+    #[test]
+    fn close_new_branch_input_restores_mode() {
+        let (mut app, _tmp) = make_app();
+        app.show_history = false;
+        app.mode = AppMode::NewBranchInput;
+        app.close_new_branch_input();
+        assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    // ── confirm_remove_section ────────────────────────────────────────────────
+
+    #[test]
+    fn confirm_remove_section_removes_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry("/w1", "")];
+        app.section_to_remove_idx = Some(1);
+        app.confirm_remove_section();
+        assert!(
+            app.state.sections.iter().all(|s| s.name.as_deref() != Some("Work")),
+            "Work section should be removed"
+        );
+    }
+
+    // ── section_select_next / previous ───────────────────────────────────────
+
+    #[test]
+    fn section_select_next_increments() {
+        let (mut app, _tmp) = make_app();
+        app.section_select_items = vec![(0, "Default".to_string()), (1, "Work".to_string())];
+        app.section_select_selected = 0;
+        app.section_select_next();
+        assert_eq!(app.section_select_selected, 1);
+    }
+
+    #[test]
+    fn section_select_next_stays_at_last() {
+        let (mut app, _tmp) = make_app();
+        app.section_select_items = vec![(0, "Default".to_string()), (1, "Work".to_string())];
+        app.section_select_selected = 1;
+        app.section_select_next();
+        assert_eq!(app.section_select_selected, 1);
+    }
+
+    #[test]
+    fn section_select_previous_decrements() {
+        let (mut app, _tmp) = make_app();
+        app.section_select_items = vec![(0, "Default".to_string()), (1, "Work".to_string())];
+        app.section_select_selected = 1;
+        app.section_select_previous();
+        assert_eq!(app.section_select_selected, 0);
+    }
+
+    #[test]
+    fn section_select_previous_stays_at_zero() {
+        let (mut app, _tmp) = make_app();
+        app.section_select_items = vec![(0, "Default".to_string()), (1, "Work".to_string())];
+        app.section_select_selected = 0;
+        app.section_select_previous();
+        assert_eq!(app.section_select_selected, 0);
+    }
+
+    // ── execute_move_repo ─────────────────────────────────────────────────────
+
+    #[test]
+    fn execute_move_repo_moves_to_target_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[0].repos.push("/repo-a".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry("/repo-a", "")];
+        app.selected = 0;
+        app.section_select_items = vec![(1, "Work".to_string())];
+        app.section_select_selected = 0;
+        app.execute_move_repo();
+        assert!(
+            app.state.sections[1].repos.contains(&"/repo-a".to_string()),
+            "repo should be in Work section after move"
+        );
     }
 }

@@ -824,6 +824,32 @@ fn truncate_text(text: String) -> Result<String> {
     Ok(format!("{}\n...diff truncated", cut))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_text_short_text_unchanged() {
+        let text = "hello world".to_string();
+        assert_eq!(truncate_text(text).unwrap(), "hello world");
+    }
+
+    #[test]
+    fn truncate_text_at_limit_unchanged() {
+        let text = "x".repeat(DIFF_TRUNCATION_LIMIT);
+        let result = truncate_text(text.clone()).unwrap();
+        assert_eq!(result, text);
+    }
+
+    #[test]
+    fn truncate_text_over_limit_appends_marker() {
+        let text = "x".repeat(DIFF_TRUNCATION_LIMIT + 100);
+        let result = truncate_text(text).unwrap();
+        assert!(result.ends_with("\n...diff truncated"));
+        assert_eq!(&result[..DIFF_TRUNCATION_LIMIT], "x".repeat(DIFF_TRUNCATION_LIMIT));
+    }
+}
+
 /// Get the patch-format diff of `file_path` in the working tree (staged + unstaged) vs HEAD.
 /// Equivalent to `git diff HEAD -- <file>`.
 pub fn get_file_diff(repo_path: &str, file_path: &str, git_bin: &str) -> Result<String> {

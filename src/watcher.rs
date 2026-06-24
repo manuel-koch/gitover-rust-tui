@@ -357,3 +357,129 @@ fn is_relevant_worktree_path(
 pub fn restart(repo_paths: Vec<String>) -> DirtyRx {
     start(repo_paths)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    // ── is_relevant_git_path ──────────────────────────────────────────────────
+
+    #[test]
+    fn git_path_git_dir_itself_is_relevant() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(is_relevant_git_path(git_dir, git_dir));
+    }
+
+    #[test]
+    fn git_path_objects_dir_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("objects/ab/cd1234"), git_dir));
+    }
+
+    #[test]
+    fn git_path_lock_file_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("index.lock"), git_dir));
+    }
+
+    #[test]
+    fn git_path_cache_file_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("something.cache"), git_dir));
+    }
+
+    #[test]
+    fn git_path_hooks_dir_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("hooks/pre-commit"), git_dir));
+    }
+
+    #[test]
+    fn git_path_modules_dir_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("modules/sub/HEAD"), git_dir));
+    }
+
+    #[test]
+    fn git_path_packed_refs_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("packed-refs"), git_dir));
+    }
+
+    #[test]
+    fn git_path_commit_editmsg_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("COMMIT_EDITMSG"), git_dir));
+        assert!(!is_relevant_git_path(&git_dir.join("PREPARE_COMMIT_MSG"), git_dir));
+        assert!(!is_relevant_git_path(&git_dir.join("GIT_COLA_MSG"), git_dir));
+    }
+
+    #[test]
+    fn git_path_lfs_tmp_is_skipped() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(!is_relevant_git_path(&git_dir.join("lfs/objects/tmp/abc"), git_dir));
+    }
+
+    #[test]
+    fn git_path_head_is_relevant() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(is_relevant_git_path(&git_dir.join("HEAD"), git_dir));
+    }
+
+    #[test]
+    fn git_path_index_is_relevant() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(is_relevant_git_path(&git_dir.join("index"), git_dir));
+    }
+
+    #[test]
+    fn git_path_refs_is_relevant() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(is_relevant_git_path(&git_dir.join("refs/heads/main"), git_dir));
+    }
+
+    #[test]
+    fn git_path_config_is_relevant() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(is_relevant_git_path(&git_dir.join("config"), git_dir));
+    }
+
+    #[test]
+    fn git_path_rebase_merge_is_relevant() {
+        let git_dir = Path::new("/repo/.git");
+        assert!(is_relevant_git_path(&git_dir.join("rebase-merge/head-name"), git_dir));
+    }
+
+    // ── is_relevant_worktree_path ─────────────────────────────────────────────
+
+    #[test]
+    fn worktree_repo_root_itself_is_not_relevant() {
+        let root = Path::new("/repo");
+        assert!(!is_relevant_worktree_path(root, root, &None));
+    }
+
+    #[test]
+    fn worktree_ds_store_is_skipped() {
+        let root = Path::new("/repo");
+        assert!(!is_relevant_worktree_path(&root.join(".DS_Store"), root, &None));
+    }
+
+    #[test]
+    fn worktree_pycache_is_skipped() {
+        let root = Path::new("/repo");
+        assert!(!is_relevant_worktree_path(&root.join("__pycache__"), root, &None));
+    }
+
+    #[test]
+    fn worktree_regular_source_file_is_relevant() {
+        let root = Path::new("/repo");
+        assert!(is_relevant_worktree_path(&root.join("src/main.rs"), root, &None));
+    }
+
+    #[test]
+    fn worktree_nested_file_is_relevant() {
+        let root = Path::new("/repo");
+        assert!(is_relevant_worktree_path(&root.join("a/b/c/file.txt"), root, &None));
+    }
+}

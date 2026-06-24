@@ -448,6 +448,161 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
+    // ── OpRequest::label() ────────────────────────────────────────────────────
+
+    #[test]
+    fn label_simple_variants() {
+        assert_eq!(OpRequest::Fetch.label(), "fetch");
+        assert_eq!(OpRequest::Pull.label(), "pull");
+        assert_eq!(OpRequest::Push.label(), "push");
+        assert_eq!(OpRequest::ForcePush.label(), "force push");
+        assert_eq!(OpRequest::UndoCommit.label(), "undo commit");
+        assert_eq!(
+            OpRequest::Refresh {
+                case_sensitive_sort: false
+            }
+            .label(),
+            "scan"
+        );
+    }
+
+    #[test]
+    fn label_checkout_branch() {
+        assert_eq!(
+            OpRequest::CheckoutBranch {
+                name: "main".to_string(),
+                is_remote: false
+            }
+            .label(),
+            "checkout"
+        );
+        assert_eq!(
+            OpRequest::CheckoutBranch {
+                name: "origin/feat".to_string(),
+                is_remote: true
+            }
+            .label(),
+            "checkout"
+        );
+    }
+
+    #[test]
+    fn label_create_branch_variants() {
+        assert_eq!(
+            OpRequest::CreateBranch("new-feat".to_string()).label(),
+            "create branch"
+        );
+        assert_eq!(
+            OpRequest::CreateBranchFrom {
+                name: "feat".to_string(),
+                base: "main".to_string()
+            }
+            .label(),
+            "create branch"
+        );
+    }
+
+    #[test]
+    fn label_file_operations() {
+        assert_eq!(
+            OpRequest::StageFile("foo.rs".to_string()).label(),
+            "stage file"
+        );
+        assert_eq!(
+            OpRequest::UnstageFile("foo.rs".to_string()).label(),
+            "unstage file"
+        );
+        assert_eq!(
+            OpRequest::RevertFile {
+                file_path: "foo.rs".to_string(),
+                is_conflict: false
+            }
+            .label(),
+            "revert file"
+        );
+        assert_eq!(
+            OpRequest::DiscardFile("foo.rs".to_string()).label(),
+            "discard file"
+        );
+        assert_eq!(
+            OpRequest::SavePatchAndRevert {
+                file_path: "foo.rs".to_string()
+            }
+            .label(),
+            "save patch and revert"
+        );
+        assert_eq!(
+            OpRequest::ApplyPatch {
+                file_path: "foo.patch".to_string()
+            }
+            .label(),
+            "apply patch"
+        );
+    }
+
+    #[test]
+    fn label_branch_sync_operations() {
+        assert_eq!(
+            OpRequest::DeleteBranch("feat".to_string()).label(),
+            "delete branch"
+        );
+        assert_eq!(
+            OpRequest::PullBranch {
+                name: "feat".to_string(),
+                upstream: "origin/feat".to_string()
+            }
+            .label(),
+            "pull branch feat"
+        );
+        assert_eq!(
+            OpRequest::PushBranch {
+                name: "feat".to_string()
+            }
+            .label(),
+            "push branch feat"
+        );
+        assert_eq!(
+            OpRequest::ForcePushBranch {
+                name: "feat".to_string()
+            }
+            .label(),
+            "force push branch feat"
+        );
+    }
+
+    #[test]
+    fn label_commit_and_amend() {
+        assert_eq!(
+            OpRequest::Commit {
+                message: "fix: bug".to_string(),
+                amend: false
+            }
+            .label(),
+            "commit"
+        );
+        assert_eq!(
+            OpRequest::Commit {
+                message: "fix: bug".to_string(),
+                amend: true
+            }
+            .label(),
+            "amend commit"
+        );
+    }
+
+    #[test]
+    fn label_run_repo_command_uses_name() {
+        assert_eq!(
+            OpRequest::RunRepoCommand {
+                name: "Deploy".to_string(),
+                cmd: "make deploy".to_string(),
+                background: false
+            }
+            .label(),
+            "Deploy"
+        );
+    }
+
     #[test]
     fn spawn_op_refresh_populates_fresh_status() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -508,6 +663,402 @@ mod tests {
             result.fresh_status.is_none(),
             "non-Refresh ops must not populate fresh_status"
         );
+    }
+
+    fn make_committed_repo(tmp: &tempfile::TempDir) -> String {
+        let repo = git2::Repository::init(tmp.path()).expect("git init");
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "Test").unwrap();
+        cfg.set_str("user.email", "test@example.com").unwrap();
+        drop(cfg);
+
+        let path = tmp.path().to_str().unwrap().to_string();
+        let readme = tmp.path().join("README.md");
+        std::fs::write(&readme, "hello").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("README.md")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = repo.signature().unwrap();
+        repo.commit(Some("refs/heads/main"), &sig, &sig, "initial commit", &tree, &[])
+            .unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+        path
+    }
+
+    fn run_op_sync(repo_path: &str, op: OpRequest) -> OpResult {
+        let (tx, rx) = mpsc::channel::<OpResult>();
+        spawn_op(repo_path.to_string(), op, "git".to_string(), tx);
+        rx.recv_timeout(std::time::Duration::from_secs(15))
+            .expect("op result within timeout")
+    }
+
+    #[test]
+    fn spawn_op_stage_and_unstage_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        std::fs::write(tmp.path().join("new.txt"), "content").unwrap();
+
+        let stage_result = run_op_sync(&path, OpRequest::StageFile("new.txt".to_string()));
+        assert!(stage_result.success, "StageFile must succeed");
+        assert!(stage_result.fresh_status.is_none());
+
+        let unstage_result = run_op_sync(&path, OpRequest::UnstageFile("new.txt".to_string()));
+        assert!(unstage_result.success, "UnstageFile must succeed");
+    }
+
+    #[test]
+    fn spawn_op_commit_creates_new_commit() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        std::fs::write(tmp.path().join("file.txt"), "new content").unwrap();
+        run_op_sync(&path, OpRequest::StageFile("file.txt".to_string()));
+
+        let commit_result = run_op_sync(
+            &path,
+            OpRequest::Commit {
+                message: "test commit".to_string(),
+                amend: false,
+            },
+        );
+        assert!(commit_result.success, "Commit must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.summary().unwrap_or(""), "test commit");
+    }
+
+    #[test]
+    fn spawn_op_create_branch_succeeds() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let result = run_op_sync(&path, OpRequest::CreateBranch("new-feature".to_string()));
+        assert!(result.success, "CreateBranch must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        let branch = repo.find_branch("new-feature", git2::BranchType::Local);
+        assert!(branch.is_ok(), "branch new-feature must exist after create");
+    }
+
+    #[test]
+    fn spawn_op_checkout_branch_switches_head() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        run_op_sync(&path, OpRequest::CreateBranch("feature".to_string()));
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::CheckoutBranch {
+                name: "feature".to_string(),
+                is_remote: false,
+            },
+        );
+        assert!(result.success, "CheckoutBranch must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        let head = repo.head().unwrap();
+        let branch_name = head
+            .shorthand()
+            .unwrap_or("");
+        assert_eq!(branch_name, "feature");
+    }
+
+    #[test]
+    fn spawn_op_revert_file_restores_modified_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        // Modify the committed README
+        std::fs::write(tmp.path().join("README.md"), "modified").unwrap();
+
+        let status_before = crate::git::get_repo_status(&path, false).unwrap();
+        assert_eq!(status_before.modified, 1, "should have a modified file before revert");
+
+        let revert_result = run_op_sync(
+            &path,
+            OpRequest::RevertFile {
+                file_path: "README.md".to_string(),
+                is_conflict: false,
+            },
+        );
+        assert!(revert_result.success, "RevertFile must succeed");
+
+        let status_after = crate::git::get_repo_status(&path, false).unwrap();
+        assert!(status_after.is_clean(), "repo must be clean after revert");
+    }
+
+    #[test]
+    fn spawn_op_create_branch_from_base_creates_at_correct_commit() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::CreateBranchFrom {
+                name: "new-from-main".to_string(),
+                base: "main".to_string(),
+            },
+        );
+        assert!(result.success, "CreateBranchFrom must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        assert!(repo
+            .find_branch("new-from-main", git2::BranchType::Local)
+            .is_ok());
+    }
+
+    #[test]
+    fn spawn_op_delete_branch_removes_branch() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        run_op_sync(&path, OpRequest::CreateBranch("to-delete".to_string()));
+        run_op_sync(
+            &path,
+            OpRequest::CheckoutBranch {
+                name: "main".to_string(),
+                is_remote: false,
+            },
+        );
+
+        let result = run_op_sync(&path, OpRequest::DeleteBranch("to-delete".to_string()));
+        assert!(result.success, "DeleteBranch must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        assert!(repo
+            .find_branch("to-delete", git2::BranchType::Local)
+            .is_err());
+    }
+
+    #[test]
+    fn spawn_op_revert_conflict_file_unstages_and_restores() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        std::fs::write(tmp.path().join("README.md"), "conflict content").unwrap();
+        run_op_sync(&path, OpRequest::StageFile("README.md".to_string()));
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::RevertFile {
+                file_path: "README.md".to_string(),
+                is_conflict: true,
+            },
+        );
+        assert!(result.success, "RevertFile with is_conflict must succeed");
+
+        let status = crate::git::get_repo_status(&path, false).unwrap();
+        assert!(status.is_clean(), "repo must be clean after conflict revert");
+    }
+
+    #[test]
+    fn spawn_op_discard_file_removes_untracked_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let file = tmp.path().join("discard_me.txt");
+        std::fs::write(&file, "data").unwrap();
+
+        let result = run_op_sync(&path, OpRequest::DiscardFile("discard_me.txt".to_string()));
+        assert!(result.success, "DiscardFile must succeed");
+        assert!(!file.exists(), "file must be removed");
+        assert!(result.lines.iter().any(|l| l.contains("deleted")));
+    }
+
+    #[test]
+    fn spawn_op_discard_file_fails_for_nonexistent_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let result = run_op_sync(&path, OpRequest::DiscardFile("nonexistent.txt".to_string()));
+        assert!(!result.success, "DiscardFile must fail for non-existent file");
+        assert!(result.lines.iter().any(|l| l.contains("error")));
+    }
+
+    #[test]
+    fn spawn_op_save_patch_and_revert_creates_patch_and_restores_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        std::fs::write(tmp.path().join("README.md"), "modified content").unwrap();
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::SavePatchAndRevert {
+                file_path: "README.md".to_string(),
+            },
+        );
+        assert!(result.success, "SavePatchAndRevert must succeed");
+        assert!(
+            tmp.path().join("README.md.patch").exists(),
+            "patch file must be created"
+        );
+
+        let content = std::fs::read_to_string(tmp.path().join("README.md")).unwrap();
+        assert_eq!(content, "hello", "file must be restored to original content");
+    }
+
+    #[test]
+    fn spawn_op_save_patch_and_revert_fails_when_no_diff() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::SavePatchAndRevert {
+                file_path: "README.md".to_string(),
+            },
+        );
+        assert!(!result.success, "SavePatchAndRevert must fail when no diff");
+        assert!(result.lines.iter().any(|l| l.contains("no diff")));
+    }
+
+    #[test]
+    fn spawn_op_apply_patch_applies_saved_patch() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        std::fs::write(tmp.path().join("README.md"), "patched content").unwrap();
+        run_op_sync(
+            &path,
+            OpRequest::SavePatchAndRevert {
+                file_path: "README.md".to_string(),
+            },
+        );
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::ApplyPatch {
+                file_path: "README.md.patch".to_string(),
+            },
+        );
+        assert!(result.success, "ApplyPatch must succeed");
+
+        let content = std::fs::read_to_string(tmp.path().join("README.md")).unwrap();
+        assert_eq!(content, "patched content", "patch must be applied");
+    }
+
+    #[test]
+    fn spawn_op_amend_commit_updates_message() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        std::fs::write(tmp.path().join("file.txt"), "content").unwrap();
+        run_op_sync(&path, OpRequest::StageFile("file.txt".to_string()));
+        run_op_sync(
+            &path,
+            OpRequest::Commit {
+                message: "original message".to_string(),
+                amend: false,
+            },
+        );
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::Commit {
+                message: "amended message".to_string(),
+                amend: true,
+            },
+        );
+        assert!(result.success, "Commit amend must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.summary().unwrap_or(""), "amended message");
+    }
+
+    #[test]
+    fn spawn_op_run_repo_command_foreground_captures_output() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::RunRepoCommand {
+                name: "Echo".to_string(),
+                cmd: "echo hello-gitover".to_string(),
+                background: false,
+            },
+        );
+        assert!(result.success, "RunRepoCommand foreground must succeed");
+        assert!(result.lines.iter().any(|l| l.contains("hello-gitover")));
+    }
+
+    #[test]
+    fn spawn_op_run_repo_command_background_succeeds() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::RunRepoCommand {
+                name: "Background".to_string(),
+                cmd: "echo bg-cmd".to_string(),
+                background: true,
+            },
+        );
+        assert!(result.success, "RunRepoCommand background must succeed");
+    }
+
+    #[test]
+    fn spawn_op_checkout_with_dirty_state_auto_stashes_and_pops() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        run_op_sync(&path, OpRequest::CreateBranch("feature".to_string()));
+        run_op_sync(
+            &path,
+            OpRequest::CheckoutBranch {
+                name: "main".to_string(),
+                is_remote: false,
+            },
+        );
+
+        std::fs::write(tmp.path().join("README.md"), "dirty modification").unwrap();
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::CheckoutBranch {
+                name: "feature".to_string(),
+                is_remote: false,
+            },
+        );
+        assert!(
+            result.success,
+            "CheckoutBranch with dirty working tree must succeed"
+        );
+
+        let repo = git2::Repository::open(&path).unwrap();
+        assert_eq!(repo.head().unwrap().shorthand().unwrap_or(""), "feature");
+    }
+
+    #[test]
+    fn spawn_op_undo_commit_restores_file_as_staged() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        std::fs::write(tmp.path().join("undo_me.txt"), "to undo").unwrap();
+        run_op_sync(&path, OpRequest::StageFile("undo_me.txt".to_string()));
+        run_op_sync(
+            &path,
+            OpRequest::Commit {
+                message: "will be undone".to_string(),
+                amend: false,
+            },
+        );
+
+        let undo_result = run_op_sync(&path, OpRequest::UndoCommit);
+        assert!(undo_result.success, "UndoCommit must succeed");
+
+        // --mixed reset leaves changes in the working tree (unstaged),
+        // so the file appears as untracked (added) rather than staged.
+        let status = crate::git::get_repo_status(&path, false).unwrap();
+        assert!(!status.is_clean(), "repo must have changes after undo commit");
     }
 }
 

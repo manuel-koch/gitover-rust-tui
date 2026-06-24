@@ -458,3 +458,167 @@ fn make_relative(abs: &str, base_dir: &Path) -> String {
         Err(_) => abs.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn repo_section_default_has_no_name() {
+        let section = RepoSection::new_default();
+        assert!(section.is_default());
+        assert!(section.name.is_none());
+    }
+
+    #[test]
+    fn repo_section_named_is_not_default() {
+        let section = RepoSection {
+            name: Some("Work".to_string()),
+            repos: vec![],
+            collapsed: false,
+        };
+        assert!(!section.is_default());
+    }
+
+    #[test]
+    fn find_state_path_returns_a_path() {
+        let p = find_state_path();
+        assert!(!p.to_string_lossy().is_empty());
+    }
+
+    #[test]
+    fn default_section_returns_immutable_ref_to_first_section() {
+        let state = State::default();
+        assert!(state.default_section().is_default());
+        assert!(state.default_section().repos.is_empty());
+    }
+
+    #[test]
+    fn default_section_mut_allows_modifying_first_section() {
+        let mut state = State::default();
+        state.default_section_mut().repos.push("/some/path".to_string());
+        assert_eq!(state.sections[0].repos.len(), 1);
+    }
+
+    #[test]
+    fn only_named_sections_false_when_no_named_sections() {
+        let state = State::default();
+        assert!(!state.only_named_sections());
+    }
+
+    #[test]
+    fn only_named_sections_true_when_default_empty_and_named_exists() {
+        let mut state = State::default();
+        state.add_section("Work".to_string());
+        assert!(state.only_named_sections());
+    }
+
+    #[test]
+    fn section_idx_for_flat_repo_idx_finds_correct_section() {
+        let mut state = State::default();
+        state.sections[0].repos.push("/repo/a".to_string());
+        state.sections[0].repos.push("/repo/b".to_string());
+        state.add_section("Work".to_string());
+        state.sections[1].repos.push("/repo/c".to_string());
+
+        assert_eq!(state.section_idx_for_flat_repo_idx(0), 0);
+        assert_eq!(state.section_idx_for_flat_repo_idx(1), 0);
+        assert_eq!(state.section_idx_for_flat_repo_idx(2), 1);
+        assert_eq!(state.section_idx_for_flat_repo_idx(99), 0);
+    }
+
+    #[test]
+    fn section_idx_for_path_finds_repo_in_named_section() {
+        let mut state = State::default();
+        state.add_section("Work".to_string());
+        state.sections[1].repos.push("/work/repo".to_string());
+
+        assert_eq!(state.section_idx_for_path("/work/repo"), Some(1));
+        assert_eq!(state.section_idx_for_path("/not/there"), None);
+    }
+
+    #[test]
+    fn sort_section_repos_case_sensitive_uses_ascii_order() {
+        let mut section = RepoSection {
+            name: None,
+            repos: vec!["/b/repo".to_string(), "/A/repo".to_string()],
+            collapsed: false,
+        };
+        sort_section_repos(&mut section, true);
+        assert_eq!(section.repos[0], "/A/repo");
+    }
+
+    #[test]
+    fn rename_section_invalid_idx_returns_none() {
+        let mut state = State::default();
+        assert!(state.rename_section(0, "Name".to_string()).is_none());
+        assert!(state.rename_section(99, "Name".to_string()).is_none());
+    }
+
+    #[test]
+    fn rename_section_duplicate_name_returns_none() {
+        let mut state = State::default();
+        state.add_section("Alpha".to_string());
+        state.add_section("Beta".to_string());
+        let alpha_idx = state
+            .sections
+            .iter()
+            .position(|s| s.name.as_deref() == Some("Alpha"))
+            .unwrap();
+        assert!(state.rename_section(alpha_idx, "Beta".to_string()).is_none());
+    }
+
+    #[test]
+    fn remove_section_idx_zero_is_noop() {
+        let mut state = State::default();
+        state.add_section("Work".to_string());
+        let len = state.sections.len();
+        state.remove_section(0);
+        assert_eq!(state.sections.len(), len);
+    }
+
+    #[test]
+    fn remove_section_out_of_bounds_is_noop() {
+        let mut state = State::default();
+        let len = state.sections.len();
+        state.remove_section(99);
+        assert_eq!(state.sections.len(), len);
+    }
+
+    #[test]
+    fn state_save_creates_nested_parent_dirs() {
+        let tmp = TempDir::new().unwrap();
+        let state_path = tmp.path().join("nested").join("dir").join("state.yaml");
+        let state = State {
+            path: state_path.clone(),
+            ..Default::default()
+        };
+        state.save().unwrap();
+        assert!(state_path.exists());
+    }
+
+    #[test]
+    fn state_load_from_yaml_with_empty_content_uses_default_sections() {
+        let tmp = TempDir::new().unwrap();
+        let state_path = tmp.path().join("s.yaml");
+        std::fs::write(&state_path, "{}\n").unwrap();
+        let loaded = State::load_from_path(state_path);
+        assert_eq!(loaded.sections.len(), 1);
+        assert!(loaded.sections[0].is_default());
+    }
+
+    #[test]
+    fn state_load_from_yaml_inserts_default_section_when_named_is_first() {
+        let tmp = TempDir::new().unwrap();
+        let state_path = tmp.path().join("s.yaml");
+        std::fs::write(&state_path, "sections:\n  - name: Work\n    repos: []\n").unwrap();
+        let loaded = State::load_from_path(state_path);
+        assert!(
+            loaded.sections[0].is_default(),
+            "default section must be at index 0"
+        );
+        assert_eq!(loaded.sections.len(), 2);
+        assert_eq!(loaded.sections[1].name.as_deref(), Some("Work"));
+    }
+}

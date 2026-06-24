@@ -1,6 +1,6 @@
 REPO_ROOT := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
 
-.PHONY: lint format build build-and-run test test-coverage release install clean rebuild tag-version outdated-dependencies upgrade-dependencies
+.PHONY: lint format build build-and-run test test-coverage test-coverage-missing release install clean rebuild tag-version outdated-dependencies upgrade-dependencies
 
 # Run cargo check/clippy and report all warnings
 lint:
@@ -36,10 +36,22 @@ test:
 	cargo test
 
 # Run all tests and print a per-file coverage summary.
+# Fails if total line coverage of testable files drops below the threshold.
+# ui.rs and main.rs are excluded: they require a live terminal (ratatui/crossterm)
+# and cannot be unit-tested without a full terminal emulator harness.
 # Requires: cargo install cargo-llvm-cov
 #           rustup component add llvm-tools-preview
 test-coverage:
-	cargo llvm-cov --summary-only
+	cargo llvm-cov \
+		--ignore-filename-regex "(ui|main)\.rs" \
+		--fail-under-lines 80
+
+# Same as test-coverage but also prints uncovered line numbers per file.
+# Useful for finding exactly which lines to target with new tests.
+test-coverage-missing:
+	cargo llvm-cov \
+		--ignore-filename-regex "(ui|main)\.rs" \
+		--show-missing-lines
 
 # Build optimized release binary (output: target/release/gitover)
 release:
