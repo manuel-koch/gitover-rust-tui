@@ -470,8 +470,14 @@ mod tests {
             .recv_timeout(std::time::Duration::from_secs(10))
             .expect("op result within timeout");
         assert!(result.success, "Refresh op must succeed");
-        assert!(result.lines.is_empty(), "Refresh op must produce no output lines");
-        assert!(result.fresh_status.is_some(), "Refresh op must populate fresh_status");
+        assert!(
+            result.lines.is_empty(),
+            "Refresh op must produce no output lines"
+        );
+        assert!(
+            result.fresh_status.is_some(),
+            "Refresh op must populate fresh_status"
+        );
         assert_eq!(
             result.fresh_status.unwrap().path,
             tmp.path().to_str().unwrap(),
@@ -498,7 +504,10 @@ mod tests {
         let result = rx
             .recv_timeout(std::time::Duration::from_secs(10))
             .expect("op result within timeout");
-        assert!(result.fresh_status.is_none(), "non-Refresh ops must not populate fresh_status");
+        assert!(
+            result.fresh_status.is_none(),
+            "non-Refresh ops must not populate fresh_status"
+        );
     }
 }
 

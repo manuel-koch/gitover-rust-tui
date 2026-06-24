@@ -7,10 +7,13 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Bugs
 
-- [ ] Commit-dialog: Can't move the cursor left/right within commit-message,
+- [x] Commit-dialog: Can't move the cursor left/right within commit-message,
       only able to append at the end of line or remove from end of the line.
-- [ ] Commit-dialog: Can't enter newline in commit-message,
+- [x] Commit-dialog: Can't enter newline in commit-message,
       shift-enter just inserts a "j" and alt-enter does nothing.
+- [ ] Status-pane: stage or unstage a file, afterwards a different file is selected.
+      Would expect that for those actions where the file still exists after the action
+      ( only with a different status ) that the same file stays selected.
 
 ## Git Status Columns
 

@@ -16,10 +16,12 @@ use crate::config::Config;
 pub use crate::git::HistoryFilter;
 use crate::git::{BranchInfo, CommitEntry, FileStatusKind, RepoStatus};
 use crate::state::State;
+use ratatui::style::Style;
 use ratatui_explorer::FileExplorer;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
+use tui_textarea::TextArea;
 
 /// What kind of git operation is currently running for a repo.
 /// Drives the per-repo busy indicator + activity column.
@@ -312,7 +314,7 @@ pub struct App {
     /// Branch name staged for force-push from the Branches pane (shown in confirm dialog).
     pub branch_to_force_push: String,
     /// Commit message being composed in the CommitMessageInput popup.
-    pub commit_message: String,
+    pub commit_textarea: TextArea<'static>,
     /// When true the CommitMessageInput popup runs `git commit --amend`.
     pub commit_is_amend: bool,
     /// Number of files changed in the HEAD commit; populated when opening the amend dialog.
@@ -476,7 +478,7 @@ impl App {
             branch_input_base: String::new(),
             branch_to_delete: String::new(),
             branch_to_force_push: String::new(),
-            commit_message: String::new(),
+            commit_textarea: TextArea::default(),
             commit_is_amend: false,
             commit_head_file_count: 0,
             theme_idx: 0,
@@ -1299,7 +1301,7 @@ impl App {
 
     /// Open the commit message dialog for a fresh commit.
     pub fn open_commit_input(&mut self) {
-        self.commit_message = String::new();
+        self.commit_textarea = Self::new_commit_textarea(self.theme().input_text);
         self.commit_is_amend = false;
         self.mode = AppMode::CommitMessageInput;
     }
@@ -1310,12 +1312,43 @@ impl App {
             Some(r) => r.path.clone(),
             None => return,
         };
-        self.commit_message = crate::git::get_head_commit_message(&path)
+        let message = crate::git::get_head_commit_message(&path)
             .map(|m| m.trim_end().to_string())
             .unwrap_or_default();
+        let input_text_color = self.theme().input_text;
+        let lines: Vec<String> = message.lines().map(|l| l.to_string()).collect();
+        let mut textarea = if lines.is_empty() {
+            Self::new_commit_textarea(input_text_color)
+        } else {
+            let mut ta = TextArea::new(lines);
+            Self::style_commit_textarea(&mut ta, input_text_color);
+            ta
+        };
+        textarea.move_cursor(tui_textarea::CursorMove::Bottom);
+        textarea.move_cursor(tui_textarea::CursorMove::End);
+        self.commit_textarea = textarea;
         self.commit_head_file_count = crate::git::get_head_commit_file_count(&path);
         self.commit_is_amend = true;
         self.mode = AppMode::CommitMessageInput;
+    }
+
+    pub fn new_commit_textarea(input_text_color: ratatui::style::Color) -> TextArea<'static> {
+        let mut textarea = TextArea::default();
+        Self::style_commit_textarea(&mut textarea, input_text_color);
+        textarea
+    }
+
+    fn style_commit_textarea(
+        textarea: &mut TextArea<'static>,
+        input_text_color: ratatui::style::Color,
+    ) {
+        textarea.set_style(Style::default().fg(input_text_color));
+        textarea.set_cursor_line_style(Style::default());
+    }
+
+    /// Extract the current commit message text from the textarea.
+    pub fn commit_message_text(&self) -> String {
+        self.commit_textarea.lines().join("\n")
     }
 
     // ── Git History ───────────────────────────────────────────────────────────
@@ -2333,7 +2366,9 @@ mod tests {
         let state_file = tmp.path().join("state.yaml");
         let mut app = App::new_with_overrides(None, Some(state_file));
         app.state.add_section("Work".to_string()).unwrap();
-        app.state.sections[1].repos.push("/fake/work-repo".to_string());
+        app.state.sections[1]
+            .repos
+            .push("/fake/work-repo".to_string());
         app.repos = vec![crate::git::RepoStatus::error_entry("/fake/work-repo", "")];
         // Row 0 = SectionTitle(1); row 1 = Repo(0).
         app.selected = 1;

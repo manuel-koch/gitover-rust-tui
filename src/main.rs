@@ -344,7 +344,7 @@ where
                 }
                 AppMode::CommitMessageInput => {
                     if let Event::Key(key) = &ev {
-                        handle_commit_message_key(app, op_tx, key.code, key.modifiers);
+                        handle_commit_message_key(app, op_tx, *key);
                     }
                 }
                 AppMode::ConfirmForcePush => {
@@ -1825,34 +1825,34 @@ fn handle_new_branch_key(
 fn handle_commit_message_key(
     app: &mut App,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
-    key: KeyCode,
-    modifiers: KeyModifiers,
+    key: crossterm::event::KeyEvent,
 ) {
-    match key {
+    match key.code {
         KeyCode::Esc => {
-            app.commit_message.clear();
+            let input_text = app.theme().input_text;
+            app.commit_textarea = App::new_commit_textarea(input_text);
             app.restore_base_mode();
         }
-        KeyCode::Enter => {
-            if modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) {
-                app.commit_message.push('\n');
-            } else {
-                let message = app.commit_message.trim().to_string();
-                if !message.is_empty() {
-                    let amend = app.commit_is_amend;
-                    app.commit_message.clear();
-                    app.restore_base_mode();
-                    launch_op(app, op_tx, OpRequest::Commit { message, amend });
-                }
+        KeyCode::Enter
+            if !key
+                .modifiers
+                .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT | KeyModifiers::CONTROL) =>
+        {
+            let message = app.commit_message_text().trim().to_string();
+            if !message.is_empty() {
+                let amend = app.commit_is_amend;
+                let input_text = app.theme().input_text;
+                app.commit_textarea = App::new_commit_textarea(input_text);
+                app.restore_base_mode();
+                launch_op(app, op_tx, OpRequest::Commit { message, amend });
             }
         }
-        KeyCode::Backspace => {
-            app.commit_message.pop();
+        KeyCode::Enter => {
+            app.commit_textarea.insert_newline();
         }
-        KeyCode::Char(c) => {
-            app.commit_message.push(c);
+        _ => {
+            app.commit_textarea.input(tui_textarea::Input::from(key));
         }
-        _ => {}
     }
 }
 

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Clear, FrameExt as _, Paragraph, Row, Table, TableState},
@@ -2390,43 +2390,36 @@ fn draw_commit_message_input(frame: &mut Frame, app: &App) {
 
     frame.render_widget(Paragraph::new("Commit message:"), chunks[0]);
 
-    // Split message into display lines and append cursor to the last one.
-    let text_area_height = chunks[1].height as usize;
-    let raw_lines: Vec<&str> = app.commit_message.split('\n').collect();
-    let total_lines = raw_lines.len();
-    // Scroll so the cursor (last line) is always visible.
-    let scroll_offset = total_lines.saturating_sub(text_area_height);
-    let visible: Vec<Line> = raw_lines
-        .iter()
-        .enumerate()
-        .skip(scroll_offset)
-        .take(text_area_height)
-        .map(|(i, line)| {
-            if i == total_lines - 1 {
-                Line::from(Span::styled(
-                    format!("{line}▍"),
-                    Style::default().fg(t.input_text),
-                ))
-            } else {
-                Line::from(Span::styled(
-                    line.to_string(),
-                    Style::default().fg(t.input_text),
-                ))
-            }
-        })
-        .collect();
-    frame.render_widget(Paragraph::new(visible), chunks[1]);
+    frame.render_widget(&app.commit_textarea, chunks[1]);
+
+    let hint_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(1), Constraint::Length(22)])
+        .split(chunks[2]);
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("Enter", Style::default().fg(t.popup_confirm)),
             Span::raw(" confirm    "),
-            Span::styled("Shift-↵ / Alt-↵", Style::default().fg(t.popup_confirm)),
+            Span::styled("Alt-↵", Style::default().fg(t.popup_confirm)),
             Span::raw(" newline    "),
             Span::styled("Esc", Style::default().fg(t.popup_cancel)),
             Span::raw(" cancel"),
         ])),
-        chunks[2],
+        hint_chunks[0],
+    );
+
+    let (cursor_row, cursor_col) = app.commit_textarea.cursor();
+    let total_lines = app.commit_textarea.lines().len();
+    frame.render_widget(
+        Paragraph::new(format!(
+            "Ln {}/{} Col {}",
+            cursor_row + 1,
+            total_lines,
+            cursor_col + 1,
+        ))
+        .alignment(Alignment::Right),
+        hint_chunks[1],
     );
 }
 
