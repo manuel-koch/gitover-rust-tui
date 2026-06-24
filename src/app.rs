@@ -280,6 +280,9 @@ pub struct App {
     pub file_status_selected: usize,
     /// Scroll offset (top row) of the File Status pane.
     pub file_status_scroll: usize,
+    /// File path to restore as selected after the next file-op refresh completes.
+    /// Set before launching a stage/unstage op; cleared by `reselect_file_after_refresh`.
+    pub reselect_file_path: Option<String>,
     /// Scroll offset of the log panel, measured in lines **back from the tail**.
     /// 0  = show the most-recent entries (tail).
     /// N  = show the view starting N lines before the tail.
@@ -466,6 +469,7 @@ impl App {
             focus: Focus::Repos,
             file_status_selected: 0,
             file_status_scroll: 0,
+            reselect_file_path: None,
             log_offset: 0,
             log_follow: true,
             next_auto_fetch: Some(Instant::now() + interval),
@@ -1931,6 +1935,31 @@ impl App {
         }
     }
 
+    /// After a file-op refresh, restore the previously selected file by path.
+    /// Falls back to clamping when the file no longer appears (e.g. after discard).
+    /// Only acts when `reselect_file_path` is set AND the refreshed repo is the one
+    /// currently shown in the status pane.
+    pub fn reselect_file_after_refresh(&mut self, refreshed_repo_path: &str) {
+        let target_path = match self.reselect_file_path.take() {
+            Some(p) => p,
+            None => return,
+        };
+        let selected_repo_path = self
+            .selected_repo_idx()
+            .and_then(|i| self.repos.get(i))
+            .map(|r| r.path.clone());
+        if selected_repo_path.as_deref() != Some(refreshed_repo_path) {
+            return;
+        }
+        let files = self.selected_files();
+        if let Some(idx) = files.iter().position(|f| f.path == target_path) {
+            self.file_status_selected = idx;
+        } else {
+            let last = files.len().saturating_sub(1);
+            self.file_status_selected = self.file_status_selected.min(last);
+        }
+    }
+
     /// Convenience: the kinds present in the selected repo (used to colour
     /// the File Status header).
     #[allow(dead_code)]
@@ -2435,5 +2464,139 @@ mod tests {
             app.file_explorer.is_some(),
             "file_explorer must remain set after add_repo_path"
         );
+    }
+
+    fn make_file_entry(path: &str, status: crate::git::FileStatusKind) -> crate::git::FileEntry {
+        crate::git::FileEntry {
+            path: path.to_string(),
+            status,
+        }
+    }
+
+    fn make_repo_with_files(
+        path: &str,
+        files: Vec<crate::git::FileEntry>,
+    ) -> crate::git::RepoStatus {
+        let mut repo = crate::git::RepoStatus::error_entry(path, "");
+        repo.files = files;
+        repo
+    }
+
+    fn app_with_repo(repo_path: &str, files: Vec<crate::git::FileEntry>) -> App {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        app.state.sections[0].repos.push(repo_path.to_string());
+        app.repos = vec![make_repo_with_files(repo_path, files)];
+        app.selected = 0;
+        app
+    }
+
+    #[test]
+    fn reselect_file_after_refresh_finds_file_at_new_index() {
+        // Before: [staged "a.rs" (idx 0), modified "b.rs" (idx 1)]  → user selects idx 0
+        // After unstage: [modified "b.rs" (idx 0), modified "a.rs" (idx 1)]
+        // Expect: idx 1 ("a.rs" is now at position 1)
+        let repo_path = "/fake/repo";
+        let mut app = app_with_repo(
+            repo_path,
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Staged),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+            ],
+        );
+        app.file_status_selected = 0;
+        app.reselect_file_path = Some("a.rs".to_string());
+
+        // Simulate refresh: "a.rs" moved to index 1 (sort order changed after unstage).
+        app.repos[0].files = vec![
+            make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+            make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+        ];
+
+        app.reselect_file_after_refresh(repo_path);
+
+        assert_eq!(
+            app.file_status_selected, 1,
+            "should follow a.rs to its new index"
+        );
+        assert!(app.reselect_file_path.is_none(), "field must be cleared");
+    }
+
+    #[test]
+    fn reselect_file_after_refresh_clamps_when_file_gone() {
+        // File was discarded and is no longer in the list — selection should clamp
+        // to the last remaining file rather than pointing out of bounds.
+        let repo_path = "/fake/repo";
+        let mut app = app_with_repo(
+            repo_path,
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+                make_file_entry("c.rs", crate::git::FileStatusKind::Modified),
+            ],
+        );
+        app.file_status_selected = 2;
+        app.reselect_file_path = Some("c.rs".to_string());
+
+        // Simulate refresh: "c.rs" no longer present.
+        app.repos[0].files = vec![
+            make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+            make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+        ];
+
+        app.reselect_file_after_refresh(repo_path);
+
+        assert_eq!(
+            app.file_status_selected, 1,
+            "should clamp to last valid index"
+        );
+        assert!(app.reselect_file_path.is_none(), "field must be cleared");
+    }
+
+    #[test]
+    fn reselect_file_after_refresh_no_op_when_path_not_set() {
+        let repo_path = "/fake/repo";
+        let mut app = app_with_repo(
+            repo_path,
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+            ],
+        );
+        app.file_status_selected = 1;
+        app.reselect_file_path = None;
+
+        app.reselect_file_after_refresh(repo_path);
+
+        assert_eq!(
+            app.file_status_selected, 1,
+            "should not change when no path is pending"
+        );
+    }
+
+    #[test]
+    fn reselect_file_after_refresh_no_op_for_different_repo() {
+        // The op completed for a repo that is NOT the currently displayed one.
+        let displayed_repo = "/fake/repo-displayed";
+        let other_repo = "/fake/repo-other";
+        let mut app = app_with_repo(
+            displayed_repo,
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Staged),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+            ],
+        );
+        app.file_status_selected = 0;
+        app.reselect_file_path = Some("a.rs".to_string());
+
+        app.reselect_file_after_refresh(other_repo);
+
+        assert_eq!(
+            app.file_status_selected, 0,
+            "should not change for a different repo"
+        );
+        // Path is consumed even when skipped, so it won't linger.
+        assert!(app.reselect_file_path.is_none(), "field must be cleared");
     }
 }

@@ -11,7 +11,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
       only able to append at the end of line or remove from end of the line.
 - [x] Commit-dialog: Can't enter newline in commit-message,
       shift-enter just inserts a "j" and alt-enter does nothing.
-- [ ] Status-pane: stage or unstage a file, afterwards a different file is selected.
+- [x] Status-pane: stage or unstage a file, afterwards a different file is selected.
       Would expect that for those actions where the file still exists after the action
       ( only with a different status ) that the same file stays selected.
 

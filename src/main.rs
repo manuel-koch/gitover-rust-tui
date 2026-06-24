@@ -1317,6 +1317,7 @@ fn handle_op_result(app: &mut App, result: OpResult) {
     } else {
         refresh_single_repo(app, &result.repo_path);
     }
+    app.reselect_file_after_refresh(&result.repo_path);
     app.reload_history_if_open(true);
     app.refresh_branches_for_repo(&result.repo_path.clone());
 }
@@ -1574,10 +1575,12 @@ fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpRe
             app.open_amend_input();
         }
         's' => {
+            app.reselect_file_path = Some(file.path.clone());
             app.close_menu();
             launch_op(app, op_tx, OpRequest::StageFile(file.path));
         }
         'u' => {
+            app.reselect_file_path = Some(file.path.clone());
             app.close_menu();
             launch_op(app, op_tx, OpRequest::UnstageFile(file.path));
         }
