@@ -63,6 +63,25 @@ pub fn expand_env_vars(s: &str) -> (String, Vec<String>) {
     substitute(s, |name| std::env::var(name).ok())
 }
 
+/// Truncate `text` to at most `max_chars` display characters by removing the
+/// middle and replacing it with `"..."`. If the text already fits, it is
+/// returned unchanged.
+pub fn truncate_middle(text: &str, max_chars: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count <= max_chars {
+        return text.to_string();
+    }
+    if max_chars <= 3 {
+        return "...".to_string();
+    }
+    let available = max_chars - 3;
+    let left_count = available / 2;
+    let right_count = available - left_count;
+    let left: String = text.chars().take(left_count).collect();
+    let right: String = text.chars().skip(char_count - right_count).collect();
+    format!("{left}...{right}")
+}
+
 /// Expand `~` (home directory) and `${VAR}` environment variable references
 /// in a path string.
 /// Returns `(expanded_path, names_that_could_not_be_resolved)`.

@@ -23,6 +23,7 @@ use std::time::Instant;
 
 use crate::app::{App, AppMode, Focus, LogLevel, RepoOperation, VisibleRow};
 use crate::git::RepoStatus;
+use crate::utils::truncate_middle;
 
 /// Height (rows) of the header panel — used for layout and popup positioning.
 pub const HEADER_HEIGHT: u16 = 3;
@@ -1139,7 +1140,14 @@ fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let theme = app.theme();
     let selected_repo = app.selected_repo_idx().and_then(|i| app.repos.get(i));
     let title = match selected_repo {
-        Some(repo) => format!(" File Status — {} ", repo.path),
+        Some(repo) => {
+            let prefix = " File Status — ";
+            let suffix = " ";
+            let fixed = prefix.chars().count() + suffix.chars().count() + 2; // +2 for border corners
+            let max_path = (area.width as usize).saturating_sub(fixed);
+            let path = truncate_middle(&repo.path, max_path);
+            format!("{prefix}{path}{suffix}")
+        }
         None => " File Status ".to_string(),
     };
 
