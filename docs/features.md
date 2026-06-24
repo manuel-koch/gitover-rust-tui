@@ -18,6 +18,8 @@
 
 ## Configuration
 
+Full JSON Schemas for both files are in [`docs/config.schema.json`](./config.schema.json) and [`docs/state.schema.json`](./state.schema.json).
+
 - Config file lookup: searches for `gitover.config.yaml` starting from the current working directory
   and walking up to the filesystem root; falls back to `~/.config/gitover/config.yaml` if not found.
   Missing file is valid — default config is used.
@@ -42,9 +44,27 @@
   - Relative paths in the state file are resolved against the directory containing the state file.
   - When saving, repo paths that are under the state file's directory are stored as relative paths,
     keeping per-project state files portable.
+  - Repositories are organised into named sections; a default (unnamed) section always exists, is always shown first, and cannot be renamed, removed, or collapsed
+  - Section collapse state is stored per named section; the cursor position within the repository list is not persisted
 
 ## Repository Management
 
+- Repositories can be organised into named **sections** in the Repositories pane:
+  - A default (unnamed) section always exists, is shown first, and cannot be renamed, removed, or collapsed
+  - Named sections appear in case-insensitive alphabetical order; their repos are indented two spaces and sorted by path
+  - Section title rows show `▶` (collapsed) or `▼` (expanded); `←` collapses a named section, `→` expands it; collapse state is stored per section in the state file
+  - A collapsed section shows an aggregated summary row (dirty count, upstream/trunk divergence, active operations); the summary is hidden when the section is expanded
+  - When a section-title row is selected, the Status Details pane shows a "no repository selected" placeholder and the History pane is cleared
+  - The Repositories pane title changes to `Repositories ( <section-name> )` when the cursor is on a named-section row; plain `Repositories` for the default section
+  - `f` on a section-title row fetches all repos in that section in parallel; `r` refreshes all repos in that section
+  - Each repo shows a `scan` spinner in the Activity column while a refresh is in progress (applies to both single-repo `r` and section-level `r`)
+- Section management actions (available via action menu when a section-title row is selected):
+  - **Create Section** — prompts for a name; duplicate check is case-insensitive; newly created section is selected
+  - **Rename Section** — prompts for a new name (not available for the default section; duplicate check applied); renamed section remains selected
+  - **Remove Section** — shows confirmation dialog; all repos are moved to the default section; not available for the default section
+- Repository section actions (available via action menu when a repo row is selected):
+  - **Move to Section** — presents all sections except the current one (default section listed first); not shown when only a default section exists; moved repo stays selected in the target section
+- When adding a repository with `A`, it is added to the currently selected section; if no default-section repos exist, the picker shows a hint about how to move the repo to the default section afterwards
 - Add a repository with `A`; opens a directory-browser starting at the current working directory
   - `↑`/`↓` navigate the directory list
   - `→` / `Enter` navigates into the selected directory
@@ -87,6 +107,16 @@ Each tracked repository is shown as a table row with:
 - Column widths are distributed so branch/upstream/trunk columns are wider than status
 - Scroll indicators (▲ / ▼) appear at the top-right / bottom-right of the table when the
   repo list overflows the visible area
+
+Section-title rows appear above each named section's repositories:
+
+- Repository column: section name with `▶` (collapsed) or `▼` (expanded) prefix; repos are indented two spaces
+- When collapsed, the remaining columns show an aggregated summary:
+  - **Status**: `N dirty` (dirty colour) when any repo has local changes, otherwise `clean`
+  - **Activity**: spinner + operation label (or `N active`) when any repos have running operations
+  - **↑↓ Upstream**: `N ↑↓` (warning colour) when any repo has upstream divergence, otherwise `–`
+  - **↑↓ Trunk**: `N ↑↓` when any repo diverges from trunk, otherwise `–`
+- When expanded, per-repo rows show full individual details
 
 ## Git Operations
 
@@ -158,6 +188,7 @@ Dismiss the menu with `Esc` or by clicking outside it.
 
 - Title shows `Commit (N staged)` or `Amend Commit (N staged + M from HEAD)` where N is the current staged-file count and M is the number of files changed in the HEAD commit
 - `Enter` submits the commit; `Shift-↵` / `Alt-↵` inserts a newline into the message; `Esc` cancels
+- Arrow keys (`←` / `→`) move the cursor within the message; full in-line cursor navigation is supported
 - Amend Commit pre-fills the message with the current HEAD commit message
 - Runs `git commit -m <message>` or `git commit --amend -m <message>`
 
@@ -274,6 +305,7 @@ Opened with `Enter` on the HEAD commit row. Dismiss with `Esc`.
 | `Shift-↑` / `Shift-↓` (or `,` / `.`) | Previous / next commit header row (History pane only) |
 | `PgUp` / `PgDn` (Fn-Up/Down) | Jump 10 rows in focused pane or action menu; clamps at list boundaries, no wrap |
 | `Tab` / `Shift+Tab` | Cycle focus forward / backward between Repositories / Status Details / History / Details / Output Log panes |
+| `→` / `←` | Expand / Collapse selected named section in the Repositories pane |
 | `A` | Add repository (opens file picker) |
 | `D` | Remove selected repository (with confirmation) |
 | `Enter` | Open per-repo action menu (Repositories pane); open per-file action menu (Status Details pane); open log action menu (Output Log pane) |
@@ -322,8 +354,8 @@ In the action menu, `Esc` dismisses the menu without taking any action.
   - `Space` adds current directory as repo and keeps the picker open for further selections
 - Per-repo action menu popup (opened with `Enter`); dismissed with `Esc`
 - Action menus are sized and positioned relative to the pane they belong to:
-  width is derived from menu content (clamped at 80 % of the pane width), the popup
-  is centered horizontally over the current pane
+  width is derived from menu content (minimum 40 % of the terminal width, clamped at 80 % of the pane width),
+  the popup is centered horizontally over the current pane
 - Multiple built-in themes selectable at runtime with `T`
 
 ## Mouse Interaction

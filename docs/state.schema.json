@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gitover:state",
+  "title": "Gitover State",
+  "description": "Persisted application state saved to gitover.state.yaml (CWD-walk or ~/.config/gitover/state.yaml fallback). Written automatically on exit; hand-editing is supported.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sections": {
+      "type": "array",
+      "description": "Ordered list of repository sections. sections[0] is always the default (unnamed) section; sections[1..] are named sections in case-insensitive alphabetical order.",
+      "items": {
+        "$ref": "#/$defs/RepoSection"
+      },
+      "default": [{ "repos": [] }]
+    },
+    "show_file_status": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the Status Details pane was open on last exit."
+    },
+    "show_log": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the Output Log pane was open on last exit."
+    },
+    "show_history": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the Git History pane was open on last exit."
+    },
+    "show_details": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the Details (diff/commit) pane was open on last exit."
+    }
+  },
+  "$defs": {
+    "RepoSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repos"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Section name. Omit (or set to null) for the default (unnamed) section. Named sections are shown with a title row in the Repositories pane."
+        },
+        "repos": {
+          "type": "array",
+          "description": "Repository paths belonging to this section. Paths relative to the state file's directory are resolved against that directory; absolute paths are used as-is. On save, paths under the state file's directory are stored as relative paths.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "collapsed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Collapsed state of this section in the Repositories pane. Only meaningful for named sections; the default section is never collapsed. Omitted from the file when false."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "sections": [
+        {
+          "repos": [
+            "/home/user/projects/personal-repo"
+          ]
+        },
+        {
+          "name": "Work",
+          "repos": [
+            "/home/user/work/project-a",
+            "/home/user/work/project-b"
+          ],
+          "collapsed": false
+        },
+        {
+          "name": "OSS",
+          "repos": [
+            "/home/user/oss/some-lib"
+          ],
+          "collapsed": true
+        }
+      ],
+      "show_file_status": true,
+      "show_log": false,
+      "show_history": true,
+      "show_details": false
+    }
+  ]
+}

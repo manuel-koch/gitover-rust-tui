@@ -32,6 +32,7 @@ pub struct RepoCommand {
 }
 
 /// Application configuration loaded from `gitover.config.yaml` (CWD-local or global).
+/// Schema: `docs/config.schema.json` — update it when adding or changing fields.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct Config {

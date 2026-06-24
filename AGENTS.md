@@ -68,8 +68,10 @@ tests/
   git_tests.rs    — unit + integration tests for git.rs
   config_tests.rs — unit tests for config.rs and state.rs
 docs/
-  features.md   — implemented feature reference (keep in sync with code)
-  todo.md       — living task list (never delete sections, use placeholder)
+  features.md        — implemented feature reference (keep in sync with code)
+  todo.md            — living task list (never delete sections, use placeholder)
+  config.schema.json — JSON Schema for gitover.config.yaml (keep in sync with config.rs)
+  state.schema.json  — JSON Schema for gitover.state.yaml (keep in sync with state.rs)
 Makefile        — build, lint, format, test, release, install, tag-version targets
 ```
 

@@ -65,6 +65,7 @@ struct RawState {
 }
 
 /// Persisted application state saved to `gitover.state.yaml`.
+/// Schema: `docs/state.schema.json` — update it when adding or changing fields.
 ///
 /// `sections[0]` is always the default (unnamed) section.
 /// `sections[1..]` are named sections kept in case-insensitive alphabetical order.

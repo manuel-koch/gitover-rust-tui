@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gitover:config",
+  "title": "Gitover Config",
+  "description": "Application configuration loaded from gitover.config.yaml (CWD-walk or ~/.config/gitover/config.yaml fallback). Missing file is valid — all fields have defaults.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "general": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "git": {
+          "type": "string",
+          "description": "Path to the git executable. Overrides whatever `git` resolves to on $PATH."
+        },
+        "auto_fetch_interval": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 600,
+          "description": "Interval in seconds for automatic background fetch of all repos. Default: 600 (10 minutes). Set to 0 to disable."
+        },
+        "debug_log": {
+          "type": "string",
+          "description": "Path to the debug log file. Supports `~` and `${VAR}` expansion. Appended to if the file already exists; created otherwise. Can be overridden by the --debug-log CLI flag. App terminates if any variable cannot be resolved."
+        },
+        "case_sensitive_path_sorting": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, paths are sorted case-sensitively across all panes (repositories, status files, history commit files)."
+        }
+      }
+    },
+    "repo_commands": {
+      "type": "array",
+      "description": "Custom commands appended to the per-repo action menu below a separator line. Keys 1–9 (then 0) are assigned in declaration order.",
+      "items": {
+        "type": "object",
+        "required": ["name", "cmd"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable label shown in the action menu."
+          },
+          "cmd": {
+            "type": "string",
+            "description": "Shell command to execute. Variable substitution is applied in two steps: (1) repo variables ${ROOT} and ${BRANCH}; (2) environment variables. Command is not executed if any variable cannot be resolved."
+          },
+          "background": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, the command is spawned without waiting and its output is discarded."
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "general": {
+        "git": "/usr/local/bin/git",
+        "auto_fetch_interval": 300,
+        "debug_log": "~/logs/gitover.log",
+        "case_sensitive_path_sorting": false
+      },
+      "repo_commands": [
+        {
+          "name": "Open in editor",
+          "cmd": "code ${ROOT}",
+          "background": true
+        },
+        {
+          "name": "Run tests",
+          "cmd": "cd ${ROOT} && cargo test",
+          "background": false
+        }
+      ]
+    }
+  ]
+}
