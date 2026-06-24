@@ -152,7 +152,7 @@ fn main() -> Result<()> {
     let mut app = App::new_with_overrides(config_override, state_override);
 
     // On first launch (empty state), seed the repo list with CWD if it is a git repo.
-    if app.state.repos.is_empty() {
+    if !app.state.has_any_repos() {
         if let Ok(cwd) = std::env::current_dir() {
             if git2::Repository::open(&cwd).is_ok() {
                 app.state.add_repo(&cwd.to_string_lossy());
@@ -161,14 +161,14 @@ fn main() -> Result<()> {
         }
     }
 
-    refresh_repos(&mut app);
+    // Channel for background git-operation results.
+    let (op_tx, op_rx) = mpsc::channel::<OpResult>();
+
+    refresh_repos(&mut app, &op_tx);
     app.reload_history_if_open(false);
     app.refresh_details();
 
     let mut dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
-
-    // Channel for background git-operation results.
-    let (op_tx, op_rx) = mpsc::channel::<OpResult>();
 
     let result = run_app(&mut terminal, &mut app, &mut dirty_rx, &op_tx, &op_rx);
 
@@ -225,7 +225,7 @@ where
 
         // Detect wake-from-sleep
         if last_tick.elapsed() > WAKE_THRESHOLD {
-            refresh_repos(app);
+            refresh_repos(app, op_tx);
         }
 
         // Check if the automatic background fetch timer has fired.
@@ -324,7 +324,7 @@ where
                 AppMode::FilePicker => handle_picker_event(app, dirty_rx, &ev),
                 AppMode::ConfirmRemove => {
                     if let Event::Key(key) = &ev {
-                        handle_confirm_remove_key(app, dirty_rx, key.code);
+                        handle_confirm_remove_key(app, dirty_rx, op_tx, key.code);
                     }
                 }
                 AppMode::ActionMenu => {
@@ -425,6 +425,21 @@ where
                             }
                             _ => {}
                         }
+                    }
+                }
+                AppMode::SectionNameInput => {
+                    if let Event::Key(key) = &ev {
+                        handle_section_name_input_key(app, key.code);
+                    }
+                }
+                AppMode::ConfirmRemoveSection => {
+                    if let Event::Key(key) = &ev {
+                        handle_confirm_remove_section_key(app, key.code);
+                    }
+                }
+                AppMode::SectionSelect => {
+                    if let Event::Key(key) = &ev {
+                        handle_section_select_key(app, key.code);
                     }
                 }
             }
@@ -836,8 +851,8 @@ fn row_under_mouse(
     // Account for table_offset (scrolled rows)
     let offset_row = row_index + app.table_offset;
 
-    // Clamp to available repos
-    if offset_row < app.repos.len() {
+    // Clamp to visible rows (section title rows + repo rows).
+    if offset_row < app.visible_rows().len() {
         Some(offset_row)
     } else {
         None
@@ -996,7 +1011,16 @@ fn handle_normal_key(
             }
             app.refresh_details();
         }
-        KeyCode::Char('r') => refresh_repos(app),
+        // Collapse / expand repo sections (only when Repos pane has focus).
+        KeyCode::Left if app.focus == Focus::Repos => app.collapse_current_section(),
+        KeyCode::Right if app.focus == Focus::Repos => app.expand_current_section(),
+        KeyCode::Char('r') => {
+            if let Some(section_idx) = app.selected_section_title_idx() {
+                refresh_section_repos(app, op_tx, section_idx);
+            } else {
+                refresh_repos(app, op_tx);
+            }
+        }
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),
         KeyCode::Char('s') => app.toggle_file_status(),
@@ -1022,7 +1046,13 @@ fn handle_normal_key(
             }
         }
         // Direct shortcuts (bypass menu)
-        KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
+        KeyCode::Char('f') => {
+            if let Some(section_idx) = app.selected_section_title_idx() {
+                launch_section_fetch(app, op_tx, section_idx);
+            } else {
+                launch_op(app, op_tx, OpRequest::Fetch);
+            }
+        }
         KeyCode::Char('p') => {
             if let Some(op) = branch_pull_op(app) {
                 launch_op(app, op_tx, op);
@@ -1101,6 +1131,57 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
     }
 }
 
+fn launch_section_fetch(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    section_idx: usize,
+) {
+    let git_bin = app
+        .config
+        .general
+        .git
+        .clone()
+        .unwrap_or_else(|| "git".to_string());
+
+    let section_paths: Vec<String> = app.state.sections[section_idx].repos.clone();
+    let paths: Vec<String> = section_paths
+        .iter()
+        .filter(|path| {
+            app.repos
+                .iter()
+                .any(|r| r.path == **path && r.error.is_none())
+        })
+        .cloned()
+        .collect();
+
+    if paths.is_empty() {
+        return;
+    }
+
+    let section_name = app.state.sections[section_idx]
+        .name
+        .as_deref()
+        .unwrap_or("default")
+        .to_string();
+
+    app.set_header_flash(format!(
+        "↻ fetching {} repos in {}…",
+        paths.len(),
+        section_name
+    ));
+    app.log(format!(
+        "fetching {} repos in section '{}'…",
+        paths.len(),
+        section_name
+    ));
+
+    for path in paths {
+        app.operations
+            .insert(path.clone(), app::RepoOperation::Fetching);
+        spawn_op(path, OpRequest::Fetch, git_bin.clone(), op_tx.clone());
+    }
+}
+
 /// Return a `PullBranch` op if the branches pane is focused and the selected branch
 /// is a non-current branch that can be fast-forwarded, otherwise `None`.
 fn branch_pull_op(app: &App) -> Option<OpRequest> {
@@ -1123,10 +1204,11 @@ fn branch_pull_op(app: &App) -> Option<OpRequest> {
 
 /// Dispatch a git operation for the currently selected repo.
 fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: OpRequest) {
-    if app.repos.is_empty() {
-        return;
-    }
-    let repo = &app.repos[app.selected];
+    let repo_idx = match app.selected_repo_idx() {
+        Some(i) => i,
+        None => return,
+    };
+    let repo = &app.repos[repo_idx];
     if repo.error.is_some() {
         return;
     }
@@ -1164,10 +1246,11 @@ fn launch_repo_cmd(
     raw_cmd: &str,
     background: bool,
 ) {
-    if app.repos.is_empty() {
-        return;
-    }
-    let repo = &app.repos[app.selected];
+    let repo_idx = match app.selected_repo_idx() {
+        Some(i) => i,
+        None => return,
+    };
+    let repo = &app.repos[repo_idx];
     if repo.error.is_some() {
         return;
     }
@@ -1225,7 +1308,15 @@ fn handle_op_result(app: &mut App, result: OpResult) {
     if !result.success && !app.show_log {
         app.toggle_log();
     }
-    refresh_single_repo(app, &result.repo_path);
+    // Refresh ops carry the new RepoStatus directly — apply it without a second git call.
+    if let Some(fresh) = result.fresh_status {
+        if let Some(repo) = app.repos.iter_mut().find(|r| r.path == fresh.path) {
+            *repo = fresh;
+        }
+        app.last_refreshed = Some(Instant::now());
+    } else {
+        refresh_single_repo(app, &result.repo_path);
+    }
     app.reload_history_if_open(true);
     app.refresh_branches_for_repo(&result.repo_path.clone());
 }
@@ -1285,11 +1376,7 @@ fn activate_menu_item(
 }
 
 /// Handle key events for the log action menu.
-fn handle_history_menu_key(
-    app: &mut App,
-    op_tx: &std::sync::mpsc::Sender<OpResult>,
-    key: KeyCode,
-) {
+fn handle_history_menu_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
     match key {
         KeyCode::Down => app.menu_next(),
         KeyCode::Up => app.menu_previous(),
@@ -1380,8 +1467,8 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
         }
         'u' => {
             let branch = app
-                .repos
-                .get(app.selected)
+                .selected_repo_idx()
+                .and_then(|i| app.repos.get(i))
                 .and_then(|r| r.upstream.as_ref())
                 .map(|u| u.branch.clone())
                 .unwrap_or_default();
@@ -1392,8 +1479,8 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
         }
         'U' => {
             let branch = app
-                .repos
-                .get(app.selected)
+                .selected_repo_idx()
+                .and_then(|i| app.repos.get(i))
                 .and_then(|r| r.upstream.as_ref())
                 .map(|u| u.branch.clone())
                 .unwrap_or_default();
@@ -1404,8 +1491,8 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
         }
         't' => {
             let branch = app
-                .repos
-                .get(app.selected)
+                .selected_repo_idx()
+                .and_then(|i| app.repos.get(i))
                 .and_then(|r| r.trunk.as_ref())
                 .map(|t| t.branch.clone())
                 .unwrap_or_default();
@@ -1416,8 +1503,8 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
         }
         'T' => {
             let branch = app
-                .repos
-                .get(app.selected)
+                .selected_repo_idx()
+                .and_then(|i| app.repos.get(i))
                 .and_then(|r| r.trunk.as_ref())
                 .map(|t| t.branch.clone())
                 .unwrap_or_default();
@@ -1425,6 +1512,23 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
             if !branch.is_empty() {
                 app.open_history(app::HistoryFilter::BehindOf(branch));
             }
+        }
+        // Section management actions
+        'N' => {
+            app.close_menu();
+            app.open_create_section_input();
+        }
+        'R' => {
+            app.close_menu();
+            app.open_rename_section_input();
+        }
+        'X' => {
+            app.close_menu();
+            app.open_confirm_remove_section();
+        }
+        'M' => {
+            app.close_menu();
+            app.open_move_repo_section_select();
         }
         _ => {}
     }
@@ -1790,13 +1894,14 @@ fn handle_confirm_force_push_branch_key(
 fn handle_confirm_remove_key(
     app: &mut App,
     dirty_rx: &mut std::sync::mpsc::Receiver<String>,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
 ) {
     match key {
         KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
             if let Some(removed) = app.remove_selected() {
                 app.log(format!("removed repo {removed}"));
-                refresh_repos(app);
+                refresh_repos(app, op_tx);
                 *dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
             }
         }
@@ -1901,27 +2006,40 @@ fn add_repo_to_app(
     let case_sensitive_sort = app.config.general.case_sensitive_path_sorting;
     if let Ok(status) = git::get_repo_status(new_path, case_sensitive_sort) {
         app.repos.push(status);
-        app.sort_repos();
+        app.reorder_repos_to_match_sections();
 
         // Select the newly added repo in the Repositories pane.
-        if let Some(idx) = app.repos.iter().position(|r| r.path == new_path) {
-            app.selected = idx;
+        let new_row = app
+            .visible_rows()
+            .iter()
+            .enumerate()
+            .find(|(_, r)| {
+                if let app::VisibleRow::Repo(idx) = r {
+                    app.repos.get(*idx).map(|r| r.path.as_str()) == Some(new_path)
+                } else {
+                    false
+                }
+            })
+            .map(|(pos, _)| pos);
+        if let Some(pos) = new_row {
+            app.selected = pos;
         }
 
-        // Discover and add submodules
+        // Discover and add submodules (into the same section as the parent repo).
         if let Ok(repo) = git2::Repository::open(new_path) {
+            let section_idx = app.state.section_idx_for_path(new_path).unwrap_or(0);
             if let Ok(submodules) = repo.submodules() {
                 for sub in submodules {
                     if let Some(sub_path) = sub.path().to_str() {
                         let full = format!("{}/{}", new_path, sub_path);
-                        if app.state.add_repo(&full) {
+                        if app.state.add_repo_to_section(&full, section_idx) {
                             if let Ok(s) = git::get_repo_status(&full, case_sensitive_sort) {
                                 app.repos.push(s);
                             }
                         }
                     }
                 }
-                app.sort_repos();
+                app.reorder_repos_to_match_sections();
                 let _ = app.state.save();
             }
         }
@@ -1930,37 +2048,50 @@ fn add_repo_to_app(
     }
 }
 
-fn refresh_repos(app: &mut App) {
-    let paths = app.tracked_paths();
-    app.scanning = true;
-    let started = Instant::now();
-    app.log(format!("scanning {} repo(s)", paths.len()));
-
+/// Mark `path` as scanning and spawn a background thread to re-read its repo status.
+fn spawn_refresh(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, path: &str) {
     let case_sensitive_sort = app.config.general.case_sensitive_path_sorting;
-    app.repos = paths
-        .iter()
-        .map(|p| {
-            git::get_repo_status(p, case_sensitive_sort)
-                .unwrap_or_else(|e| git::RepoStatus::error_entry(p, format!("{e}")))
-        })
-        .collect();
-    app.sort_repos();
-    app.last_refreshed = Some(Instant::now());
-    app.scanning = false;
+    let git_bin = app
+        .config
+        .general
+        .git
+        .clone()
+        .unwrap_or_else(|| "git".to_string());
+    app.operations
+        .insert(path.to_string(), app::RepoOperation::Scanning);
+    spawn_op(
+        path.to_string(),
+        OpRequest::Refresh {
+            case_sensitive_sort,
+        },
+        git_bin,
+        op_tx.clone(),
+    );
+}
 
-    let n = app.repos.len();
-    let errs = app.repos.iter().filter(|r| r.error.is_some()).count();
-    let ms = started.elapsed().as_millis();
-    if errs > 0 {
-        app.log(format!(
-            "scan complete — {n} repos, {errs} error(s) ({ms} ms)"
-        ));
-    } else {
-        app.log(format!("scan complete — {n} repos ({ms} ms)"));
+fn refresh_repos(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
+    let paths = app.tracked_paths();
+    if paths.is_empty() {
+        return;
+    }
+    app.log(format!("scanning {} repo(s)…", paths.len()));
+
+    // Sync: drop repos no longer tracked; insert placeholder for newly-tracked paths.
+    app.repos.retain(|r| paths.contains(&r.path));
+    for path in &paths {
+        if !app.repos.iter().any(|r| r.path == *path) {
+            app.repos.push(git::RepoStatus::error_entry(path, "…"));
+        }
+    }
+    app.reorder_repos_to_match_sections();
+
+    let visible_count = app.visible_rows().len();
+    if visible_count > 0 && app.selected >= visible_count {
+        app.selected = visible_count - 1;
     }
 
-    if app.selected >= app.repos.len() && !app.repos.is_empty() {
-        app.selected = app.repos.len() - 1;
+    for path in paths {
+        spawn_refresh(app, op_tx, &path);
     }
 }
 
@@ -1975,6 +2106,41 @@ fn parse_path_flag(args: &[String], flag: &str) -> Option<std::path::PathBuf> {
     None
 }
 
+fn handle_section_name_input_key(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Esc => app.restore_base_mode(),
+        KeyCode::Enter => app.confirm_section_name_input(),
+        KeyCode::Backspace => {
+            app.section_input.pop();
+        }
+        KeyCode::Char(c) => app.section_input.push(c),
+        _ => {}
+    }
+}
+
+fn handle_confirm_remove_section_key(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+            app.confirm_remove_section();
+        }
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            app.section_to_remove_idx = None;
+            app.restore_base_mode();
+        }
+        _ => {}
+    }
+}
+
+fn handle_section_select_key(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Down => app.section_select_next(),
+        KeyCode::Up => app.section_select_previous(),
+        KeyCode::Esc => app.restore_base_mode(),
+        KeyCode::Enter => app.execute_move_repo(),
+        _ => {}
+    }
+}
+
 fn refresh_single_repo(app: &mut App, path: &str) {
     let case_sensitive_sort = app.config.general.case_sensitive_path_sorting;
     if let Some(repo) = app.repos.iter_mut().find(|r| r.path == path) {
@@ -1986,9 +2152,33 @@ fn refresh_single_repo(app: &mut App, path: &str) {
     app.last_refreshed = Some(Instant::now());
 }
 
+fn refresh_section_repos(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    section_idx: usize,
+) {
+    let paths: Vec<String> = app.state.sections[section_idx].repos.clone();
+    if paths.is_empty() {
+        return;
+    }
+    let section_name = app.state.sections[section_idx]
+        .name
+        .as_deref()
+        .unwrap_or("default")
+        .to_string();
+    app.log(format!(
+        "scanning {} repo(s) in section '{}'…",
+        paths.len(),
+        section_name
+    ));
+    for path in paths {
+        spawn_refresh(app, op_tx, &path);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_path_flag;
+    use super::*;
     use std::path::PathBuf;
 
     #[test]
@@ -2050,6 +2240,85 @@ mod tests {
         assert_eq!(
             parse_path_flag(args, "--config"),
             Some(PathBuf::from("/first.yaml"))
+        );
+    }
+
+    #[test]
+    fn refresh_repos_drops_stale_and_adds_placeholders_for_new_paths() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        // Track paths A and B in the default section.
+        let path_a = "/fake/repo-a".to_string();
+        let path_b = "/fake/repo-b".to_string();
+        let path_stale = "/fake/stale-repo".to_string();
+        app.state.sections[0].repos.push(path_a.clone());
+        app.state.sections[0].repos.push(path_b.clone());
+
+        // app.repos has B and a stale entry not in state.
+        app.repos = vec![
+            git::RepoStatus::error_entry(&path_b, ""),
+            git::RepoStatus::error_entry(&path_stale, ""),
+        ];
+
+        let (tx, _rx) = std::sync::mpsc::channel::<OpResult>();
+        refresh_repos(&mut app, &tx);
+
+        assert!(
+            app.repos.iter().all(|r| r.path != path_stale),
+            "stale repo must be removed"
+        );
+        assert!(
+            app.repos.iter().any(|r| r.path == path_a),
+            "new tracked repo must appear as placeholder"
+        );
+        assert!(
+            app.repos.iter().any(|r| r.path == path_b),
+            "existing tracked repo must be retained"
+        );
+        assert_eq!(
+            app.operations.get(&path_a),
+            Some(&app::RepoOperation::Scanning),
+            "new repo must be marked Scanning"
+        );
+        assert_eq!(
+            app.operations.get(&path_b),
+            Some(&app::RepoOperation::Scanning),
+            "existing repo must be marked Scanning"
+        );
+    }
+
+    #[test]
+    fn launch_section_fetch_skips_repos_with_errors() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_good = "/fake/good-repo".to_string();
+        let path_errored = "/fake/errored-repo".to_string();
+        app.state.sections[1].repos.push(path_good.clone());
+        app.state.sections[1].repos.push(path_errored.clone());
+
+        let mut good_status = git::RepoStatus::error_entry(&path_good, "");
+        good_status.error = None;
+        app.repos = vec![
+            good_status,
+            git::RepoStatus::error_entry(&path_errored, "some error"),
+        ];
+
+        let (tx, _rx) = std::sync::mpsc::channel::<OpResult>();
+        launch_section_fetch(&mut app, &tx, 1);
+
+        assert_eq!(
+            app.operations.get(&path_good),
+            Some(&app::RepoOperation::Fetching),
+            "non-errored repo must be marked Fetching"
+        );
+        assert!(
+            app.operations.get(&path_errored).is_none(),
+            "errored repo must not be queued for fetch"
         );
     }
 }
@@ -2136,6 +2405,9 @@ fn handle_history_key(
                 app.open_repo_action_menu();
             }
         }
+        // Collapse / expand repo sections (Repos pane focus).
+        KeyCode::Left if app.focus == Focus::Repos => app.collapse_current_section(),
+        KeyCode::Right if app.focus == Focus::Repos => app.expand_current_section(),
         // Global keys that must work from any pane
         KeyCode::Char('s') => app.toggle_file_status(),
         KeyCode::Char('l') => app.toggle_log(),
@@ -2147,7 +2419,7 @@ fn handle_history_key(
                 app.open_branches_pane();
             }
         }
-        KeyCode::Char('r') => refresh_repos(app),
+        KeyCode::Char('r') => refresh_repos(app, op_tx),
         KeyCode::Char('T') => app.next_theme(),
         KeyCode::Char('A') => app.enter_pick_mode(),
         KeyCode::Char('D') => app.request_remove_selected(),

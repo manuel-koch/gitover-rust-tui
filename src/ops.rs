@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::git;
 use std::process::{Command, Output, Stdio};
 use std::sync::mpsc::Sender;
 use std::time::SystemTime;
@@ -22,6 +23,8 @@ pub struct OpResult {
     pub op_label: String,
     pub success: bool,
     pub lines: Vec<String>,
+    /// Populated by `OpRequest::Refresh` — the freshly-read repo status.
+    pub fresh_status: Option<git::RepoStatus>,
 }
 
 /// Which git operation to execute.
@@ -92,6 +95,10 @@ pub enum OpRequest {
     /// Undo the HEAD commit, leaving its changes as unstaged working-tree modifications.
     /// Equivalent to `git reset --mixed HEAD~1`.
     UndoCommit,
+    /// Re-read the repo status in a background thread so the UI can show a spinner.
+    Refresh {
+        case_sensitive_sort: bool,
+    },
 }
 
 impl OpRequest {
@@ -119,6 +126,7 @@ impl OpRequest {
             OpRequest::Commit { amend: true, .. } => "amend commit".into(),
             OpRequest::Commit { .. } => "commit".into(),
             OpRequest::UndoCommit => "undo commit".into(),
+            OpRequest::Refresh { .. } => "scan".into(),
         }
     }
 }
@@ -127,12 +135,27 @@ impl OpRequest {
 pub fn spawn_op(repo_path: String, request: OpRequest, git_bin: String, tx: Sender<OpResult>) {
     std::thread::spawn(move || {
         let label = request.label();
-        let (success, lines) = run_op(&repo_path, &request, &git_bin);
+        let (success, lines, fresh_status) = match &request {
+            OpRequest::Refresh {
+                case_sensitive_sort,
+            } => {
+                let status = match git::get_repo_status(&repo_path, *case_sensitive_sort) {
+                    Ok(s) => s,
+                    Err(e) => git::RepoStatus::error_entry(&repo_path, format!("{e}")),
+                };
+                (true, vec![], Some(status))
+            }
+            _ => {
+                let (ok, out) = run_op(&repo_path, &request, &git_bin);
+                (ok, out, None)
+            }
+        };
         let _ = tx.send(OpResult {
             repo_path,
             op_label: label,
             success,
             lines,
+            fresh_status,
         });
     });
 }
@@ -304,9 +327,12 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
             run_git(git_bin, repo_path, &["apply", "--", file_path], &mut lines)
         }
 
-        OpRequest::UndoCommit => {
-            run_git(git_bin, repo_path, &["reset", "--mixed", "HEAD~1"], &mut lines)
-        }
+        OpRequest::UndoCommit => run_git(
+            git_bin,
+            repo_path,
+            &["reset", "--mixed", "HEAD~1"],
+            &mut lines,
+        ),
 
         OpRequest::Commit { message, amend } => {
             let mut args = vec!["commit"];
@@ -352,6 +378,9 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
                 }
             }
         }
+
+        // Refresh is handled directly in spawn_op — run_op is never called for it.
+        OpRequest::Refresh { .. } => unreachable!(),
     };
 
     (ok, lines)
@@ -412,6 +441,65 @@ fn maybe_stash(git_bin: &str, repo_path: &str, lines: &mut Vec<String>) -> bool 
     };
 
     ok
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    fn spawn_op_refresh_populates_fresh_status() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let repo = git2::Repository::init(tmp.path()).expect("git init");
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "Test").unwrap();
+        cfg.set_str("user.email", "test@example.com").unwrap();
+
+        let (tx, rx) = mpsc::channel::<OpResult>();
+        spawn_op(
+            tmp.path().to_str().unwrap().to_string(),
+            OpRequest::Refresh {
+                case_sensitive_sort: false,
+            },
+            "git".to_string(),
+            tx,
+        );
+
+        let result = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("op result within timeout");
+        assert!(result.success, "Refresh op must succeed");
+        assert!(result.lines.is_empty(), "Refresh op must produce no output lines");
+        assert!(result.fresh_status.is_some(), "Refresh op must populate fresh_status");
+        assert_eq!(
+            result.fresh_status.unwrap().path,
+            tmp.path().to_str().unwrap(),
+            "fresh_status path must match repo path"
+        );
+    }
+
+    #[test]
+    fn spawn_op_non_refresh_has_no_fresh_status() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let repo = git2::Repository::init(tmp.path()).expect("git init");
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "Test").unwrap();
+        cfg.set_str("user.email", "test@example.com").unwrap();
+
+        let (tx, rx) = mpsc::channel::<OpResult>();
+        spawn_op(
+            tmp.path().to_str().unwrap().to_string(),
+            OpRequest::Fetch,
+            "git".to_string(),
+            tx,
+        );
+
+        let result = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("op result within timeout");
+        assert!(result.fresh_status.is_none(), "non-Refresh ops must not populate fresh_status");
+    }
 }
 
 fn append_output(output: &Output, lines: &mut Vec<String>) {

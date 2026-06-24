@@ -16,12 +16,62 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Persisted application state saved to `gitover.state.yaml`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct State {
-    /// Ordered list of currently-tracked repository paths.
+/// One group of repositories with an optional name.
+/// `name: None` identifies the default (unnamed) section, which is always sections[0].
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RepoSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     #[serde(default)]
     pub repos: Vec<String>,
+    /// Collapsed state — only meaningful for named sections; default section is never collapsed.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub collapsed: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+impl RepoSection {
+    fn new_default() -> Self {
+        Self {
+            name: None,
+            repos: Vec::new(),
+            collapsed: false,
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.name.is_none()
+    }
+}
+
+/// Intermediate struct for loading both the legacy flat-repos format and the new sections format.
+#[derive(Deserialize)]
+struct RawState {
+    #[serde(default)]
+    repos: Vec<String>,
+    #[serde(default)]
+    sections: Vec<RepoSection>,
+    #[serde(default)]
+    show_file_status: bool,
+    #[serde(default)]
+    show_log: bool,
+    #[serde(default)]
+    show_history: bool,
+    #[serde(default)]
+    show_details: bool,
+}
+
+/// Persisted application state saved to `gitover.state.yaml`.
+///
+/// `sections[0]` is always the default (unnamed) section.
+/// `sections[1..]` are named sections kept in case-insensitive alphabetical order.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
+    #[serde(default = "default_sections")]
+    pub sections: Vec<RepoSection>,
     /// Whether the File Status pane was open on last exit.
     #[serde(default)]
     pub show_file_status: bool,
@@ -39,10 +89,14 @@ pub struct State {
     pub path: PathBuf,
 }
 
+fn default_sections() -> Vec<RepoSection> {
+    vec![RepoSection::new_default()]
+}
+
 impl Default for State {
     fn default() -> Self {
         Self {
-            repos: Vec::new(),
+            sections: default_sections(),
             show_file_status: false,
             show_log: false,
             show_history: false,
@@ -73,17 +127,44 @@ impl State {
     fn try_load_from(path: &Path) -> Result<Self> {
         let content =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let raw: State = serde_yaml::from_str(&content)
+        let raw: RawState = serde_yaml::from_str(&content)
             .with_context(|| format!("parsing {}", path.display()))?;
         let base_dir = path.parent().unwrap_or(Path::new("."));
-        let repos = raw
-            .repos
-            .into_iter()
-            .map(|p| resolve_path(&p, base_dir))
-            .filter(|p| Path::new(p).is_dir())
-            .collect();
+
+        let sections = if !raw.sections.is_empty() {
+            // New format: use sections directly, ensuring default section at index 0.
+            let mut sections = raw.sections;
+            if sections.first().map(|s| s.name.is_some()).unwrap_or(true) {
+                sections.insert(0, RepoSection::new_default());
+            }
+            for section in sections.iter_mut() {
+                section.repos = section
+                    .repos
+                    .iter()
+                    .map(|p| resolve_path(p, base_dir))
+                    .filter(|p| Path::new(p).is_dir())
+                    .collect();
+                sort_section_repos(section, false);
+            }
+            sections
+        } else if !raw.repos.is_empty() {
+            // Legacy flat-list format: migrate everything into the default section.
+            let repos: Vec<String> = raw
+                .repos
+                .into_iter()
+                .map(|p| resolve_path(&p, base_dir))
+                .filter(|p| Path::new(p).is_dir())
+                .collect();
+            let mut default = RepoSection::new_default();
+            default.repos = repos;
+            sort_section_repos(&mut default, false);
+            vec![default]
+        } else {
+            default_sections()
+        };
+
         Ok(State {
-            repos,
+            sections,
             show_file_status: raw.show_file_status,
             show_log: raw.show_log,
             show_history: raw.show_history,
@@ -100,10 +181,14 @@ impl State {
         }
         let base_dir = path.parent().unwrap_or(Path::new("."));
         let saveable = State {
-            repos: self
-                .repos
+            sections: self
+                .sections
                 .iter()
-                .map(|p| make_relative(p, base_dir))
+                .map(|s| RepoSection {
+                    name: s.name.clone(),
+                    repos: s.repos.iter().map(|p| make_relative(p, base_dir)).collect(),
+                    collapsed: s.collapsed,
+                })
                 .collect(),
             show_file_status: self.show_file_status,
             show_log: self.show_log,
@@ -116,22 +201,215 @@ impl State {
         Ok(())
     }
 
-    /// Add a repo path to the tracked list (no-op if already tracked).
-    /// Returns true if it was newly added.
+    // ── Section accessors ──────────────────────────────────────────────────────
+
+    /// The default section (always `sections[0]`).
+    pub fn default_section(&self) -> &RepoSection {
+        &self.sections[0]
+    }
+
+    /// Mutable reference to the default section.
+    pub fn default_section_mut(&mut self) -> &mut RepoSection {
+        &mut self.sections[0]
+    }
+
+    /// All repo paths from all sections in display order (default section first,
+    /// then named sections in their stored order, which is alphabetical).
+    pub fn all_repos_flat(&self) -> Vec<String> {
+        self.sections
+            .iter()
+            .flat_map(|s| s.repos.iter().cloned())
+            .collect()
+    }
+
+    /// Returns true if any section contains at least one repo.
+    pub fn has_any_repos(&self) -> bool {
+        self.sections.iter().any(|s| !s.repos.is_empty())
+    }
+
+    /// Returns true if there is at least one named section.
+    pub fn has_named_sections(&self) -> bool {
+        self.sections.len() > 1
+    }
+
+    /// Returns true when only named sections exist (default section is empty).
+    /// In this state, new repos cannot be added directly to the default section.
+    pub fn only_named_sections(&self) -> bool {
+        self.has_named_sections() && self.sections[0].repos.is_empty()
+    }
+
+    /// Returns the `sections` index of the section that owns the repo at the given
+    /// flat index (i.e. the index into `all_repos_flat()`).
+    pub fn section_idx_for_flat_repo_idx(&self, flat_idx: usize) -> usize {
+        let mut seen = 0;
+        for (idx, section) in self.sections.iter().enumerate() {
+            if flat_idx < seen + section.repos.len() {
+                return idx;
+            }
+            seen += section.repos.len();
+        }
+        0
+    }
+
+    /// Returns the `sections` index of the section that contains `path`, or `None`.
+    pub fn section_idx_for_path(&self, path: &str) -> Option<usize> {
+        self.sections
+            .iter()
+            .enumerate()
+            .find(|(_, s)| s.repos.iter().any(|p| p == path))
+            .map(|(idx, _)| idx)
+    }
+
+    // ── Repo management ────────────────────────────────────────────────────────
+
+    /// Add a repo to the default section.  Returns `true` if newly added.
     pub fn add_repo(&mut self, path: &str) -> bool {
-        if self.repos.iter().any(|p| p == path) {
+        self.add_repo_to_section(path, 0)
+    }
+
+    /// Add a repo to `section_idx`.  Returns `false` if already tracked anywhere.
+    pub fn add_repo_to_section(&mut self, path: &str, section_idx: usize) -> bool {
+        if self
+            .sections
+            .iter()
+            .any(|s| s.repos.iter().any(|p| p == path))
+        {
             return false;
         }
-        self.repos.push(path.to_string());
-        self.repos.sort_by_key(|p| p.to_lowercase());
+        let idx = section_idx.min(self.sections.len().saturating_sub(1));
+        self.sections[idx].repos.push(path.to_string());
+        sort_section_repos(&mut self.sections[idx], false);
         true
     }
 
-    /// Remove a repo path from the tracked list.
+    /// Remove a repo path from whichever section contains it.
     pub fn remove_repo(&mut self, path: &str) {
-        self.repos.retain(|p| p != path);
+        for section in self.sections.iter_mut() {
+            section.repos.retain(|p| p != path);
+        }
+    }
+
+    // ── Section management ─────────────────────────────────────────────────────
+
+    /// Add a named section.  Inserts at the correct alphabetical position among
+    /// `sections[1..]`.  Returns the new section's index, or `None` if the name
+    /// is a case-insensitive duplicate of an existing named section.
+    pub fn add_section(&mut self, name: String) -> Option<usize> {
+        let lower = name.to_lowercase();
+        if self
+            .sections
+            .iter()
+            .skip(1)
+            .any(|s| s.name.as_deref().map(|n| n.to_lowercase()) == Some(lower.clone()))
+        {
+            return None;
+        }
+        let section = RepoSection {
+            name: Some(name),
+            repos: vec![],
+            collapsed: false,
+        };
+        let insert_pos = self
+            .sections
+            .iter()
+            .skip(1)
+            .enumerate()
+            .find(|(_, s)| {
+                s.name
+                    .as_deref()
+                    .map(|n| n.to_lowercase())
+                    .unwrap_or_default()
+                    > lower
+            })
+            .map(|(i, _)| i + 1)
+            .unwrap_or(self.sections.len());
+        self.sections.insert(insert_pos, section);
+        Some(insert_pos)
+    }
+
+    /// Rename `sections[section_idx]` (must be >= 1).  Returns `false` if the
+    /// new name is a case-insensitive duplicate or the index is invalid.
+    /// After renaming the sections are re-sorted alphabetically; the returned
+    /// value is the new index of the renamed section.
+    pub fn rename_section(&mut self, section_idx: usize, new_name: String) -> Option<usize> {
+        if section_idx == 0 || section_idx >= self.sections.len() {
+            return None;
+        }
+        let lower = new_name.to_lowercase();
+        if self
+            .sections
+            .iter()
+            .enumerate()
+            .skip(1)
+            .filter(|(i, _)| *i != section_idx)
+            .any(|(_, s)| s.name.as_deref().map(|n| n.to_lowercase()) == Some(lower.clone()))
+        {
+            return None;
+        }
+        self.sections[section_idx].name = Some(new_name);
+        // Re-sort named sections alphabetically.
+        let mut named: Vec<RepoSection> = self.sections.drain(1..).collect();
+        named.sort_by(|a, b| {
+            a.name
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .cmp(&b.name.as_deref().unwrap_or("").to_lowercase())
+        });
+        self.sections.extend(named);
+        // Find where the renamed section ended up.
+        let new_idx = self
+            .sections
+            .iter()
+            .position(|s| s.name.as_deref().map(|n| n.to_lowercase()) == Some(lower.clone()))
+            .unwrap_or(section_idx);
+        Some(new_idx)
+    }
+
+    /// Remove `sections[section_idx]` (must be >= 1), moving its repos to the
+    /// default section.
+    pub fn remove_section(&mut self, section_idx: usize) {
+        if section_idx == 0 || section_idx >= self.sections.len() {
+            return;
+        }
+        let repos = self.sections.remove(section_idx).repos;
+        self.sections[0].repos.extend(repos);
+        sort_section_repos(&mut self.sections[0], false);
+    }
+
+    /// Move `path` from its current section to `target_section_idx`.
+    pub fn move_repo_to_section(&mut self, path: &str, target_section_idx: usize) {
+        for section in self.sections.iter_mut() {
+            section.repos.retain(|p| p != path);
+        }
+        if target_section_idx < self.sections.len() {
+            self.sections[target_section_idx]
+                .repos
+                .push(path.to_string());
+            sort_section_repos(&mut self.sections[target_section_idx], false);
+        }
+    }
+
+    /// Re-sort repos within every section using the given case-sensitivity setting.
+    /// Call this after loading config to apply the user's sorting preference.
+    pub fn sort_all_section_repos(&mut self, case_sensitive: bool) {
+        for section in self.sections.iter_mut() {
+            sort_section_repos(section, case_sensitive);
+        }
     }
 }
+
+// ── Sorting helper ─────────────────────────────────────────────────────────────
+
+pub(crate) fn sort_section_repos(section: &mut RepoSection, case_sensitive: bool) {
+    if case_sensitive {
+        section.repos.sort();
+    } else {
+        section.repos.sort_by_key(|p| p.to_lowercase());
+    }
+}
+
+// ── File-system helpers ────────────────────────────────────────────────────────
 
 /// Walk from CWD up to the root looking for `gitover.state.yaml`.
 /// Falls back to `~/.config/gitover/state.yaml` if none is found.

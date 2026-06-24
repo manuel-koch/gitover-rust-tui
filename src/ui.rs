@@ -21,7 +21,7 @@ use ratatui::{
 };
 use std::time::Instant;
 
-use crate::app::{App, AppMode, Focus, LogLevel, RepoOperation};
+use crate::app::{App, AppMode, Focus, LogLevel, RepoOperation, VisibleRow};
 use crate::git::RepoStatus;
 
 /// Height (rows) of the header panel — used for layout and popup positioning.
@@ -30,6 +30,8 @@ pub const HEADER_HEIGHT: u16 = 3;
 const FIXED_PANE_HEIGHT: u16 = HEADER_HEIGHT;
 /// Maximum width of the action menu popup as a percentage of the owning pane width.
 pub const ACTION_MENU_MAX_WIDTH_PCT: u16 = 80;
+/// Minimum width of the action menu popup as a percentage of the terminal width.
+pub const ACTION_MENU_MIN_WIDTH_PCT: u16 = 40;
 /// Popup width (percent of terminal width) for branch-select and new-branch dialogs.
 pub const BRANCH_SELECT_WIDTH_PCT: u16 = 80;
 /// Minimum height (rows) for the branch-select popup.
@@ -345,6 +347,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == AppMode::HelpOverlay {
         draw_help_overlay(frame, app);
     }
+    if app.mode == AppMode::SectionNameInput {
+        draw_section_name_input(frame, app);
+    }
+    if app.mode == AppMode::ConfirmRemoveSection {
+        draw_confirm_remove_section(frame, app);
+    }
+    if app.mode == AppMode::SectionSelect {
+        draw_section_select(frame, app);
+    }
 }
 
 /// Header — shows app title, spinner when scanning, auto-fetch timer, and refresh time right-aligned.
@@ -437,10 +448,9 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
-    // Scrolling: clamp before borrowing app.repos so the offset is correct
-    // when ratatui renders the visible window.
-    let visible_rows = table_visible_rows(area);
-    clamp_offset(app, visible_rows);
+    // Scrolling: clamp before building rows so the offset is correct.
+    let table_visible = table_visible_rows(area);
+    clamp_offset(app, table_visible);
 
     let theme = app.theme();
     let header_cells: Vec<Cell<'static>> = [
@@ -463,34 +473,156 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     let table_header = Row::new(header_cells).height(1);
 
     let spinner = app.spinner_frame().to_string();
+    let visible_row_data = app.visible_rows();
+    let total_visible = visible_row_data.len();
 
-    let rows = app.repos.iter().map(|repo| {
-        if repo.error.is_some() {
-            return build_error_row(repo, theme);
-        }
+    let rows: Vec<Row> = visible_row_data
+        .iter()
+        .map(|visible_row| match visible_row {
+            VisibleRow::SectionTitle(section_idx) => {
+                let section = &app.state.sections[*section_idx];
+                let name = section.name.as_deref().unwrap_or("");
+                let prefix = if section.collapsed { "▶ " } else { "▼ " };
+                let title_text = format!("{prefix}{name}");
 
-        let name = repo.path.split('/').next_back().unwrap_or(&repo.path);
-        let name_style = if repo.is_clean() {
-            Style::default().fg(theme.repo_clean)
-        } else {
-            Style::default().fg(theme.repo_dirty)
-        };
+                // Aggregate repo statuses — only shown when section is collapsed.
+                let (status_cell, activity_cell, upstream_cell, trunk_cell) = if section.collapsed {
+                    let mut dirty_count: usize = 0;
+                    let mut upstream_divergent: usize = 0;
+                    let mut trunk_divergent: usize = 0;
+                    let mut any_behind_trunk = false;
+                    let mut active_ops: Vec<RepoOperation> = Vec::new();
+                    for repo_path in &section.repos {
+                        if let Some(op) = app.repo_operation(repo_path) {
+                            active_ops.push(op);
+                        }
+                        if let Some(repo) = app.repos.iter().find(|r| r.path == *repo_path) {
+                            if !repo.is_clean() {
+                                dirty_count += 1;
+                            }
+                            if repo
+                                .upstream
+                                .as_ref()
+                                .is_some_and(|u| u.ahead > 0 || u.behind > 0)
+                            {
+                                upstream_divergent += 1;
+                            }
+                            if let Some(t) = &repo.trunk {
+                                if t.ahead > 0 || t.behind > 0 {
+                                    trunk_divergent += 1;
+                                }
+                                if t.behind > 0 {
+                                    any_behind_trunk = true;
+                                }
+                            }
+                        }
+                    }
+                    let sc = if !section.repos.is_empty() {
+                        if dirty_count > 0 {
+                            Cell::from(format!("{dirty_count} dirty"))
+                                .style(Style::default().fg(theme.repo_dirty))
+                        } else {
+                            Cell::from("clean").style(Style::default().fg(theme.repo_clean))
+                        }
+                    } else {
+                        Cell::from("")
+                    };
+                    let ac = if active_ops.len() == 1 {
+                        Cell::from(Line::from(vec![
+                            Span::styled(spinner.clone(), Style::default().fg(theme.activity)),
+                            Span::raw(" "),
+                            Span::styled(
+                                active_ops[0].label(),
+                                Style::default().fg(theme.activity),
+                            ),
+                        ]))
+                    } else if active_ops.len() > 1 {
+                        Cell::from(Line::from(vec![
+                            Span::styled(spinner.clone(), Style::default().fg(theme.activity)),
+                            Span::raw(" "),
+                            Span::styled(
+                                format!("{} active", active_ops.len()),
+                                Style::default().fg(theme.activity),
+                            ),
+                        ]))
+                    } else {
+                        Cell::from("")
+                    };
+                    let uc = if upstream_divergent > 0 {
+                        Cell::from(format!("{upstream_divergent} ↑↓"))
+                            .style(Style::default().fg(theme.sync_warning))
+                    } else {
+                        Cell::from("-").style(Style::default().fg(theme.placeholder))
+                    };
+                    let tc = if trunk_divergent > 0 {
+                        let color = if any_behind_trunk {
+                            theme.trunk_behind
+                        } else {
+                            theme.sync_warning
+                        };
+                        Cell::from(format!("{trunk_divergent} ↑↓"))
+                            .style(Style::default().fg(color))
+                    } else {
+                        Cell::from("-").style(Style::default().fg(theme.placeholder))
+                    };
+                    (sc, ac, uc, tc)
+                } else {
+                    (
+                        Cell::from(""),
+                        Cell::from(""),
+                        Cell::from(""),
+                        Cell::from(""),
+                    )
+                };
 
-        let status_spans = build_status_spans(repo, theme);
-        let upstream_cell = build_ahead_behind_cell(&repo.upstream, theme);
-        let trunk_cell = build_trunk_cell(&repo.trunk, theme);
-        let activity_cell = build_activity_cell(app.repo_operation(&repo.path), &spinner, theme);
+                Row::new(vec![
+                    Cell::from(title_text).style(
+                        Style::default()
+                            .fg(theme.title)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Cell::from(""),
+                    status_cell,
+                    activity_cell,
+                    upstream_cell,
+                    trunk_cell,
+                ])
+            }
+            VisibleRow::Repo(repo_idx) => {
+                let repo = &app.repos[*repo_idx];
+                if repo.error.is_some() {
+                    return build_error_row(repo, theme);
+                }
+                let section_idx = app.state.section_idx_for_flat_repo_idx(*repo_idx);
+                let raw_name = repo.path.split('/').next_back().unwrap_or(&repo.path);
+                let display_name = if section_idx > 0 {
+                    format!("  {raw_name}")
+                } else {
+                    raw_name.to_string()
+                };
+                let name_style = if repo.is_clean() {
+                    Style::default().fg(theme.repo_clean)
+                } else {
+                    Style::default().fg(theme.repo_dirty)
+                };
+                let status_spans = build_status_spans(repo, theme);
+                let upstream_cell = build_ahead_behind_cell(&repo.upstream, theme);
+                let trunk_cell = build_trunk_cell(&repo.trunk, theme);
+                let activity_cell =
+                    build_activity_cell(app.repo_operation(&repo.path), &spinner, theme);
+                Row::new(vec![
+                    Cell::from(display_name).style(name_style),
+                    Cell::from(repo.branch.as_str()).style(Style::default().fg(theme.branch)),
+                    Cell::from(status_spans),
+                    activity_cell,
+                    upstream_cell,
+                    trunk_cell,
+                ])
+            }
+        })
+        .collect();
 
-        Row::new(vec![
-            Cell::from(name).style(name_style),
-            Cell::from(repo.branch.as_str()).style(Style::default().fg(theme.branch)),
-            Cell::from(status_spans),
-            activity_cell,
-            upstream_cell,
-            trunk_cell,
-        ])
-    });
-
+    let pane_title = app.repos_pane_title();
     let table = Table::new(
         rows,
         [
@@ -506,7 +638,7 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .title("Repositories")
+            .title(pane_title)
             .border_style(focus_border_style(
                 app.focus == Focus::Repos || app.dragging_repos_divider || app.hover_repos_divider,
                 app.theme(),
@@ -519,22 +651,17 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
     )
     .highlight_symbol("> ");
 
-    // Scrolling: clamp the table_offset so the selected row stays visible.
     let mut table_state = TableState::default()
         .with_selected(Some(app.selected))
         .with_offset(app.table_offset);
     frame.render_stateful_widget(table, area, &mut table_state);
-
-    // If the table state's auto-scroll adjusted the offset, mirror it back so
-    // subsequent ticks render the same window. ratatui's Table widget rewrites
-    // the offset in-place when the selection moves outside the viewport.
     app.table_offset = table_state.offset();
 
-    draw_error_overlays(frame, area, app);
+    draw_error_overlays(frame, area, app, &visible_row_data);
 
-    // Scroll indicators: ▲ top-right when rows above, ▼ bottom-right when rows below.
+    // Scroll indicators.
     let has_more_above = app.table_offset > 0;
-    let has_more_below = app.table_offset + visible_rows < app.repos.len();
+    let has_more_below = app.table_offset + table_visible < total_visible;
     let t = app.theme();
     let focused = app.focus == Focus::Repos;
     let inner_x = area.x + 1;
@@ -637,7 +764,8 @@ fn table_visible_rows(area: Rect) -> usize {
 
 /// Adjust `app.table_offset` so the selected row is inside the viewport.
 fn clamp_offset(app: &mut App, visible: usize) {
-    if visible == 0 || app.repos.is_empty() {
+    let total = app.visible_rows().len();
+    if visible == 0 || total == 0 {
         app.table_offset = 0;
         return;
     }
@@ -646,7 +774,7 @@ fn clamp_offset(app: &mut App, visible: usize) {
     } else if app.selected >= app.table_offset + visible {
         app.table_offset = app.selected + 1 - visible;
     }
-    let max_offset = app.repos.len().saturating_sub(visible);
+    let max_offset = total.saturating_sub(visible);
     if app.table_offset > max_offset {
         app.table_offset = max_offset;
     }
@@ -670,13 +798,8 @@ fn build_error_row(repo: &RepoStatus, theme: &crate::theme::Theme) -> Row<'stati
 
 /// Overdraw the error message for every visible error row, starting right after
 /// the repo-name column and spanning to the right edge of the table.
-///
-/// This runs after the table has been rendered so the table's selection-highlight
-/// (Modifier::REVERSED) is already written into the buffer; we reproduce the same
-/// modifier for our spans so the highlighting looks uniform across the whole row.
-fn draw_error_overlays(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_error_overlays(frame: &mut Frame, area: Rect, app: &App, visible_row_data: &[VisibleRow]) {
     let theme = app.theme();
-
     let inner_x = area.x + 1;
     let inner_y = area.y + 1;
     let inner_w = area.width.saturating_sub(2);
@@ -684,35 +807,38 @@ fn draw_error_overlays(frame: &mut Frame, area: Rect, app: &App) {
     if inner_w < 4 || inner_h < 3 {
         return;
     }
-
-    // Data rows start after the header row (1).
+    // Data rows start after the header row.
     let data_y = inner_y + 1;
     let visible = inner_h.saturating_sub(1) as usize;
 
-    // The table uses highlight_symbol "> " (2 chars).  Col 0 is Fill(3) out of
-    // the 21 total fill units; the highlight symbol width is subtracted first.
     let highlight_w: u16 = 2;
     let col_space = inner_w.saturating_sub(highlight_w);
     let col0_w = (u32::from(col_space) * 3 / 21) as u16;
-
     let err_x = inner_x + highlight_w + col0_w;
     let err_w = inner_w.saturating_sub(highlight_w + col0_w);
     if err_w == 0 {
         return;
     }
 
-    for (i, repo) in app.repos.iter().enumerate() {
-        if i < app.table_offset {
+    for (vis_idx, visible_row) in visible_row_data.iter().enumerate() {
+        if vis_idx < app.table_offset {
             continue;
         }
-        let row_i = i - app.table_offset;
+        let row_i = vis_idx - app.table_offset;
         if row_i >= visible {
             break;
         }
+        let VisibleRow::Repo(repo_idx) = visible_row else {
+            continue;
+        };
+        let Some(repo) = app.repos.get(*repo_idx) else {
+            continue;
+        };
         let Some(err) = &repo.error else { continue };
 
         let y = data_y + row_i as u16;
-        let (warn_style, err_style) = if i == app.selected {
+        let is_selected = vis_idx == app.selected;
+        let (warn_style, err_style) = if is_selected {
             (
                 Style::default()
                     .fg(theme.placeholder)
@@ -725,14 +851,11 @@ fn draw_error_overlays(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(theme.error),
             )
         };
-
-        let line = Line::from(vec![
-            Span::styled("⚠ ", warn_style),
-            Span::styled(err.to_string(), err_style),
-        ]);
-
         frame.render_widget(
-            Paragraph::new(line),
+            Paragraph::new(Line::from(vec![
+                Span::styled("⚠ ", warn_style),
+                Span::styled(err.to_string(), err_style),
+            ])),
             Rect {
                 x: err_x,
                 y,
@@ -1014,7 +1137,8 @@ fn file_status_panel_height(app: &App) -> u16 {
 
 fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let theme = app.theme();
-    let title = match app.repos.get(app.selected) {
+    let selected_repo = app.selected_repo_idx().and_then(|i| app.repos.get(i));
+    let title = match selected_repo {
         Some(repo) => format!(" File Status — {} ", repo.path),
         None => " File Status ".to_string(),
     };
@@ -1048,8 +1172,13 @@ fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
     let files = app.selected_files();
 
     if files.is_empty() {
+        let placeholder = if app.selected_repo_idx().is_none() {
+            "no repository selected"
+        } else {
+            "no changes — working tree clean"
+        };
         let msg = Paragraph::new(Line::from(Span::styled(
-            "no changes — working tree clean",
+            placeholder,
             Style::default().fg(theme.placeholder),
         )));
         frame.render_widget(msg, inner);
@@ -1593,7 +1722,7 @@ fn diff_line_to_ratatui(line: &str, t: &crate::theme::Theme) -> Line<'static> {
 
 fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
     let t = app.theme();
-    let height = 46_u16.min(frame.area().height.saturating_sub(HEADER_HEIGHT));
+    let height = 56_u16.min(frame.area().height.saturating_sub(HEADER_HEIGHT));
     let area = top_centered_rect(62, height, HEADER_HEIGHT, frame.area());
     app.help_overlay_area = Some(area);
 
@@ -1685,6 +1814,19 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
         ],
     ));
     lines.extend(section(
+        "Repository Sections",
+        &[
+            ("←", "Collapse repo section"),
+            ("→", "Expand repo section"),
+            ("f", "Fetch all repos in section (on section title)"),
+            ("r", "Refresh all repos in section (on section title)"),
+            ("N (menu)", "Create new repo section"),
+            ("R (menu)", "Rename current repo section"),
+            ("X (menu)", "Remove current repo section"),
+            ("M (menu)", "Move repo to repo section"),
+        ],
+    ));
+    lines.extend(section(
         "Branches Pane",
         &[
             ("c", "Checkout selected Branch"),
@@ -1753,10 +1895,16 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
         )
         .border_style(Style::default().fg(t.popup_border));
 
-    // Help line at bottom — 1 row, inside the popup
+    // Help line at bottom — 1 row, inside the popup; 2 rows when a section hint is shown.
+    let only_named = app.state.only_named_sections();
+    let extra_row = if only_named { 1 } else { 0 };
+    let mut constraints = vec![Constraint::Min(0), Constraint::Length(1)];
+    if only_named {
+        constraints.insert(1, Constraint::Length(1));
+    }
     let inner_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints(constraints)
         .split(outer.inner(area));
 
     frame.render_widget(Clear, area);
@@ -1769,9 +1917,20 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
         .inner(inner_chunks[0]);
     frame.render_widget_ref(explorer_widget, explorer_area);
 
+    // Optional section hint: shown when default section is empty and only named sections exist.
+    if only_named {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                "Repo will be added to current repo section. Use Action Menu → Move to Repo Section to move it to Default.",
+                Style::default().fg(t.placeholder),
+            )),
+            inner_chunks[1],
+        );
+    }
+
     // Keybinding hint bar — drop leftmost groups when width is tight.
     // Group widths: navigate=16, open-dir=20, parent=17, Space+Esc=29.
-    let w = inner_chunks[1].width;
+    let w = inner_chunks[1 + extra_row].width;
     let ks = Style::default().fg(t.help_key);
     let kc = Style::default().fg(t.help_key_confirm);
     let mut spans: Vec<Span> = Vec::new();
@@ -1791,14 +1950,17 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
     spans.push(Span::raw(" add repo  "));
     spans.push(Span::styled("Esc", ks));
     spans.push(Span::raw(" cancel"));
-    frame.render_widget(Paragraph::new(Line::from(spans)), inner_chunks[1]);
+    frame.render_widget(
+        Paragraph::new(Line::from(spans)),
+        inner_chunks[1 + extra_row],
+    );
 }
 
 fn draw_confirm_remove(frame: &mut Frame, app: &App) {
     let t = app.theme();
     let target = app
-        .repos
-        .get(app.selected)
+        .selected_repo_idx()
+        .and_then(|i| app.repos.get(i))
         .map(|r| r.path.clone())
         .unwrap_or_default();
 
@@ -1930,12 +2092,24 @@ fn action_menu_title(app: &App) -> String {
             format!(" Branch Actions — {branch_name} ")
         }
         _ => {
-            let repo_name = app
-                .repos
-                .get(app.selected)
-                .map(|r| r.path.split('/').next_back().unwrap_or(&r.path).to_string())
-                .unwrap_or_default();
-            format!(" Actions — {repo_name} ")
+            // Action menu for a section title row shows section name; for a repo row shows repo name.
+            match app.visible_rows().get(app.selected).copied() {
+                Some(VisibleRow::SectionTitle(section_idx)) => {
+                    let name = app.state.sections[section_idx]
+                        .name
+                        .as_deref()
+                        .unwrap_or("(section)");
+                    format!(" Repo Section — {name} ")
+                }
+                _ => {
+                    let repo_name = app
+                        .selected_repo_idx()
+                        .and_then(|i| app.repos.get(i))
+                        .map(|r| r.path.split('/').next_back().unwrap_or(&r.path).to_string())
+                        .unwrap_or_default();
+                    format!(" Actions — {repo_name} ")
+                }
+            }
         }
     }
 }
@@ -1961,7 +2135,9 @@ fn action_menu_pane(app: &App) -> Rect {
 }
 
 /// Compute the full `Rect` for the action menu popup, centered on the current pane.
-/// Width is derived from content (title + menu items), clamped to 80% of the pane width.
+/// Width is at least `ACTION_MENU_MIN_WIDTH_PCT`% of the terminal, at most
+/// `ACTION_MENU_MAX_WIDTH_PCT`% of the owning pane (which `pane_top_rect` further
+/// clamps to the pane width).
 pub fn action_menu_area(app: &App) -> Rect {
     let title = action_menu_title(app);
     let title_display_width = title.chars().count() as u16;
@@ -1975,16 +2151,17 @@ pub fn action_menu_area(app: &App) -> Rect {
     // 4 = key column (Constraint::Length(4)), 2 = left+right borders
     let natural_width = (title_display_width + 2).max(max_label_width + 6);
     let pane = action_menu_pane(app);
-    let max_allowed = (pane.width * ACTION_MENU_MAX_WIDTH_PCT / 100).max(10);
-    let width = natural_width.min(max_allowed).max(10);
-    let n = app.menu_items.len() as u16;
-    // Height: allow the popup to extend below the originating pane down to the
-    // terminal bottom, so long menus are never truncated by pane boundaries.
     let terminal = app
         .cached_pane_areas
         .as_ref()
         .map(|a| a.terminal)
         .unwrap_or(pane);
+    let max_allowed = (pane.width * ACTION_MENU_MAX_WIDTH_PCT / 100).max(10);
+    let min_width = terminal.width * ACTION_MENU_MIN_WIDTH_PCT / 100;
+    let width = natural_width.min(max_allowed).max(min_width);
+    let n = app.menu_items.len() as u16;
+    // Height: allow the popup to extend below the originating pane down to the
+    // terminal bottom, so long menus are never truncated by pane boundaries.
     let available_height = (terminal.y + terminal.height).saturating_sub(pane.y);
     let height = (n + 2).min(available_height).max(3);
     pane_top_rect(width, height, pane)
@@ -2324,8 +2501,8 @@ fn draw_new_branch_input(frame: &mut Frame, app: &App) {
 fn draw_confirm_force_push(frame: &mut Frame, app: &App) {
     let t = app.theme();
     let target = app
-        .repos
-        .get(app.selected)
+        .selected_repo_idx()
+        .and_then(|i| app.repos.get(i))
         .map(|r| r.path.clone())
         .unwrap_or_default();
     let area = centered_rect(60, 7, frame.area());
@@ -2478,6 +2655,176 @@ pub fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
         width: popup_width,
         height: height.min(area.height),
     }
+}
+
+// ── Section name input popup ──────────────────────────────────────────────
+
+fn draw_section_name_input(frame: &mut Frame, app: &App) {
+    let t = app.theme();
+    let title = if app.section_input_is_create {
+        " Create Repo Section "
+    } else {
+        " Rename Repo Section "
+    };
+    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, 7, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(Style::default().fg(t.popup_border));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(Paragraph::new("Repo section name:"), chunks[0]);
+    let display = format!("{}▍", app.section_input);
+    frame.render_widget(
+        Paragraph::new(Span::styled(display, Style::default().fg(t.input_text))),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Enter", Style::default().fg(t.popup_confirm)),
+            Span::raw(" confirm    "),
+            Span::styled("Esc", Style::default().fg(t.popup_cancel)),
+            Span::raw(" cancel"),
+        ])),
+        chunks[3],
+    );
+}
+
+// ── Confirm remove section popup ──────────────────────────────────────────
+
+fn draw_confirm_remove_section(frame: &mut Frame, app: &App) {
+    let t = app.theme();
+    let section_idx = app.section_to_remove_idx.unwrap_or(0);
+    let (section_name, repo_count) = if section_idx < app.state.sections.len() {
+        let section = &app.state.sections[section_idx];
+        (
+            section
+                .name
+                .clone()
+                .unwrap_or_else(|| "Default".to_string()),
+            section.repos.len(),
+        )
+    } else {
+        ("(unknown)".to_string(), 0)
+    };
+
+    let message = if repo_count == 0 {
+        format!("Remove empty section \"{section_name}\"?")
+    } else {
+        format!("Remove section \"{section_name}\"? Its {repo_count} repo(s) will move to default.")
+    };
+
+    let area = centered_rect(70, 7, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Remove Repo Section? ")
+        .border_style(Style::default().fg(t.popup_border_danger))
+        .title_style(
+            Style::default()
+                .fg(t.popup_border_danger)
+                .add_modifier(Modifier::BOLD),
+        );
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(message).wrap(ratatui::widgets::Wrap { trim: true }),
+        chunks[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("y/Enter", Style::default().fg(t.popup_confirm_danger)),
+            Span::raw(" confirm    "),
+            Span::styled("n/Esc", Style::default().fg(t.popup_cancel)),
+            Span::raw(" cancel"),
+        ])),
+        chunks[2],
+    );
+}
+
+// ── Section select popup ──────────────────────────────────────────────────
+
+fn draw_section_select(frame: &mut Frame, app: &App) {
+    let t = app.theme();
+    let n = app.section_select_items.len();
+    let height = (n as u16 + 4)
+        .clamp(BRANCH_SELECT_MIN_HEIGHT, BRANCH_SELECT_MAX_HEIGHT)
+        .min(frame.area().height);
+    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, height, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Move to Repo Section ")
+        .border_style(Style::default().fg(t.popup_border));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if app.section_select_items.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                "no other sections available",
+                Style::default().fg(t.popup_empty),
+            )),
+            inner,
+        );
+        return;
+    }
+
+    let visible = inner.height as usize;
+    let start = if app.section_select_selected >= visible {
+        app.section_select_selected + 1 - visible
+    } else {
+        0
+    };
+
+    let rows: Vec<Row<'_>> = app
+        .section_select_items
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(visible)
+        .map(|(i, (_idx, name))| {
+            let selected = i == app.section_select_selected;
+            let style = if selected {
+                Style::default()
+                    .fg(t.selection_fg)
+                    .bg(t.selection_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            Row::new(vec![Cell::from(name.clone()).style(style)])
+        })
+        .collect();
+
+    let table =
+        Table::new(rows, [Constraint::Fill(1)]).block(Block::default().borders(Borders::NONE));
+    frame.render_widget(table, inner);
 }
 
 /// Return a border style that highlights when the pane is focused.

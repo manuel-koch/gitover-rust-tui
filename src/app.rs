@@ -173,6 +173,24 @@ pub enum AppMode {
     PopupMessage,
     /// Full-screen keybinding reference overlay (toggled with '?').
     HelpOverlay,
+    /// Text input for naming (create or rename) a repository section.
+    SectionNameInput,
+    /// Confirmation dialog for removing a section.
+    ConfirmRemoveSection,
+    /// Selection list for choosing a target section to move a repo into.
+    SectionSelect,
+}
+
+/// One row in the Repositories pane visible list.
+///
+/// `app.selected` is an index into the `visible_rows()` output.
+/// Named-section title rows appear before their repos; the default section has no title row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisibleRow {
+    /// A named section title row; the value is the index into `state.sections` (always >= 1).
+    SectionTitle(usize),
+    /// A repository row; the value is the index into `app.repos`.
+    Repo(usize),
 }
 
 /// One entry in the action menu.
@@ -362,6 +380,20 @@ pub struct App {
     /// Bounding rect of the help overlay popup (set each draw frame).
     pub help_overlay_area: Option<ratatui::layout::Rect>,
 
+    // ── Section management ────────────────────────────────────────────────────
+    /// Text being typed in the section name input (create or rename).
+    pub section_input: String,
+    /// When true the section name input is for a new section; when false it renames the current.
+    pub section_input_is_create: bool,
+    /// The `sections` index of the section being renamed (only valid when `!section_input_is_create`).
+    pub section_input_target_idx: usize,
+    /// The `sections` index of the section staged for removal.
+    pub section_to_remove_idx: Option<usize>,
+    /// Items offered in the section-select popup: `(sections_index, display_name)`.
+    pub section_select_items: Vec<(usize, String)>,
+    /// Currently highlighted item in the section-select popup.
+    pub section_select_selected: usize,
+
     // ── Pane resize ───────────────────────────────────────────────────────────
     /// User-overridden height for the Repositories pane (drag-to-resize).
     /// None = automatic equal-distribution layout. Not saved to state.
@@ -403,10 +435,11 @@ impl App {
         let config_clone = config.clone();
         let interval = config.general.auto_fetch_interval();
 
-        let state = match state_path {
+        let mut state = match state_path {
             Some(p) => State::load_from_path(p),
             None => State::load(),
         };
+        state.sort_all_section_repos(config_clone.general.case_sensitive_path_sorting);
         let show_file_status = state.show_file_status;
         let show_log = state.show_log;
         let show_history = state.show_history;
@@ -478,6 +511,12 @@ impl App {
             details_width_override: None,
             dragging_details_divider: false,
             hover_details_divider: false,
+            section_input: String::new(),
+            section_input_is_create: true,
+            section_input_target_idx: 0,
+            section_to_remove_idx: None,
+            section_select_items: Vec::new(),
+            section_select_selected: 0,
         }
     }
 
@@ -487,8 +526,9 @@ impl App {
     pub fn next(&mut self) {
         match self.focus {
             Focus::Repos => {
-                if !self.repos.is_empty() {
-                    let last = self.repos.len() - 1;
+                let visible_count = self.visible_rows().len();
+                if visible_count > 0 {
+                    let last = visible_count - 1;
                     if self.selected < last {
                         self.selected += 1;
                     }
@@ -537,7 +577,7 @@ impl App {
     pub fn previous(&mut self) {
         match self.focus {
             Focus::Repos => {
-                if !self.repos.is_empty() {
+                if !self.visible_rows().is_empty() {
                     if self.selected > 0 {
                         self.selected -= 1;
                     }
@@ -627,9 +667,9 @@ impl App {
     pub fn next_page(&mut self) {
         match self.focus {
             Focus::Repos => {
-                if !self.repos.is_empty() {
-                    let last = self.repos.len() - 1;
-                    self.selected = (self.selected + PAGE_STEP).min(last);
+                let visible_count = self.visible_rows().len();
+                if visible_count > 0 {
+                    self.selected = (self.selected + PAGE_STEP).min(visible_count - 1);
                     self.file_status_selected = 0;
                     self.file_status_scroll = 0;
                 }
@@ -723,7 +763,7 @@ impl App {
     }
 
     pub fn tracked_paths(&self) -> Vec<String> {
-        self.state.repos.clone()
+        self.state.all_repos_flat()
     }
 
     // ── File picker ───────────────────────────────────────────────────────────
@@ -798,7 +838,8 @@ impl App {
             Ok(_) => {}
         }
 
-        let added = self.state.add_repo(path);
+        let target_section_idx = self.current_section_idx();
+        let added = self.state.add_repo_to_section(path, target_section_idx);
         if let Err(e) = self.state.save() {
             eprintln!("gitover: failed to save state: {e}");
         }
@@ -813,9 +854,9 @@ impl App {
     // ── Remove repo ───────────────────────────────────────────────────────────
 
     /// Enter the confirmation dialog for removing the selected repo.
-    /// No-op if the list is empty.
+    /// No-op when a section title row (not a repo row) is selected.
     pub fn request_remove_selected(&mut self) {
-        if !self.repos.is_empty() {
+        if self.selected_repo_idx().is_some() {
             self.mode = AppMode::ConfirmRemove;
         }
     }
@@ -826,20 +867,21 @@ impl App {
     }
 
     /// Remove the currently-selected repo from tracking and persist.
-    /// Returns the removed path on success.
+    /// Returns the removed path on success.  No-op when a section title is selected.
     pub fn remove_selected(&mut self) -> Option<String> {
-        if self.repos.is_empty() {
-            return None;
-        }
-        let path = self.repos[self.selected].path.clone();
+        let repo_idx = self.selected_repo_idx()?;
+        let path = self.repos[repo_idx].path.clone();
         self.state.remove_repo(&path);
         if let Err(e) = self.state.save() {
             eprintln!("gitover: failed to save state: {e}");
         }
         self.operations.remove(&path);
-        self.repos.remove(self.selected);
-        if self.selected > 0 && self.selected >= self.repos.len() {
-            self.selected -= 1;
+        self.repos.remove(repo_idx);
+        let visible_count = self.visible_rows().len();
+        if visible_count == 0 {
+            self.selected = 0;
+        } else if self.selected >= visible_count {
+            self.selected = visible_count - 1;
         }
         self.restore_base_mode();
         Some(path)
@@ -871,13 +913,36 @@ impl App {
 
     // ── Action menu ───────────────────────────────────────────────────────────
 
-    /// Open the per-repo action menu for the selected repo.
-    /// Builds the item list based on current repo state.
+    /// Open the action menu for the currently selected row.
+    /// Shows section actions when a section title row is selected, repo actions otherwise.
     pub fn open_repo_action_menu(&mut self) {
-        if self.repos.is_empty() {
-            return;
+        match self.visible_rows().get(self.selected).copied() {
+            Some(VisibleRow::SectionTitle(section_idx)) => {
+                self.open_section_action_menu(section_idx);
+            }
+            Some(VisibleRow::Repo(_)) => {
+                self.open_repo_row_action_menu();
+            }
+            None => {}
         }
-        let repo = &self.repos[self.selected];
+    }
+
+    fn open_section_action_menu(&mut self, section_idx: usize) {
+        let mut items = Vec::new();
+        items.push(MenuItem::item("Create Repo Section", 'N'));
+        if section_idx > 0 {
+            items.push(MenuItem::item("Rename Repo Section", 'R'));
+            items.push(MenuItem::item("Remove Repo Section", 'X'));
+        }
+        self.open_menu(items, AppMode::ActionMenu);
+    }
+
+    fn open_repo_row_action_menu(&mut self) {
+        let repo_idx = match self.selected_repo_idx() {
+            Some(idx) => idx,
+            None => return,
+        };
+        let repo = &self.repos[repo_idx];
         let has_error = repo.error.is_some();
 
         let mut items = Vec::new();
@@ -926,13 +991,21 @@ impl App {
                     }
                 }
             }
+        }
 
-            // Custom repo commands from config, separated from built-in actions
+        // Section management items for repo rows
+        items.push(MenuItem::separator());
+        items.push(MenuItem::item("Create Repo Section", 'N'));
+        if self.state.has_named_sections() {
+            items.push(MenuItem::item("Move to Repo Section", 'M'));
+        }
+
+        // Custom repo commands from config
+        if !has_error {
             let cmds = self.config.repo_commands.clone();
             if !cmds.is_empty() {
                 items.push(MenuItem::separator());
                 for (i, rc) in cmds.iter().enumerate() {
-                    // Assign digit keys '1'–'9', then '0' for the 10th
                     let key = char::from_digit((i + 1) as u32 % 10, 10).unwrap_or('\0');
                     items.push(MenuItem::repo_command(
                         rc.name.clone(),
@@ -1135,10 +1208,10 @@ impl App {
 
     /// Open the branch-select popup for the selected repo.
     pub fn open_branch_select(&mut self) {
-        if self.repos.is_empty() {
-            return;
-        }
-        let path = self.repos[self.selected].path.clone();
+        let path = match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
+            Some(r) => r.path.clone(),
+            None => return,
+        };
         let branches = crate::git::get_branches_with_ahead_behind(&path).unwrap_or_default();
         let items: Vec<BranchItem> = branches
             .into_iter()
@@ -1218,7 +1291,10 @@ impl App {
 
     /// Number of staged files in the currently selected repo.
     pub fn staged_file_count(&self) -> usize {
-        self.repos.get(self.selected).map(|r| r.staged).unwrap_or(0)
+        self.selected_repo_idx()
+            .and_then(|i| self.repos.get(i))
+            .map(|r| r.staged)
+            .unwrap_or(0)
     }
 
     /// Open the commit message dialog for a fresh commit.
@@ -1230,7 +1306,7 @@ impl App {
 
     /// Open the commit message dialog pre-filled with the HEAD commit message for amending.
     pub fn open_amend_input(&mut self) {
-        let path = match self.repos.get(self.selected) {
+        let path = match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
             Some(r) => r.path.clone(),
             None => return,
         };
@@ -1262,14 +1338,10 @@ impl App {
 
     /// Open the history pane for the selected repo, loading fresh commit data.
     pub fn open_history(&mut self, filter: HistoryFilter) {
-        if self.repos.is_empty() {
-            return;
-        }
-        let repo = &self.repos[self.selected];
-        if repo.error.is_some() {
-            return;
-        }
-        let path = repo.path.clone();
+        let path = match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
+            Some(r) if r.error.is_none() => r.path.clone(),
+            _ => return,
+        };
         self.load_history(path, filter);
         self.show_history = true;
         self.focus = Focus::History;
@@ -1292,7 +1364,18 @@ impl App {
         if !self.show_history {
             return;
         }
-        let current_path = match self.repos.get(self.selected) {
+        let repo_idx = match self.selected_repo_idx() {
+            Some(i) => i,
+            None => {
+                // Section title selected — clear stale history so the pane shows a placeholder.
+                self.history.clear();
+                self.history_repo_path.clear();
+                self.history_selected = 0;
+                self.history_scroll = 0;
+                return;
+            }
+        };
+        let current_path = match self.repos.get(repo_idx) {
             Some(r) if r.error.is_none() => r.path.clone(),
             _ => return,
         };
@@ -1325,13 +1408,15 @@ impl App {
                     HistoryFilter::BehindOf(r.to_string())
                 }
             };
-            let trunk_ref = self.repos[self.selected]
-                .trunk
-                .as_ref()
+            let trunk_ref = self
+                .repos
+                .get(repo_idx)
+                .and_then(|r| r.trunk.as_ref())
                 .map(|t| t.branch.clone());
-            let upstream_ref = self.repos[self.selected]
-                .upstream
-                .as_ref()
+            let upstream_ref = self
+                .repos
+                .get(repo_idx)
+                .and_then(|r| r.upstream.as_ref())
                 .map(|u| u.branch.clone());
             let mut candidates: Vec<HistoryFilter> = vec![filter];
             let mut seen = vec![stored];
@@ -1382,14 +1467,10 @@ impl App {
 
     /// Open the Branches pane for the selected repo, loading branch info.
     pub fn open_branches_pane(&mut self) {
-        if self.repos.is_empty() {
-            return;
-        }
-        let repo = &self.repos[self.selected];
-        if repo.error.is_some() {
-            return;
-        }
-        let path = repo.path.clone();
+        let path = match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
+            Some(r) if r.error.is_none() => r.path.clone(),
+            _ => return,
+        };
         self.branch_info_list =
             crate::git::get_branches_with_ahead_behind(&path).unwrap_or_default();
         self.branches_pane_selected = self
@@ -1414,7 +1495,7 @@ impl App {
         }
         if self.show_history && self.branches_history_active {
             let filter = HistoryFilter::Full;
-            if let Some(repo) = self.repos.get(self.selected) {
+            if let Some(repo) = self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
                 if repo.error.is_none() {
                     let path = repo.path.clone();
                     self.load_history(path, filter);
@@ -1430,7 +1511,7 @@ impl App {
         if !self.show_branches {
             return;
         }
-        let current_path = match self.repos.get(self.selected) {
+        let current_path = match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
             Some(r) => r.path.clone(),
             None => return,
         };
@@ -1471,14 +1552,10 @@ impl App {
     /// Open history with a branch-specific filter (used from branch action menu).
     /// Shifts keyboard focus to the History pane.
     pub fn open_history_for_branch(&mut self, filter: HistoryFilter) {
-        if self.repos.is_empty() {
-            return;
-        }
-        let repo = &self.repos[self.selected];
-        if repo.error.is_some() {
-            return;
-        }
-        let path = repo.path.clone();
+        let path = match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
+            Some(r) if r.error.is_none() => r.path.clone(),
+            _ => return,
+        };
         self.load_history(path, filter);
         self.show_history = true;
         self.focus = Focus::History;
@@ -1724,7 +1801,7 @@ impl App {
     }
 
     fn load_file_status_diff(&self) -> String {
-        let repo = match self.repos.get(self.selected) {
+        let repo = match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
             Some(r) if r.error.is_none() => r,
             _ => return String::new(),
         };
@@ -1815,7 +1892,7 @@ impl App {
     /// Return the per-file changes of the currently-selected repo (for the
     /// File Status pane). Empty when no repo is selected or the repo errored.
     pub fn selected_files(&self) -> &[crate::git::FileEntry] {
-        match self.repos.get(self.selected) {
+        match self.selected_repo_idx().and_then(|i| self.repos.get(i)) {
             Some(r) => &r.files,
             None => &[],
         }
@@ -1846,15 +1923,324 @@ impl App {
         self.theme_idx = (self.theme_idx + 1) % crate::theme::THEMES.len();
     }
 
-    /// Sort the repo list by absolute path.
-    /// Uses case-insensitive comparison unless `general.case_sensitive_path_sorting` is set.
-    pub fn sort_repos(&mut self) {
-        if self.config.general.case_sensitive_path_sorting {
-            self.repos.sort_by(|a, b| a.path.cmp(&b.path));
-        } else {
-            self.repos
-                .sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+    /// Reorder `app.repos` to reflect the current section structure in `state`.
+    ///
+    /// The canonical order is `state.all_repos_flat()` (default section first,
+    /// then named sections in alphabetical order, repos within each section sorted
+    /// by path).  Any repo in `app.repos` not found in the state is dropped.
+    pub fn reorder_repos_to_match_sections(&mut self) {
+        let ordered_paths = self.state.all_repos_flat();
+        let mut by_path: HashMap<String, RepoStatus> =
+            self.repos.drain(..).map(|r| (r.path.clone(), r)).collect();
+        self.repos = ordered_paths
+            .into_iter()
+            .filter_map(|path| by_path.remove(&path))
+            .collect();
+    }
+
+    // ── VisibleRow helpers ────────────────────────────────────────────────────
+
+    /// Build the flat list of visible rows for the Repositories pane.
+    ///
+    /// The default section has no title row — its repos appear at the top.
+    /// Each named section contributes a title row followed by its repo rows
+    /// (unless collapsed, in which case only the title row is shown).
+    pub fn visible_rows(&self) -> Vec<VisibleRow> {
+        let mut rows: Vec<VisibleRow> = Vec::new();
+        let mut flat_repo_idx: usize = 0;
+
+        // Default section (sections[0]) — repos only, no title row.
+        for _repo in &self.state.sections[0].repos {
+            rows.push(VisibleRow::Repo(flat_repo_idx));
+            flat_repo_idx += 1;
         }
+
+        // Named sections (sections[1..]).
+        for (section_idx, section) in self.state.sections.iter().enumerate().skip(1) {
+            rows.push(VisibleRow::SectionTitle(section_idx));
+            if !section.collapsed {
+                for _repo in &section.repos {
+                    rows.push(VisibleRow::Repo(flat_repo_idx));
+                    flat_repo_idx += 1;
+                }
+            } else {
+                flat_repo_idx += section.repos.len();
+            }
+        }
+
+        rows
+    }
+
+    /// Return the `app.repos` index of the currently selected row if it is a repo
+    /// row, or `None` when a section title row is selected.
+    pub fn selected_repo_idx(&self) -> Option<usize> {
+        match self.visible_rows().get(self.selected) {
+            Some(VisibleRow::Repo(idx)) => Some(*idx),
+            _ => None,
+        }
+    }
+
+    /// Return the `state.sections` index when the currently selected row is a
+    /// section title, otherwise `None`.
+    pub fn selected_section_title_idx(&self) -> Option<usize> {
+        match self.visible_rows().get(self.selected) {
+            Some(VisibleRow::SectionTitle(idx)) => Some(*idx),
+            _ => None,
+        }
+    }
+
+    /// Return the `state.sections` index of the section containing the currently
+    /// selected row (either the section whose title is selected, or the section
+    /// that owns the selected repo).
+    pub fn current_section_idx(&self) -> usize {
+        match self.visible_rows().get(self.selected) {
+            Some(VisibleRow::SectionTitle(section_idx)) => *section_idx,
+            Some(VisibleRow::Repo(repo_idx)) => self.state.section_idx_for_flat_repo_idx(*repo_idx),
+            None => 0,
+        }
+    }
+
+    /// Title string for the Repositories pane block border.
+    pub fn repos_pane_title(&self) -> String {
+        let section_idx = self.current_section_idx();
+        if section_idx == 0 {
+            "Repositories".to_string()
+        } else {
+            let section_name = self.state.sections[section_idx]
+                .name
+                .as_deref()
+                .unwrap_or("");
+            format!("Repositories ( {} )", section_name)
+        }
+    }
+
+    // ── Section collapse / expand ─────────────────────────────────────────────
+
+    /// Collapse the current named section.  No-op for the default section.
+    pub fn collapse_current_section(&mut self) {
+        let section_idx = self.current_section_idx();
+        if section_idx == 0 {
+            return;
+        }
+        self.state.sections[section_idx].collapsed = true;
+        // Clamp selection so it stays within the now-smaller visible list.
+        let row_count = self.visible_rows().len();
+        if row_count == 0 {
+            self.selected = 0;
+        } else if self.selected >= row_count {
+            self.selected = row_count - 1;
+        }
+        let _ = self.state.save();
+    }
+
+    /// Expand the current named section.  No-op for the default section.
+    pub fn expand_current_section(&mut self) {
+        let section_idx = self.current_section_idx();
+        if section_idx == 0 {
+            return;
+        }
+        self.state.sections[section_idx].collapsed = false;
+        let _ = self.state.save();
+    }
+
+    // ── Section create / rename ───────────────────────────────────────────────
+
+    /// Open the text-input popup for creating a new section.
+    pub fn open_create_section_input(&mut self) {
+        self.section_input.clear();
+        self.section_input_is_create = true;
+        self.section_input_target_idx = 0;
+        self.mode = AppMode::SectionNameInput;
+    }
+
+    /// Open the text-input popup for renaming the currently selected section.
+    /// No-op when the default section or a repo row is selected.
+    pub fn open_rename_section_input(&mut self) {
+        let section_idx = self.current_section_idx();
+        if section_idx == 0 {
+            return;
+        }
+        self.section_input = self.state.sections[section_idx]
+            .name
+            .clone()
+            .unwrap_or_default();
+        self.section_input_is_create = false;
+        self.section_input_target_idx = section_idx;
+        self.mode = AppMode::SectionNameInput;
+    }
+
+    /// Commit the current section name input (create or rename).
+    /// Selects the new / renamed section title row on success.
+    pub fn confirm_section_name_input(&mut self) {
+        let name = self.section_input.trim().to_string();
+        if name.is_empty() {
+            self.restore_base_mode();
+            return;
+        }
+
+        if self.section_input_is_create {
+            if let Some(new_idx) = self.state.add_section(name) {
+                let _ = self.state.save();
+                let rows = self.visible_rows();
+                if let Some(row_pos) = rows
+                    .iter()
+                    .position(|r| matches!(r, VisibleRow::SectionTitle(i) if *i == new_idx))
+                {
+                    self.selected = row_pos;
+                }
+            }
+        } else {
+            let target_idx = self.section_input_target_idx;
+            if let Some(new_idx) = self.state.rename_section(target_idx, name) {
+                let _ = self.state.save();
+                let rows = self.visible_rows();
+                if let Some(row_pos) = rows
+                    .iter()
+                    .position(|r| matches!(r, VisibleRow::SectionTitle(i) if *i == new_idx))
+                {
+                    self.selected = row_pos;
+                }
+            }
+        }
+        self.restore_base_mode();
+    }
+
+    // ── Section remove ────────────────────────────────────────────────────────
+
+    /// Open the confirmation dialog for removing the currently selected section.
+    /// No-op when the default section or a repo row is selected.
+    pub fn open_confirm_remove_section(&mut self) {
+        let section_idx = self.current_section_idx();
+        if section_idx == 0 {
+            return;
+        }
+        self.section_to_remove_idx = Some(section_idx);
+        self.mode = AppMode::ConfirmRemoveSection;
+    }
+
+    /// Execute the confirmed section removal.
+    /// All repos in the removed section are moved to the default section.
+    /// Selects the first repo in the default section after removal.
+    pub fn confirm_remove_section(&mut self) {
+        if let Some(section_idx) = self.section_to_remove_idx.take() {
+            self.state.remove_section(section_idx);
+            let _ = self.state.save();
+            self.reorder_repos_to_match_sections();
+        }
+        self.section_to_remove_idx = None;
+        // Select first repo in default section or position 0.
+        let new_selected = self
+            .visible_rows()
+            .iter()
+            .position(|r| matches!(r, VisibleRow::Repo(_)))
+            .unwrap_or(0);
+        self.selected = new_selected;
+        let visible_count = self.visible_rows().len();
+        if visible_count > 0 && self.selected >= visible_count {
+            self.selected = visible_count - 1;
+        }
+        self.restore_base_mode();
+    }
+
+    // ── Move repo to section ──────────────────────────────────────────────────
+
+    /// Open the section-select popup for moving the selected repo to another section.
+    /// No-op when a section title row is selected or there are no named sections.
+    pub fn open_move_repo_section_select(&mut self) {
+        let repo_idx = match self.selected_repo_idx() {
+            Some(idx) => idx,
+            None => return,
+        };
+        if !self.state.has_named_sections() {
+            return;
+        }
+        let path = self.repos[repo_idx].path.clone();
+        let current_section_idx = self.state.section_idx_for_path(&path).unwrap_or(0);
+
+        let mut items: Vec<(usize, String)> = Vec::new();
+        // Default section first (if not current).
+        if current_section_idx != 0 {
+            items.push((0, "Default".to_string()));
+        }
+        // Named sections alphabetically (already stored in alphabetical order).
+        for (idx, section) in self.state.sections.iter().enumerate().skip(1) {
+            if idx == current_section_idx {
+                continue;
+            }
+            items.push((idx, section.name.clone().unwrap_or_default()));
+        }
+
+        if items.is_empty() {
+            return;
+        }
+
+        self.section_select_items = items;
+        self.section_select_selected = 0;
+        self.mode = AppMode::SectionSelect;
+    }
+
+    pub fn section_select_next(&mut self) {
+        if !self.section_select_items.is_empty() {
+            let last = self.section_select_items.len() - 1;
+            if self.section_select_selected < last {
+                self.section_select_selected += 1;
+            }
+        }
+    }
+
+    pub fn section_select_previous(&mut self) {
+        if self.section_select_selected > 0 {
+            self.section_select_selected -= 1;
+        }
+    }
+
+    /// Execute the move of the selected repo to the chosen target section.
+    /// The target section is expanded; the moved repo is kept as the selected row.
+    pub fn execute_move_repo(&mut self) {
+        let repo_idx = match self.selected_repo_idx() {
+            Some(idx) => idx,
+            None => {
+                self.restore_base_mode();
+                return;
+            }
+        };
+        let path = self.repos[repo_idx].path.clone();
+        let target_section_idx = match self.section_select_items.get(self.section_select_selected) {
+            Some((idx, _)) => *idx,
+            None => {
+                self.restore_base_mode();
+                return;
+            }
+        };
+
+        // Expand the target section so the moved repo is visible.
+        if target_section_idx > 0 && target_section_idx < self.state.sections.len() {
+            self.state.sections[target_section_idx].collapsed = false;
+        }
+
+        self.state.move_repo_to_section(&path, target_section_idx);
+        let _ = self.state.save();
+        self.reorder_repos_to_match_sections();
+
+        // Re-select the moved repo at its new position.
+        let new_pos = self
+            .visible_rows()
+            .iter()
+            .enumerate()
+            .find(|(_, row)| {
+                if let VisibleRow::Repo(idx) = row {
+                    self.repos.get(*idx).map(|r| r.path.as_str()) == Some(path.as_str())
+                } else {
+                    false
+                }
+            })
+            .map(|(pos, _)| pos);
+
+        if let Some(pos) = new_pos {
+            self.selected = pos;
+        }
+
+        self.restore_base_mode();
     }
 }
 
@@ -1910,9 +2296,81 @@ mod tests {
             "removed repo must not appear in app.repos"
         );
         assert!(
-            app.state.repos.iter().all(|p| p != repo_b.to_str().unwrap()),
-            "removed repo must not appear in state.repos"
+            app.state
+                .all_repos_flat()
+                .iter()
+                .all(|p| p != repo_b.to_str().unwrap()),
+            "removed repo must not appear in state repos"
         );
+    }
+
+    #[test]
+    fn selected_section_title_idx_returns_none_on_default_repo_row() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        app.state.sections[0].repos.push("/fake/repo-a".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry("/fake/repo-a", "")];
+        app.selected = 0;
+        assert_eq!(app.selected_section_title_idx(), None);
+    }
+
+    #[test]
+    fn selected_section_title_idx_returns_some_on_named_section_title() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        // Empty default section + named section "Work" at sections[1].
+        app.state.add_section("Work".to_string()).unwrap();
+        // First visible row is SectionTitle(1) because default section is empty.
+        app.selected = 0;
+        assert_eq!(app.selected_section_title_idx(), Some(1));
+    }
+
+    #[test]
+    fn selected_section_title_idx_returns_none_on_named_section_repo_row() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/fake/work-repo".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry("/fake/work-repo", "")];
+        // Row 0 = SectionTitle(1); row 1 = Repo(0).
+        app.selected = 1;
+        assert_eq!(app.selected_section_title_idx(), None);
+    }
+
+    #[test]
+    fn reload_history_if_open_clears_history_when_section_title_is_selected() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        app.state.add_section("Work".to_string()).unwrap();
+        // Empty default section → row 0 is SectionTitle(1).
+        app.selected = 0;
+        app.show_history = true;
+        app.history = vec![crate::git::CommitEntry {
+            short_hash: "abc12345".to_string(),
+            timestamp: "2024-01-01 00:00:00".to_string(),
+            author: "Test".to_string(),
+            author_email: "test@test.com".to_string(),
+            summary: "old commit".to_string(),
+            body: String::new(),
+            files: vec![],
+        }];
+        app.history_repo_path = "/fake/old-repo".to_string();
+        app.history_selected = 2;
+        app.history_scroll = 3;
+
+        app.reload_history_if_open(false);
+
+        assert!(app.history.is_empty(), "history must be cleared");
+        assert!(
+            app.history_repo_path.is_empty(),
+            "history_repo_path must be cleared"
+        );
+        assert_eq!(app.history_selected, 0);
+        assert_eq!(app.history_scroll, 0);
     }
 
     #[test]

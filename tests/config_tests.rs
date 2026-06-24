@@ -52,24 +52,22 @@ fn config_load_empty_file_returns_default() {
 
 // ── State tests ───────────────────────────────────────────────────────────────
 
-/// Build a State with a custom save path for testing.
-/// We test the underlying YAML serialisation round-trip directly.
 #[test]
 fn state_add_and_remove_repo() {
     let mut state = State::default();
-    assert!(state.repos.is_empty());
+    assert!(!state.has_any_repos());
 
     let added = state.add_repo("/tmp/repo-a");
     assert!(added, "first add should return true");
-    assert_eq!(state.repos.len(), 1);
-    assert_eq!(state.repos[0], "/tmp/repo-a");
+    assert_eq!(state.all_repos_flat().len(), 1);
+    assert_eq!(state.sections[0].repos[0], "/tmp/repo-a");
 
     let duplicate = state.add_repo("/tmp/repo-a");
     assert!(!duplicate, "duplicate add should return false");
-    assert_eq!(state.repos.len(), 1);
+    assert_eq!(state.all_repos_flat().len(), 1);
 
     state.remove_repo("/tmp/repo-a");
-    assert!(state.repos.is_empty());
+    assert!(!state.has_any_repos());
 }
 
 #[test]
@@ -79,16 +77,16 @@ fn state_repos_sorted_on_add() {
     state.add_repo("/tmp/a-repo");
     state.add_repo("/tmp/m-repo");
 
-    // Should be sorted alphabetically (case-insensitive)
-    assert_eq!(state.repos[0], "/tmp/a-repo");
-    assert_eq!(state.repos[1], "/tmp/m-repo");
-    assert_eq!(state.repos[2], "/tmp/z-repo");
+    // Should be sorted alphabetically (case-insensitive) within the default section.
+    let repos = &state.sections[0].repos;
+    assert_eq!(repos[0], "/tmp/a-repo");
+    assert_eq!(repos[1], "/tmp/m-repo");
+    assert_eq!(repos[2], "/tmp/z-repo");
 }
 
 #[test]
 fn state_save_and_load_round_trip() {
     let tmp = tempdir().unwrap();
-    // We test YAML serialisation by writing to a temp file and reading back.
     let mut state = State::default();
     state.add_repo("/tmp/repo-x");
     state.add_repo("/tmp/repo-y");
@@ -96,9 +94,9 @@ fn state_save_and_load_round_trip() {
     let yaml = serde_yaml::to_string(&state).expect("serialize");
     let loaded: State = serde_yaml::from_str(&yaml).expect("deserialize");
 
-    assert_eq!(loaded.repos.len(), 2);
-    assert!(loaded.repos.contains(&"/tmp/repo-x".to_string()));
-    assert!(loaded.repos.contains(&"/tmp/repo-y".to_string()));
+    assert_eq!(loaded.all_repos_flat().len(), 2);
+    assert!(loaded.all_repos_flat().contains(&"/tmp/repo-x".to_string()));
+    assert!(loaded.all_repos_flat().contains(&"/tmp/repo-y".to_string()));
     drop(tmp);
 }
 
@@ -107,7 +105,7 @@ fn state_remove_nonexistent_is_noop() {
     let mut state = State::default();
     state.add_repo("/tmp/real-repo");
     state.remove_repo("/tmp/does-not-exist");
-    assert_eq!(state.repos.len(), 1);
+    assert_eq!(state.all_repos_flat().len(), 1);
 }
 
 #[test]
@@ -142,7 +140,7 @@ fn state_load_from_path_nonexistent_returns_default_with_given_path() {
     let state_path = tmp.path().join("custom.yaml");
     // File does not exist yet.
     let state = State::load_from_path(state_path.clone());
-    assert!(state.repos.is_empty());
+    assert!(!state.has_any_repos());
     assert_eq!(state.path, state_path);
 }
 
@@ -152,13 +150,14 @@ fn state_load_from_path_reads_explicit_file() {
     let repo_dir = tmp.path().join("my-repo");
     fs::create_dir_all(&repo_dir).unwrap();
     let state_path = tmp.path().join("state.yaml");
-    // Write a state file with an absolute path.
+    // Write a legacy flat-repos state file.
     let yaml = format!("repos:\n  - {}\n", repo_dir.display());
     fs::write(&state_path, &yaml).unwrap();
 
     let state = State::load_from_path(state_path.clone());
-    assert_eq!(state.repos.len(), 1);
-    assert_eq!(state.repos[0], repo_dir.to_string_lossy().as_ref());
+    let flat = state.all_repos_flat();
+    assert_eq!(flat.len(), 1);
+    assert_eq!(flat[0], repo_dir.to_string_lossy().as_ref());
     assert_eq!(state.path, state_path);
 }
 
@@ -172,8 +171,9 @@ fn state_load_from_path_resolves_relative_paths() {
     fs::write(&state_path, "repos:\n  - my-repo\n").unwrap();
 
     let state = State::load_from_path(state_path);
-    assert_eq!(state.repos.len(), 1);
-    assert_eq!(state.repos[0], repo_dir.to_string_lossy().as_ref());
+    let flat = state.all_repos_flat();
+    assert_eq!(flat.len(), 1);
+    assert_eq!(flat[0], repo_dir.to_string_lossy().as_ref());
 }
 
 #[test]
@@ -188,7 +188,10 @@ fn state_load_from_path_absolute_paths_kept_as_is() {
     fs::write(&state_path, &yaml).unwrap();
 
     let state = State::load_from_path(state_path);
-    assert_eq!(state.repos[0], repo_dir.to_string_lossy().as_ref());
+    assert_eq!(
+        state.all_repos_flat()[0],
+        repo_dir.to_string_lossy().as_ref()
+    );
 }
 
 #[test]
@@ -224,9 +227,115 @@ fn state_save_load_round_trip_with_explicit_path() {
     state.save().unwrap();
 
     let loaded = State::load_from_path(state_path);
-    assert_eq!(loaded.repos.len(), 1);
-    assert_eq!(loaded.repos[0], repo_dir.to_string_lossy().as_ref());
+    let flat = loaded.all_repos_flat();
+    assert_eq!(flat.len(), 1);
+    assert_eq!(flat[0], repo_dir.to_string_lossy().as_ref());
     assert!(loaded.show_log);
+}
+
+// ── Section management tests ──────────────────────────────────────────────────
+
+#[test]
+fn state_add_section_and_repos() {
+    let mut state = State::default();
+    let section_idx = state.add_section("Work".to_string()).unwrap();
+    assert_eq!(section_idx, 1);
+    assert_eq!(state.sections.len(), 2);
+    assert_eq!(state.sections[1].name.as_deref(), Some("Work"));
+
+    // Add repo to the named section.
+    let added = state.add_repo_to_section("/tmp/work-repo", 1);
+    assert!(added);
+    assert_eq!(state.sections[1].repos.len(), 1);
+
+    // Flat view: default section (empty) + Work section.
+    assert_eq!(state.all_repos_flat(), vec!["/tmp/work-repo".to_string()]);
+}
+
+#[test]
+fn state_add_section_duplicate_name_is_rejected() {
+    let mut state = State::default();
+    state.add_section("Work".to_string()).unwrap();
+    // Same name, different case.
+    assert!(state.add_section("work".to_string()).is_none());
+}
+
+#[test]
+fn state_named_sections_sorted_alphabetically() {
+    let mut state = State::default();
+    state.add_section("Zebra".to_string()).unwrap();
+    state.add_section("Alpha".to_string()).unwrap();
+    state.add_section("Middle".to_string()).unwrap();
+
+    assert_eq!(state.sections[1].name.as_deref(), Some("Alpha"));
+    assert_eq!(state.sections[2].name.as_deref(), Some("Middle"));
+    assert_eq!(state.sections[3].name.as_deref(), Some("Zebra"));
+}
+
+#[test]
+fn state_rename_section_updates_name_and_resorts() {
+    let mut state = State::default();
+    state.add_section("Aardvark".to_string()).unwrap();
+    state.add_section("Zebra".to_string()).unwrap();
+
+    // Rename Aardvark → Monkey (should move between Aardvark and Zebra).
+    let new_idx = state.rename_section(1, "Monkey".to_string()).unwrap();
+    assert_eq!(state.sections[new_idx].name.as_deref(), Some("Monkey"));
+}
+
+#[test]
+fn state_remove_section_moves_repos_to_default() {
+    let mut state = State::default();
+    state.add_section("Work".to_string()).unwrap();
+    state.add_repo_to_section("/tmp/repo-a", 1);
+    state.add_repo_to_section("/tmp/repo-b", 1);
+
+    state.remove_section(1);
+    // Both repos should now be in the default section.
+    assert_eq!(state.sections.len(), 1);
+    assert_eq!(state.sections[0].repos.len(), 2);
+    assert!(state.sections[0].repos.contains(&"/tmp/repo-a".to_string()));
+    assert!(state.sections[0].repos.contains(&"/tmp/repo-b".to_string()));
+}
+
+#[test]
+fn state_move_repo_to_section() {
+    let mut state = State::default();
+    state.add_repo("/tmp/repo-a");
+    state.add_section("Work".to_string()).unwrap();
+
+    state.move_repo_to_section("/tmp/repo-a", 1);
+    assert!(state.sections[0].repos.is_empty());
+    assert_eq!(state.sections[1].repos[0], "/tmp/repo-a");
+}
+
+#[test]
+fn state_section_collapse_persists_in_yaml() {
+    let mut state = State::default();
+    state.add_section("Work".to_string()).unwrap();
+    state.sections[1].collapsed = true;
+
+    let yaml = serde_yaml::to_string(&state).expect("serialize");
+    let loaded: State = serde_yaml::from_str(&yaml).expect("deserialize");
+
+    assert!(loaded.sections[1].collapsed);
+}
+
+#[test]
+fn state_migrate_legacy_flat_repos_to_default_section() {
+    let tmp = tempdir().unwrap();
+    let repo_dir = tmp.path().join("legacy-repo");
+    fs::create_dir_all(&repo_dir).unwrap();
+    let state_path = tmp.path().join("state.yaml");
+    let yaml = format!("repos:\n  - {}\n", repo_dir.display());
+    fs::write(&state_path, &yaml).unwrap();
+
+    let state = State::load_from_path(state_path);
+    // Migrated to default section.
+    assert_eq!(state.sections.len(), 1);
+    assert!(state.sections[0].name.is_none());
+    assert_eq!(state.sections[0].repos.len(), 1);
+    assert_eq!(state.all_repos_flat().len(), 1);
 }
 
 // ── Config load_from (--config CLI override) ──────────────────────────────────
