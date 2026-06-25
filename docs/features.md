@@ -156,7 +156,8 @@ Output lines (stdout + stderr) are appended to the Output Log pane with timestam
 
 ## Status Details Pane
 
-- Toggle with `s`; title shows "Status Details — <repo path>"
+- Toggle with `s`; title shows "File Status — <repo path>"
+- When the repo path is too wide to fit the title area, the path is truncated in the middle with a `...` ellipsis (e.g. `/home/user/.../project`)
 - Lists each changed file with a single-letter status code (C/S/M/D/U) in its status colour followed by the file path
 - Files sorted by priority: Conflict → Staged → Modified → Deleted → Untracked, then alphabetically within each group; case-insensitive by default, configurable via `general.case_sensitive_path_sorting`
 - Scrolls when file count exceeds panel height; cursor always stays visible

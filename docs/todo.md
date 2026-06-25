@@ -15,8 +15,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Git Status Pane
 
-- [x] If the title of status-pane is wider than the available space, truncate the
-      repo path by shortening it in the middle and inserting a "..." elipsis.
+- [ ]
 
 ## Git Branches Pane
 
