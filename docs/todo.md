@@ -7,19 +7,10 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Bugs
 
-- [ ]
-
-## Git Status Columns
-
-- [ ]
-
-## Git Status Pane
-
-- [ ]
-
-## Git Branches Pane
-
-- [ ]
+- [ ] Pressing "left" keybinding to collapse current repo-section
+      ( a repo-row is selected, not the section-title-row ), the selected repo is
+      afterwards the same index in the list as before.
+      But it would be better to select the repo-section-title-row instead that was just collapsed.
 
 ## UX Polish
 
@@ -27,44 +18,8 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
       ( blocked: ratatui-explorer sorts internally, no API to override,
       see https://github.com/tatounee/ratatui-explorer/issues/22 )
 
-## UX Mouse Interaction
-
-- [ ]
-
-## Git Commit History Pane
-
-- [ ]
-
-## Git Details Pane
-
-- [ ]
-
-## Git Basic Operations
-
-- [ ]
-
 ## Git Rebase Operation
 
 - [ ] Rebase onto trunk branch: run `git rebase <trunkbranch>`
       Auto-stash before rebase, pop stash after rebase completes
 - [ ] Rebase controls when rebase is in progress: continue / skip / abort
-
-## Per-file Actions
-
-- [ ]
-
-## Status-File / Commit-History-File Diff
-
-- [ ]
-
-## Testing & Quality
-
-- [ ]
-
-## Configuration
-
-- [ ]
-
-## Documentation & Release
-
-- [ ]
