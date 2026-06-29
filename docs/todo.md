@@ -7,7 +7,7 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Bugs
 
-- [ ] Pressing "left" keybinding to collapse current repo-section
+- [x] Pressing "left" keybinding to collapse current repo-section
       ( a repo-row is selected, not the section-title-row ), the selected repo is
       afterwards the same index in the list as before.
       But it would be better to select the repo-section-title-row instead that was just collapsed.

@@ -2085,12 +2085,20 @@ impl App {
             return;
         }
         self.state.sections[section_idx].collapsed = true;
-        // Clamp selection so it stays within the now-smaller visible list.
-        let row_count = self.visible_rows().len();
-        if row_count == 0 {
-            self.selected = 0;
-        } else if self.selected >= row_count {
-            self.selected = row_count - 1;
+        // After collapsing, move selection to the section title row that was just collapsed.
+        let rows = self.visible_rows();
+        if let Some(title_pos) = rows
+            .iter()
+            .position(|r| matches!(r, VisibleRow::SectionTitle(idx) if *idx == section_idx))
+        {
+            self.selected = title_pos;
+        } else {
+            let row_count = rows.len();
+            if row_count == 0 {
+                self.selected = 0;
+            } else if self.selected >= row_count {
+                self.selected = row_count - 1;
+            }
         }
         let _ = self.state.save();
     }
@@ -3467,6 +3475,25 @@ mod tests {
         assert!(!app.state.sections[1].collapsed);
         app.collapse_current_section();
         assert!(app.state.sections[1].collapsed);
+    }
+
+    #[test]
+    fn collapse_current_section_selects_section_title_when_repo_row_was_selected() {
+        // Bug fix: collapsing while a repo-row is selected should move selection
+        // to the section title row, not stay at the same list index.
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        app.state.sections[1].repos.push("/w2".to_string());
+        // visible_rows: [SectionTitle(1), Repo(0), Repo(1)]
+        // Select the second repo row (index 2).
+        app.selected = 2;
+        app.collapse_current_section();
+        assert!(app.state.sections[1].collapsed);
+        // After collapse visible_rows: [SectionTitle(1)]
+        // Selection must be 0 (the section title).
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.visible_rows()[app.selected], VisibleRow::SectionTitle(1));
     }
 
     #[test]
