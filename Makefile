@@ -1,6 +1,14 @@
 REPO_ROOT := $(realpath $(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
 
-.PHONY: lint format build build-and-run test test-coverage test-coverage-missing release install clean rebuild tag-version outdated-dependencies upgrade-dependencies
+ifeq ($(CARGO_TARGET_DIR),)
+export CARGO_TARGET_DIR := $(REPO_ROOT)/target
+endif
+
+.PHONY: lint format \
+	build build-and-run release \
+	test test-coverage test-coverage-missing \
+	install tag-version \
+	outdated-dependencies upgrade-dependencies
 
 # Run cargo check/clippy and report all warnings
 lint:
@@ -11,16 +19,9 @@ lint:
 format:
 	cargo fmt
 
-# Remove all build artifacts (forces a full recompilation on next build)
-clean:
-	cargo clean
-
 # Build debug binary (output: target/debug/gitover)
 build:
 	cargo build
-
-# Clean all build artifacts, then build the debug binary from scratch
-rebuild: clean build
 
 # Build debug binary and launch it
 build-and-run:
@@ -29,7 +30,7 @@ build-and-run:
 build-and-run-with-sandbox-repos: build
 	mkdir -p ~/tmp/gitover-sandbox
 	./create-sandbox-repos.sh ~/tmp/gitover-sandbox
-	cd ~/tmp/gitover-sandbox && $(REPO_ROOT)/target/debug/gitover --state gitover.state.yaml
+	cd ~/tmp/gitover-sandbox && $(CARGO_TARGET_DIR)/debug/gitover --state gitover.state.yaml
 
 # Run all unit and integration tests
 test:
