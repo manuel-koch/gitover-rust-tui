@@ -846,7 +846,10 @@ mod tests {
         let text = "x".repeat(DIFF_TRUNCATION_LIMIT + 100);
         let result = truncate_text(text).unwrap();
         assert!(result.ends_with("\n...diff truncated"));
-        assert_eq!(&result[..DIFF_TRUNCATION_LIMIT], "x".repeat(DIFF_TRUNCATION_LIMIT));
+        assert_eq!(
+            &result[..DIFF_TRUNCATION_LIMIT],
+            "x".repeat(DIFF_TRUNCATION_LIMIT)
+        );
     }
 }
 

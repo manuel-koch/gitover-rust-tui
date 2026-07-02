@@ -497,7 +497,10 @@ mod tests {
     #[test]
     fn default_section_mut_allows_modifying_first_section() {
         let mut state = State::default();
-        state.default_section_mut().repos.push("/some/path".to_string());
+        state
+            .default_section_mut()
+            .repos
+            .push("/some/path".to_string());
         assert_eq!(state.sections[0].repos.len(), 1);
     }
 
@@ -566,7 +569,9 @@ mod tests {
             .iter()
             .position(|s| s.name.as_deref() == Some("Alpha"))
             .unwrap();
-        assert!(state.rename_section(alpha_idx, "Beta".to_string()).is_none());
+        assert!(state
+            .rename_section(alpha_idx, "Beta".to_string())
+            .is_none());
     }
 
     #[test]

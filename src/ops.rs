@@ -681,8 +681,15 @@ mod tests {
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
         let sig = repo.signature().unwrap();
-        repo.commit(Some("refs/heads/main"), &sig, &sig, "initial commit", &tree, &[])
-            .unwrap();
+        repo.commit(
+            Some("refs/heads/main"),
+            &sig,
+            &sig,
+            "initial commit",
+            &tree,
+            &[],
+        )
+        .unwrap();
         repo.set_head("refs/heads/main").unwrap();
         path
     }
@@ -762,9 +769,7 @@ mod tests {
 
         let repo = git2::Repository::open(&path).unwrap();
         let head = repo.head().unwrap();
-        let branch_name = head
-            .shorthand()
-            .unwrap_or("");
+        let branch_name = head.shorthand().unwrap_or("");
         assert_eq!(branch_name, "feature");
     }
 
@@ -777,7 +782,10 @@ mod tests {
         std::fs::write(tmp.path().join("README.md"), "modified").unwrap();
 
         let status_before = crate::git::get_repo_status(&path, false).unwrap();
-        assert_eq!(status_before.modified, 1, "should have a modified file before revert");
+        assert_eq!(
+            status_before.modified, 1,
+            "should have a modified file before revert"
+        );
 
         let revert_result = run_op_sync(
             &path,
@@ -853,7 +861,10 @@ mod tests {
         assert!(result.success, "RevertFile with is_conflict must succeed");
 
         let status = crate::git::get_repo_status(&path, false).unwrap();
-        assert!(status.is_clean(), "repo must be clean after conflict revert");
+        assert!(
+            status.is_clean(),
+            "repo must be clean after conflict revert"
+        );
     }
 
     #[test]
@@ -876,7 +887,10 @@ mod tests {
         let path = make_committed_repo(&tmp);
 
         let result = run_op_sync(&path, OpRequest::DiscardFile("nonexistent.txt".to_string()));
-        assert!(!result.success, "DiscardFile must fail for non-existent file");
+        assert!(
+            !result.success,
+            "DiscardFile must fail for non-existent file"
+        );
         assert!(result.lines.iter().any(|l| l.contains("error")));
     }
 
@@ -900,7 +914,10 @@ mod tests {
         );
 
         let content = std::fs::read_to_string(tmp.path().join("README.md")).unwrap();
-        assert_eq!(content, "hello", "file must be restored to original content");
+        assert_eq!(
+            content, "hello",
+            "file must be restored to original content"
+        );
     }
 
     #[test]
@@ -1058,7 +1075,10 @@ mod tests {
         // --mixed reset leaves changes in the working tree (unstaged),
         // so the file appears as untracked (added) rather than staged.
         let status = crate::git::get_repo_status(&path, false).unwrap();
-        assert!(!status.is_clean(), "repo must have changes after undo commit");
+        assert!(
+            !status.is_clean(),
+            "repo must have changes after undo commit"
+        );
     }
 }
 

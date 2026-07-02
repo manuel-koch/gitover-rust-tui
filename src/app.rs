@@ -3493,7 +3493,10 @@ mod tests {
         // After collapse visible_rows: [SectionTitle(1)]
         // Selection must be 0 (the section title).
         assert_eq!(app.selected, 0);
-        assert_eq!(app.visible_rows()[app.selected], VisibleRow::SectionTitle(1));
+        assert_eq!(
+            app.visible_rows()[app.selected],
+            VisibleRow::SectionTitle(1)
+        );
     }
 
     #[test]
@@ -3658,7 +3661,10 @@ mod tests {
         app.state.sections[0].repos.push("/fake".to_string());
         app.repos = vec![make_repo_with_files(
             "/fake",
-            vec![make_file_entry("a.rs", crate::git::FileStatusKind::Modified)],
+            vec![make_file_entry(
+                "a.rs",
+                crate::git::FileStatusKind::Modified,
+            )],
         )];
         app.selected = 0;
         app.focus = Focus::FileStatus;
@@ -3780,7 +3786,10 @@ mod tests {
         app.open_file_action_menu();
         assert!(matches!(app.mode, AppMode::FileActionMenu));
         let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
-        assert!(labels.contains(&"Commit"), "staged file should have Commit item");
+        assert!(
+            labels.contains(&"Commit"),
+            "staged file should have Commit item"
+        );
         assert!(
             labels.contains(&"Unstage File"),
             "staged file should have Unstage File item"
@@ -3844,7 +3853,10 @@ mod tests {
         assert!(matches!(app.mode, AppMode::FileActionMenu));
         let labels: Vec<_> = app.menu_items.iter().map(|m| m.label.as_str()).collect();
         assert!(labels.contains(&"Revert File"));
-        assert!(!labels.contains(&"Stage File"), "conflict should not have Stage File");
+        assert!(
+            !labels.contains(&"Stage File"),
+            "conflict should not have Stage File"
+        );
     }
 
     #[test]
@@ -3853,10 +3865,7 @@ mod tests {
         app.state.sections[0].repos.push("/fake".to_string());
         app.repos = vec![make_repo_with_files(
             "/fake",
-            vec![make_file_entry(
-                "a.rs",
-                crate::git::FileStatusKind::Deleted,
-            )],
+            vec![make_file_entry("a.rs", crate::git::FileStatusKind::Deleted)],
         )];
         app.selected = 0;
         app.file_status_selected = 0;
@@ -3872,7 +3881,10 @@ mod tests {
         app.state.sections[0].repos.push("/fake".to_string());
         app.repos = vec![make_repo_with_files(
             "/fake",
-            vec![make_file_entry("fix.patch", crate::git::FileStatusKind::Untracked)],
+            vec![make_file_entry(
+                "fix.patch",
+                crate::git::FileStatusKind::Untracked,
+            )],
         )];
         app.selected = 0;
         app.file_status_selected = 0;
@@ -4004,7 +4016,10 @@ mod tests {
         app.state.sections[0].repos.push("/fake".to_string());
         app.repos = vec![make_repo_with_files(
             "/fake",
-            vec![make_file_entry("a.rs", crate::git::FileStatusKind::Modified)],
+            vec![make_file_entry(
+                "a.rs",
+                crate::git::FileStatusKind::Modified,
+            )],
         )];
         app.selected = 0;
         let files = app.selected_files();
@@ -4046,8 +4061,14 @@ mod tests {
     fn branch_select_next_advances_selection() {
         let (mut app, _tmp) = make_app();
         app.branch_items = vec![
-            BranchItem { name: "a".to_string(), is_remote: false },
-            BranchItem { name: "b".to_string(), is_remote: false },
+            BranchItem {
+                name: "a".to_string(),
+                is_remote: false,
+            },
+            BranchItem {
+                name: "b".to_string(),
+                is_remote: false,
+            },
         ];
         app.branch_selected = 0;
         app.branch_select_next();
@@ -4058,8 +4079,14 @@ mod tests {
     fn branch_select_next_wraps_to_first() {
         let (mut app, _tmp) = make_app();
         app.branch_items = vec![
-            BranchItem { name: "a".to_string(), is_remote: false },
-            BranchItem { name: "b".to_string(), is_remote: false },
+            BranchItem {
+                name: "a".to_string(),
+                is_remote: false,
+            },
+            BranchItem {
+                name: "b".to_string(),
+                is_remote: false,
+            },
         ];
         app.branch_selected = 1;
         app.branch_select_next();
@@ -4070,8 +4097,14 @@ mod tests {
     fn branch_select_previous_goes_to_last_when_at_start() {
         let (mut app, _tmp) = make_app();
         app.branch_items = vec![
-            BranchItem { name: "a".to_string(), is_remote: false },
-            BranchItem { name: "b".to_string(), is_remote: false },
+            BranchItem {
+                name: "a".to_string(),
+                is_remote: false,
+            },
+            BranchItem {
+                name: "b".to_string(),
+                is_remote: false,
+            },
         ];
         app.branch_selected = 0;
         app.branch_select_previous();
@@ -4082,8 +4115,14 @@ mod tests {
     fn branch_select_previous_decrements() {
         let (mut app, _tmp) = make_app();
         app.branch_items = vec![
-            BranchItem { name: "a".to_string(), is_remote: false },
-            BranchItem { name: "b".to_string(), is_remote: false },
+            BranchItem {
+                name: "a".to_string(),
+                is_remote: false,
+            },
+            BranchItem {
+                name: "b".to_string(),
+                is_remote: false,
+            },
         ];
         app.branch_selected = 1;
         app.branch_select_previous();
@@ -4094,8 +4133,14 @@ mod tests {
     fn selected_branch_item_returns_current() {
         let (mut app, _tmp) = make_app();
         app.branch_items = vec![
-            BranchItem { name: "main".to_string(), is_remote: false },
-            BranchItem { name: "feat".to_string(), is_remote: false },
+            BranchItem {
+                name: "main".to_string(),
+                is_remote: false,
+            },
+            BranchItem {
+                name: "feat".to_string(),
+                is_remote: false,
+            },
         ];
         app.branch_selected = 1;
         let item = app.selected_branch_item().unwrap();
@@ -4121,7 +4166,10 @@ mod tests {
         app.popup_show_time = Some(Instant::now());
         app.mode = AppMode::PopupMessage;
         app.check_popup_timeout();
-        assert!(app.popup_message.is_some(), "fresh popup should not be dismissed");
+        assert!(
+            app.popup_message.is_some(),
+            "fresh popup should not be dismissed"
+        );
     }
 
     // ── section management ────────────────────────────────────────────────────
@@ -4162,7 +4210,11 @@ mod tests {
         app.section_input = "NewSection".to_string();
         app.section_input_is_create = true;
         app.confirm_section_name_input();
-        assert!(app.state.sections.iter().any(|s| s.name.as_deref() == Some("NewSection")));
+        assert!(app
+            .state
+            .sections
+            .iter()
+            .any(|s| s.name.as_deref() == Some("NewSection")));
     }
 
     #[test]
@@ -4254,8 +4306,10 @@ mod tests {
         app.open_commit_input();
         // Empty textarea produces empty string (single blank line).
         let text = app.commit_message_text();
-        assert!(text.is_empty() || text == "\n" || text == "",
-            "empty textarea should give empty-ish string, got: {text:?}");
+        assert!(
+            text.is_empty() || text == "\n" || text == "",
+            "empty textarea should give empty-ish string, got: {text:?}"
+        );
     }
 
     // ── close_new_branch_input ────────────────────────────────────────────────
@@ -4280,7 +4334,10 @@ mod tests {
         app.section_to_remove_idx = Some(1);
         app.confirm_remove_section();
         assert!(
-            app.state.sections.iter().all(|s| s.name.as_deref() != Some("Work")),
+            app.state
+                .sections
+                .iter()
+                .all(|s| s.name.as_deref() != Some("Work")),
             "Work section should be removed"
         );
     }

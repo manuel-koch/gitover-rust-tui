@@ -6,8 +6,8 @@
 /// The integration tests create a real temporary git repository via git2 and
 /// verify that `get_repo_status` returns sensible results for several scenarios.
 use gitover::git::{
-    get_branches_with_ahead_behind, get_commit_file_diff, get_commit_history,
-    get_file_diff, get_head_commit_file_count, get_head_commit_message, get_repo_status,
+    get_branches_with_ahead_behind, get_commit_file_diff, get_commit_history, get_file_diff,
+    get_head_commit_file_count, get_head_commit_message, get_repo_status,
     get_untracked_file_content, DeltaKind, FileEntry, FileStatusKind, HistoryFilter, RepoStatus,
 };
 use std::fs;
@@ -447,8 +447,8 @@ fn commit_history_full_filter_returns_all_commits() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let path = make_repo_with_commits(&tmp.path().to_path_buf());
 
-    let commits = get_commit_history(&path, &HistoryFilter::Full, 100, false)
-        .expect("get_commit_history");
+    let commits =
+        get_commit_history(&path, &HistoryFilter::Full, 100, false).expect("get_commit_history");
 
     assert_eq!(commits.len(), 2, "should return both commits");
     // Most recent first (TIME sort)
@@ -465,7 +465,11 @@ fn commit_history_full_respects_limit() {
     let commits =
         get_commit_history(&path, &HistoryFilter::Full, 1, false).expect("get_commit_history");
 
-    assert_eq!(commits.len(), 1, "limit=1 should return only the newest commit");
+    assert_eq!(
+        commits.len(),
+        1,
+        "limit=1 should return only the newest commit"
+    );
     assert_eq!(commits[0].summary, "add second file");
 }
 
@@ -545,10 +549,18 @@ fn commit_history_branch_full_filter_returns_commits() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let path = make_repo_with_commits(&tmp.path().to_path_buf());
 
-    let commits = get_commit_history(&path, &HistoryFilter::BranchFull("main".to_string()), 100, false)
-        .expect("get_commit_history with BranchFull");
+    let commits = get_commit_history(
+        &path,
+        &HistoryFilter::BranchFull("main".to_string()),
+        100,
+        false,
+    )
+    .expect("get_commit_history with BranchFull");
 
-    assert!(!commits.is_empty(), "BranchFull should return commits for 'main'");
+    assert!(
+        !commits.is_empty(),
+        "BranchFull should return commits for 'main'"
+    );
 }
 
 // ── get_file_diff integration ─────────────────────────────────────────────────
@@ -560,8 +572,10 @@ fn get_file_diff_returns_diff_for_modified_file() {
     fs::write(tmp.path().join("README.md"), "modified content\n").unwrap();
 
     let diff = get_file_diff(&path, "README.md", "git").expect("get_file_diff");
-    assert!(diff.contains("modified content") || diff.contains("-hello"),
-        "diff must reference the changed content, got: {diff}");
+    assert!(
+        diff.contains("modified content") || diff.contains("-hello"),
+        "diff must reference the changed content, got: {diff}"
+    );
 }
 
 #[test]
@@ -570,7 +584,10 @@ fn get_file_diff_returns_empty_for_clean_file() {
     let path = make_repo(&tmp.path().to_path_buf(), "main");
     // File is unchanged — diff should be empty
     let diff = get_file_diff(&path, "README.md", "git").expect("get_file_diff");
-    assert!(diff.is_empty(), "diff of clean file should be empty, got: {diff}");
+    assert!(
+        diff.is_empty(),
+        "diff of clean file should be empty, got: {diff}"
+    );
 }
 
 // ── get_commit_file_diff integration ─────────────────────────────────────────
@@ -585,7 +602,10 @@ fn get_commit_file_diff_shows_initial_file_addition() {
 
     let diff = get_commit_file_diff(&path, &initial.short_hash, "README.md", "git")
         .expect("get_commit_file_diff");
-    assert!(!diff.is_empty(), "diff of initial commit for README.md should not be empty");
+    assert!(
+        !diff.is_empty(),
+        "diff of initial commit for README.md should not be empty"
+    );
 }
 
 // ── Deleted file in working tree ─────────────────────────────────────────────
@@ -661,13 +681,16 @@ fn commit_history_includes_modified_delta() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let path = make_repo_with_file_modification(&tmp.path().to_path_buf());
 
-    let history = get_commit_history(&path, &HistoryFilter::Full, 100, false)
-        .expect("get_commit_history");
+    let history =
+        get_commit_history(&path, &HistoryFilter::Full, 100, false).expect("get_commit_history");
     assert_eq!(history.len(), 2);
 
     let modify_commit = &history[0];
     assert!(
-        modify_commit.files.iter().any(|d| d.kind == DeltaKind::Modified),
+        modify_commit
+            .files
+            .iter()
+            .any(|d| d.kind == DeltaKind::Modified),
         "modify commit should have a Modified delta"
     );
 }

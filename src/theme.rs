@@ -202,11 +202,26 @@ mod tests {
     #[test]
     fn file_status_colour_maps_every_kind() {
         let t = &DEFAULT;
-        assert_eq!(t.file_status_colour(&FileStatusKind::Staged), t.status_staged);
-        assert_eq!(t.file_status_colour(&FileStatusKind::Modified), t.status_modified);
-        assert_eq!(t.file_status_colour(&FileStatusKind::Deleted), t.status_deleted);
-        assert_eq!(t.file_status_colour(&FileStatusKind::Conflict), t.status_conflict);
-        assert_eq!(t.file_status_colour(&FileStatusKind::Untracked), t.status_untracked);
+        assert_eq!(
+            t.file_status_colour(&FileStatusKind::Staged),
+            t.status_staged
+        );
+        assert_eq!(
+            t.file_status_colour(&FileStatusKind::Modified),
+            t.status_modified
+        );
+        assert_eq!(
+            t.file_status_colour(&FileStatusKind::Deleted),
+            t.status_deleted
+        );
+        assert_eq!(
+            t.file_status_colour(&FileStatusKind::Conflict),
+            t.status_conflict
+        );
+        assert_eq!(
+            t.file_status_colour(&FileStatusKind::Untracked),
+            t.status_untracked
+        );
     }
 
     #[test]
