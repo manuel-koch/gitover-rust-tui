@@ -82,19 +82,19 @@ Makefile        — build, lint, format, test, release, install, tag-version tar
 ### Guidelines for Implementation, Testing and Bugfixing
 
 - Avoid Code Smells
-- KISS Principle
+- KISS — Keep It Simple
 - SOLID Principles
 - SSOT (Single Source of Truth)
 - YAGNI (You Aren’t Gonna Need It)
-- Clean Architecture
+- Clean Code (Uncle Bob)
+- Clean Architecture (Martin)
 - Minimum Viable Product (MVP)
-- Five Whys (Ohno)
+- Five Whys (Ohno) — find root cause before fixing
 - Chain of Thought (CoT)
 - Occam’s Razor
-- Test Driven Design (TDD), Chicago School
-- Test Double: Mock (Meszaros)
-- Test Double: Spy (Meszaros)
-- Test Double: Stub (Meszaros)
+- TDD, Chicago School
+- Test Double: Mock / Spy / Stub (Meszaros)
+- Testing Pyramid (Cohn), Testing Trophy (Dodds)
 
 ### Development workflow
 
