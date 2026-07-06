@@ -5,7 +5,8 @@ export CARGO_TARGET_DIR := $(REPO_ROOT)/target
 endif
 
 .PHONY: lint format \
-	build build-and-run release \
+	build-debug build-debug-and-run \
+	build-release build-release-and-run \
 	test test-coverage test-coverage-missing \
 	install tag-version \
 	outdated-dependencies upgrade-dependencies
@@ -20,17 +21,29 @@ format:
 	cargo fmt
 
 # Build debug binary (output: target/debug/gitover)
-build:
+build-debug:
 	cargo build
 
 # Build debug binary and launch it
-build-and-run:
+build-debug-and-run:
 	cargo run
 
-build-and-run-with-sandbox-repos: build
+build-debug-and-run-with-sandbox-repos: build
 	mkdir -p ~/tmp/gitover-sandbox
 	./create-sandbox-repos.sh ~/tmp/gitover-sandbox
 	cd ~/tmp/gitover-sandbox && $(CARGO_TARGET_DIR)/debug/gitover --state gitover.state.yaml
+
+# Build optimized release binary (output: ${CARGO_TARGET_DIR}/release/gitover)
+build-release:
+	cargo build --release
+
+# Build optimized release binary
+build-release-and-run: build-release
+	$(CARGO_TARGET_DIR)/release/gitover
+
+# Build optimized release binary and install it `~/.cargo/bin`
+install:
+	cargo install --path .
 
 # Run all unit and integration tests
 test:
@@ -53,14 +66,6 @@ test-coverage-missing:
 	cargo llvm-cov \
 		--ignore-filename-regex "(ui|main)\.rs" \
 		--show-missing-lines
-
-# Build optimized release binary (output: target/release/gitover)
-release:
-	cargo build --release
-
-# Build optimized release binary and install it `~/.cargo/bin`
-install:
-	cargo install --path .
 
 # Show available dependency upgrades (within semver bounds)
 outdated-dependencies:
