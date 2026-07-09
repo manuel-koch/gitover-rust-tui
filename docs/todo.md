@@ -18,8 +18,11 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## UX Polish
 
-- [ ] Include the currently selected repository info in the repositories-pane
-      title, like "Repositories ( <repo-group> - <repo-name> )" when there is a repo selected.
+- [x] Include the currently selected repository info in the repositories-pane
+      title
+  - "Repositories ( <repo-group> - <repo-name> )" when there is a
+    repo selected
+  - "Repositories ( <repo-group> )" when there is no repo selected
 
 - [ ] In the file-picker popup, apply the sorting-flag for paths.
       ( blocked: ratatui-explorer sorts internally, no API to override,

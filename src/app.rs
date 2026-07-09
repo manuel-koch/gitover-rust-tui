@@ -2080,14 +2080,25 @@ impl App {
     /// Title string for the Repositories pane block border.
     pub fn repos_pane_title(&self) -> String {
         let section_idx = self.current_section_idx();
-        if section_idx == 0 {
-            "Repositories".to_string()
+        let section_name = if section_idx == 0 {
+            None
         } else {
-            let section_name = self.state.sections[section_idx]
+            self.state.sections[section_idx]
                 .name
                 .as_deref()
-                .unwrap_or("");
-            format!("Repositories ( {} )", section_name)
+                .map(|n| n.to_string())
+        };
+
+        let repo_name = self
+            .selected_repo_idx()
+            .and_then(|i| self.repos.get(i))
+            .map(|r| r.path.split('/').next_back().unwrap_or(&r.path).to_string());
+
+        match (section_name, repo_name) {
+            (Some(sec), Some(repo)) => format!("Repositories ( {} - {} )", sec, repo),
+            (Some(sec), None) => format!("Repositories ( {} )", sec),
+            (None, Some(repo)) => format!("Repositories ( {} )", repo),
+            (None, None) => "Repositories".to_string(),
         }
     }
 
@@ -3477,6 +3488,37 @@ mod tests {
         app.state.add_section("Work".to_string()).unwrap();
         app.selected = 0; // selects SectionTitle(1)
         assert_eq!(app.repos_pane_title(), "Repositories ( Work )");
+    }
+
+    #[test]
+    fn repos_pane_title_repo_in_default_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0]
+            .repos
+            .push("/home/user/projects/alpha".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry(
+            "/home/user/projects/alpha",
+            "",
+        )];
+        app.selected = 0; // selects Repo(0)
+        assert_eq!(app.repos_pane_title(), "Repositories ( alpha )");
+    }
+
+    #[test]
+    fn repos_pane_title_repo_in_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1]
+            .repos
+            .push("/home/user/projects/alpha".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry(
+            "/home/user/projects/alpha",
+            "",
+        )];
+        app.selected = 0; // SectionTitle(1)
+                          // Move selection to the repo row (after the section title).
+        app.selected = 1; // Repo(0)
+        assert_eq!(app.repos_pane_title(), "Repositories ( Work - alpha )");
     }
 
     // ── collapse_current_section / expand_current_section ────────────────────
