@@ -96,9 +96,10 @@ impl LogLine {
 
     pub fn formatted(&self) -> String {
         format!(
-            "[{} {:>5}] {}",
+            "[{} {:>5} PID{}] {}",
             self.timestamp,
             self.level.label(),
+            std::process::id(),
             self.text
         )
     }

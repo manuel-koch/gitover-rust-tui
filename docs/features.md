@@ -216,8 +216,9 @@ When `--debug-log <path>` is passed on the command line, gitover writes a struct
 - File is appended to if it already exists, created otherwise; no file is written when neither source is set
 - Every entry in the Output Log pane is mirrored to the debug log file
 - Internal debug events (raw key events, operation dispatch) that are not shown in the UI are also written
-- Each line uses the format: `[HH:MM:SS LEVEL] message`
+- Each line uses the format: `[HH:MM:SS LEVEL PID0000] message`
   - `LEVEL` is right-aligned in a 5-character field: `DEBUG`, ` INFO`, ` WARN`, `ERROR`
+  - `PID` is the process identifier of the running app
 - Severity levels:
   - `DEBUG` — internal events (key presses, operation routing); file only, not shown in the Output Log pane
   - `INFO` — normal operation output (fetch started, scan complete, etc.)
