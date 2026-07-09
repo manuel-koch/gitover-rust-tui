@@ -33,6 +33,10 @@
       "type": "boolean",
       "default": false,
       "description": "Whether the Details (diff/commit) pane was open on last exit."
+    },
+    "last_notified_release_version": {
+      "type": "string",
+      "description": "The latest release version tag (e.g. \"v0.9.0\") the user was last notified about. A new release with a different tag triggers a new popup. Omitted from the file when not set."
     }
   },
   "$defs": {

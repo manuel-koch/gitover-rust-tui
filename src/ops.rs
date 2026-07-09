@@ -13,10 +13,27 @@
 // limitations under the License.
 
 use crate::app::RepoOperation;
+use crate::dlog;
 use crate::git;
 use std::process::{Command, Output, Stdio};
 use std::sync::mpsc::Sender;
 use std::time::SystemTime;
+
+/// Repository URL embedded at compile time from Cargo.toml's `repository` field.
+const REPO_URL: &str = env!("CARGO_PKG_REPOSITORY");
+
+/// Construct the GitHub API URL for the latest release from the repository URL.
+fn github_api_releases_url() -> String {
+    let path = REPO_URL
+        .strip_prefix("https://github.com/")
+        .unwrap_or(REPO_URL);
+    format!("https://api.github.com/repos/{path}/releases/latest")
+}
+
+/// Construct the GitHub releases web URL from the repository URL.
+pub fn github_releases_url() -> String {
+    format!("{}/releases", REPO_URL.trim_end_matches('/'))
+}
 
 /// Result of a background git operation sent back to the main thread.
 pub struct OpResult {
@@ -27,6 +44,8 @@ pub struct OpResult {
     pub lines: Vec<String>,
     /// Populated by `OpRequest::Refresh` — the freshly-read repo status.
     pub fresh_status: Option<git::RepoStatus>,
+    /// Populated by `OpRequest::CheckRelease` — the latest release tag name (e.g. "v0.9.0").
+    pub release_tag_name: Option<String>,
 }
 
 /// Which git operation to execute.
@@ -101,6 +120,9 @@ pub enum OpRequest {
     Refresh {
         case_sensitive_sort: bool,
     },
+    /// Check the GitHub Releases API for a new app version.
+    /// Result is returned via `OpResult.release_tag_name`.
+    CheckRelease,
 }
 
 impl OpRequest {
@@ -129,44 +151,99 @@ impl OpRequest {
             OpRequest::Commit { .. } => "commit".into(),
             OpRequest::UndoCommit => "undo commit".into(),
             OpRequest::Refresh { .. } => "scan".into(),
+            OpRequest::CheckRelease => "check release".into(),
         }
     }
 }
 
 /// Spawn a background thread that executes `request` and sends the result to `tx`.
+///
+/// `repo_path` and `git_bin` are optional — operations that need them (all except
+/// `CheckRelease`) will panic with an assertion if they are `None`.
 pub fn spawn_op(
-    repo_path: String,
+    repo_path: Option<String>,
     request: OpRequest,
-    git_bin: String,
+    git_bin: Option<String>,
     tx: Sender<OpResult>,
     op_variant: RepoOperation,
 ) {
     std::thread::spawn(move || {
         let label = request.label();
-        let (success, lines, fresh_status) = match &request {
+        let (success, lines, fresh_status, release_tag_name) = match &request {
             OpRequest::Refresh {
                 case_sensitive_sort,
             } => {
-                let status = match git::get_repo_status(&repo_path, *case_sensitive_sort) {
+                let repo_path = repo_path.as_ref().expect("Refresh requires a repo_path");
+                let status = match git::get_repo_status(repo_path, *case_sensitive_sort) {
                     Ok(s) => s,
-                    Err(e) => git::RepoStatus::error_entry(&repo_path, format!("{e}")),
+                    Err(e) => git::RepoStatus::error_entry(repo_path, format!("{e}")),
                 };
-                (true, vec![], Some(status))
+                (true, vec![], Some(status), None)
+            }
+            OpRequest::CheckRelease => {
+                let tag_name = fetch_latest_release_tag();
+                // Always report success — silent retry on network/rate-limit errors.
+                (true, vec![], None, tag_name)
             }
             _ => {
-                let (ok, out) = run_op(&repo_path, &request, &git_bin);
-                (ok, out, None)
+                let repo_path = repo_path
+                    .as_ref()
+                    .expect("this operation requires a repo_path");
+                let git_bin = git_bin.as_ref().expect("this operation requires a git_bin");
+                let (ok, out) = run_op(repo_path, &request, git_bin);
+                (ok, out, None, None)
             }
         };
         let _ = tx.send(OpResult {
-            repo_path,
+            repo_path: repo_path.unwrap_or_default(),
             op_label: label,
             op_variant,
             success,
             lines,
             fresh_status,
+            release_tag_name,
         });
     });
+}
+/// Fetch the latest release tag name from the GitHub Releases API.
+/// Returns `None` silently on any network or parsing error (silent retry).
+fn fetch_latest_release_tag() -> Option<String> {
+    let url = github_api_releases_url();
+
+    dlog!("checking latest release from {url}");
+    match ureq::get(&url).call() {
+        Ok(response) => {
+            // Read body as string and parse JSON manually (avoids type-inference issues)
+            let body_str = match response.into_body().read_to_string() {
+                Ok(s) => s,
+                Err(_) => {
+                    dlog!("failed to read release response body");
+                    return None;
+                }
+            };
+            match serde_json::from_str::<serde_json::Value>(&body_str) {
+                Ok(ref json) => {
+                    let tag = json
+                        .get("tag_name")
+                        .and_then(|v| Some(v.as_str()?.to_string()));
+                    if let Some(ref t) = tag {
+                        dlog!("latest release tag found: {t}");
+                    } else {
+                        dlog!("latest release response has no tag_name field");
+                    }
+                    tag
+                }
+                Err(_) => {
+                    dlog!("failed to parse release JSON response");
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            dlog!("release check request failed: {e}");
+            None
+        }
+    }
 }
 
 fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<String>) {
@@ -390,6 +467,9 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
 
         // Refresh is handled directly in spawn_op — run_op is never called for it.
         OpRequest::Refresh { .. } => unreachable!(),
+
+        // CheckRelease is handled directly in spawn_op — run_op is never called for it.
+        OpRequest::CheckRelease => unreachable!(),
     };
 
     (ok, lines)
@@ -622,11 +702,11 @@ mod tests {
 
         let (tx, rx) = mpsc::channel::<OpResult>();
         spawn_op(
-            tmp.path().to_str().unwrap().to_string(),
+            Some(tmp.path().to_str().unwrap().to_string()),
             OpRequest::Refresh {
                 case_sensitive_sort: false,
             },
-            "git".to_string(),
+            Some("git".to_string()),
             tx,
             RepoOperation::Scanning,
         );
@@ -660,9 +740,9 @@ mod tests {
 
         let (tx, rx) = mpsc::channel::<OpResult>();
         spawn_op(
-            tmp.path().to_str().unwrap().to_string(),
+            Some(tmp.path().to_str().unwrap().to_string()),
             OpRequest::Fetch,
-            "git".to_string(),
+            Some("git".to_string()),
             tx,
             RepoOperation::Fetching,
         );
@@ -718,7 +798,13 @@ mod tests {
             _ => RepoOperation::Working,
         };
         let (tx, rx) = mpsc::channel::<OpResult>();
-        spawn_op(repo_path.to_string(), op, "git".to_string(), tx, variant);
+        spawn_op(
+            Some(repo_path.to_string()),
+            op,
+            Some("git".to_string()),
+            tx,
+            variant,
+        );
         rx.recv_timeout(std::time::Duration::from_secs(15))
             .expect("op result within timeout")
     }

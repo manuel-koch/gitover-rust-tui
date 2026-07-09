@@ -64,6 +64,7 @@ general:
   auto_fetch_interval: 600             # seconds between background fetches (0 = disabled)
   debug_log: ~/logs/gitover.log        # optional: persistent debug log (supports ~ and ${VAR})
   case_sensitive_path_sorting: false   # optional: true = case-sensitive path sort (default: false)
+  release_check_interval: 86400        # optional: seconds between release version checks (0 = disabled, default: 86400)
 
 repo_commands:
   - name: Open in editor

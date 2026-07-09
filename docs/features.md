@@ -31,6 +31,8 @@ Full JSON Schemas for both files are in [`docs/config.schema.json`](./config.sch
   any variable cannot be resolved
 - `general.case_sensitive_path_sorting`: when `true`, paths are sorted case-sensitively across all panes
   (repositories, status files, history commit files); defaults to `false` (case-insensitive)
+- `general.release_check_interval`: interval in seconds for checking the GitHub Releases API for a new app
+  version (default: 86400 = 24 hours; set to 0 to disable)
 - `repo_commands`: list of commands that can be run for current repository
   - `repo_commands[].name`: Description of the command, will be shown in action menu
   - `repo_commands[].cmd`: The command line to be executed; supports `${VAR}` substitution in two steps:
@@ -54,7 +56,7 @@ Full JSON Schemas for both files are in [`docs/config.schema.json`](./config.sch
   - Named sections appear in case-insensitive alphabetical order; their repos are indented two spaces and sorted by path
   - Section title rows show `▶` (collapsed) or `▼` (expanded); `←` collapses a named section, `→` expands it; collapse state is stored per section in the state file
   - A collapsed section shows an aggregated summary row (dirty count, upstream/trunk divergence, active operations); the summary is hidden when the section is expanded
-  - When a section-title row is selected, the Status Details pane shows a "no repository selected" placeholder and the History pane is cleared
+  - When a section-title row is selected, the Status Details pane shows a "No repository selected" placeholder and the History pane is cleared
   - The Repositories pane title changes to `Repositories ( <section-name> )` when the cursor is on a named-section row; plain `Repositories` for the default section
   - `f` on a section-title row fetches all repos in that section in parallel; `r` refreshes all repos in that section
   - Each repo shows a `scan` spinner in the Activity column while a refresh is in progress (applies to both single-repo `r` and section-level `r`)
@@ -420,11 +422,20 @@ The binary embeds build metadata at compile time via `build.rs`:
 - **Git commit**: short hash of HEAD at build time (`GIT_SHORT_HASH`)
 - **Build timestamp**: UTC date/time captured when `cargo build` runs (`BUILD_TIMESTAMP`)
 
-Running `gitover --version` (or `-V`) prints this info and exits immediately without starting the TUI.
+Running `gitover --version` (or `-V`) prints this info and exits immediately
+without starting the TUI.
 
-```text
-gitover v0.1.0 (commit abc1234, built 2026-05-20 11:51:06 UTC)
-```
+## Release Notifications
+
+- On startup and periodically (default every 24 hours), gitover checks the GitHub Releases API for a newer version of the app
+- Configurable via `general.release_check_interval` (set to 0 to disable)
+- The check runs in the background with silent retry on network errors — no error log spam
+- When a newer release is detected:
+  - A `✦` indicator appears in the header title bar next to the version
+  - An auto-dismissing popup notification is shown on first detection: `"New release v0.9.0 available! → …/releases"`
+  - The help overlay (`?`) shows a "Release Notifications" section with the new version and link
+- Per-version dismissal: the popup only appears once per version; the header indicator and help entry remain visible
+- The last-seen version is persisted in the state file, so the popup won't repeat across restarts for the same version
 
 ## Tooling
 

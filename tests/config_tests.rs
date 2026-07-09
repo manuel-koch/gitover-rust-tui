@@ -14,6 +14,27 @@ fn config_default_has_no_git_override() {
 }
 
 #[test]
+fn config_default_release_check_interval_is_24h() {
+    let cfg = Config::default();
+    assert_eq!(
+        cfg.general.release_check_interval(),
+        Some(std::time::Duration::from_secs(86400))
+    );
+}
+
+#[test]
+fn config_disable_release_check_with_zero() {
+    let cfg = Config {
+        general: gitover::config::GeneralConfig {
+            release_check_interval: Some(0),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert_eq!(cfg.general.release_check_interval(), None);
+}
+
+#[test]
 fn config_load_from_missing_file_returns_default() {
     let tmp = tempdir().unwrap();
     let path = tmp.path().join("nonexistent.yaml");

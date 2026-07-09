@@ -389,13 +389,29 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         }
     };
 
-    // Left side: title + optional scanning spinner + help hint.
+    // Left side: title + optional scanning spinner + help hint + release indicator.
     let mut left_spans: Vec<Span<'static>> = vec![Span::styled(
-        concat!("Git Repository Overview (v", env!("CARGO_PKG_VERSION"), ")"),
+        format!("Git Repository Overview (v{}", env!("CARGO_PKG_VERSION")),
         Style::default()
             .fg(theme.title)
             .add_modifier(Modifier::BOLD),
     )];
+
+    if app.new_release_available {
+        left_spans.push(Span::styled(
+            " ✦",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    left_spans.push(Span::styled(
+        ")",
+        Style::default()
+            .fg(theme.title)
+            .add_modifier(Modifier::BOLD),
+    ));
 
     if app.scanning {
         left_spans.push(Span::raw("  "));
@@ -1177,9 +1193,9 @@ fn draw_file_status_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if files.is_empty() {
         let placeholder = if app.selected_repo_idx().is_none() {
-            "no repository selected"
+            "No repository selected"
         } else {
-            "no changes — working tree clean"
+            "No changes — working tree clean"
         };
         let msg = Paragraph::new(Line::from(Span::styled(
             placeholder,
@@ -1781,6 +1797,22 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
         ),
         build_info_sty,
     ))];
+
+    if app.new_release_available {
+        let release_url = crate::ops::github_releases_url();
+        let latest = app.latest_release_version.as_deref().unwrap_or("?");
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(" Release Notifications", sec)));
+        lines.push(Line::from(vec![
+            Span::styled("  ✦ New release ", desc_sty),
+            Span::styled(latest, key_sty),
+            Span::styled(" available", desc_sty),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  See ", desc_sty),
+            Span::styled(release_url, key_sty),
+        ]));
+    }
 
     lines.extend(section(
         "Navigation",
@@ -2599,9 +2631,11 @@ fn draw_popup_message(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
     // Calculate popup size based on message content
-    let msg_len = msg.len() as u16;
-    let width = (msg_len + 4).clamp(30, area.width.saturating_sub(4));
-    let height: u16 = 5; // Fixed height for the popup box
+    let lines: Vec<&str> = msg.lines().collect();
+    let line_count = lines.len() as u16;
+    let max_line_len = lines.iter().map(|l| l.len() as u16).max().unwrap_or(0);
+    let width = (max_line_len + 4).clamp(30, area.width.saturating_sub(4));
+    let height = line_count + 4; // border (2) + top/bottom padding (1 each) + content
 
     let popup = centered_rect((width * 100 / area.width).max(30), height, area);
 
@@ -2614,17 +2648,21 @@ fn draw_popup_message(frame: &mut Frame, app: &mut App) {
     frame.render_widget(block, popup);
 
     // Center the message text vertically and horizontally
-    let text_area = Rect {
-        x: inner.x,
-        y: inner.y + inner.height / 2 - 1,
-        width: inner.width,
-        height: 3,
-    };
+    let text_lines: Vec<Line> = lines
+        .iter()
+        .map(|l| {
+            Line::from(Span::styled(
+                l.to_string(),
+                Style::default().fg(t.popup_target),
+            ))
+            .alignment(ratatui::layout::Alignment::Center)
+        })
+        .collect();
 
-    let para = Paragraph::new(msg.clone())
+    let para = Paragraph::new(text_lines)
         .style(Style::default().fg(t.popup_target))
         .alignment(ratatui::layout::Alignment::Center);
-    frame.render_widget(para, text_area);
+    frame.render_widget(para, inner);
 }
 
 /// Like `centered_rect` but anchors the popup's top edge at `top_offset` rows from `area.y`

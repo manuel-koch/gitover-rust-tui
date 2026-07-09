@@ -168,6 +168,11 @@ fn main() -> Result<()> {
     app.reload_history_if_open(false);
     app.refresh_details();
 
+    // Trigger initial release check
+    if app.config.general.release_check_interval().is_some() {
+        spawn_release_check(&op_tx);
+    }
+
     let mut dirty_rx = watcher::start(app.repos.iter().map(|r| r.path.clone()).collect());
 
     let result = run_app(&mut terminal, &mut app, &mut dirty_rx, &op_tx, &op_rx);
@@ -232,6 +237,13 @@ where
         if app.is_auto_fetch_due() {
             app.reset_auto_fetch_timer();
             launch_all_fetch(app, op_tx);
+        }
+
+        // Check if the release check timer has fired.
+        if app.is_release_check_due() {
+            app.reset_release_check_timer();
+            dlog!("release check timer fired, spawning check");
+            spawn_release_check(op_tx);
         }
 
         // Check if popup message should auto-dismiss
@@ -1090,6 +1102,17 @@ fn handle_normal_key(
     }
 }
 
+/// Spawn a background thread to check the GitHub Releases API for a new version.
+fn spawn_release_check(op_tx: &std::sync::mpsc::Sender<OpResult>) {
+    spawn_op(
+        None, // no repo path for app-wide check
+        OpRequest::CheckRelease,
+        None, // no git binary needed for release check
+        op_tx.clone(),
+        app::RepoOperation::Working,
+    );
+}
+
 /// Fetch all tracked repos in parallel.
 fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
     let git_bin = app
@@ -1127,9 +1150,9 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
     for path in paths {
         app.begin_operation(&path, app::RepoOperation::Fetching);
         spawn_op(
-            path,
+            Some(path),
             OpRequest::Fetch,
-            git_bin.clone(),
+            Some(git_bin.clone()),
             op_tx.clone(),
             app::RepoOperation::Fetching,
         );
@@ -1183,9 +1206,9 @@ fn launch_section_fetch(
     for path in paths {
         app.begin_operation(&path, app::RepoOperation::Fetching);
         spawn_op(
-            path,
+            Some(path),
             OpRequest::Fetch,
-            git_bin.clone(),
+            Some(git_bin.clone()),
             op_tx.clone(),
             app::RepoOperation::Fetching,
         );
@@ -1210,6 +1233,57 @@ fn branch_pull_op(app: &App) -> Option<OpRequest> {
         name: b.name.clone(),
         upstream: up.branch.clone(),
     })
+}
+
+/// Compare two semver version strings (x.y.z) — returns true if `a` is strictly greater than `b`.
+fn semver_gt(a: &str, b: &str) -> bool {
+    let a_parts: Vec<u64> = a.split('.').filter_map(|s| s.parse().ok()).collect();
+    let b_parts: Vec<u64> = b.split('.').filter_map(|s| s.parse().ok()).collect();
+    a_parts > b_parts
+}
+
+/// Handle the result of a release check operation.
+fn handle_release_check_result(app: &mut App, result: OpResult) {
+    let Some(latest) = result.release_tag_name else {
+        dlog!("release check completed with no tag (network error or no response)");
+        return;
+    };
+    dlog!(
+        "release check result: latest={latest}, current={}",
+        env!("CARGO_PKG_VERSION")
+    );
+
+    // Strip leading 'v' for version comparison (e.g. "v0.9.0" vs "0.8.8")
+    let latest_ver = latest.strip_prefix('v').unwrap_or(&latest);
+    let current_ver = env!("CARGO_PKG_VERSION");
+    let is_newer = semver_gt(latest_ver, current_ver);
+
+    if is_newer {
+        app.latest_release_version = Some(latest.clone());
+        app.new_release_available = true;
+
+        // Show popup on first detection (per-version dismissal).
+        let is_dismissed = app
+            .dismissed_release_version
+            .as_ref()
+            .map(|d| d == &latest)
+            .unwrap_or(false);
+
+        if !is_dismissed {
+            app.dismissed_release_version = Some(latest.clone());
+            app.state.last_notified_release_version = Some(latest.clone());
+            let _ = app.state.save();
+            let releases_url = crate::ops::github_releases_url();
+            app.popup_message = Some(format!(
+                "New release {latest} available!\nSee {releases_url}"
+            ));
+            app.popup_show_time = Some(Instant::now());
+            app.mode = AppMode::PopupMessage;
+        }
+    } else {
+        // No newer release — keep stale enabled flag so it persists across restarts
+        // from state (user didn't install the new version yet).
+    }
 }
 
 /// Dispatch a git operation for the currently selected repo.
@@ -1243,7 +1317,7 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
     };
     app.begin_operation(&path, variant);
     app.log(format!("run '{label}' in {path}"));
-    spawn_op(path, request, git_bin, op_tx.clone(), variant);
+    spawn_op(Some(path), request, Some(git_bin), op_tx.clone(), variant);
 }
 
 /// Expand `${ROOT}` / `${BRANCH}` and env vars in a repo command string and spawn it.
@@ -1290,13 +1364,13 @@ fn launch_repo_cmd(
     app.log(format!("run '{name}' in {root}"));
     app.begin_operation(&root, app::RepoOperation::Working);
     spawn_op(
-        root,
+        Some(root),
         OpRequest::RunRepoCommand {
             name,
             cmd,
             background,
         },
-        git_bin,
+        Some(git_bin),
         op_tx.clone(),
         app::RepoOperation::Working,
     );
@@ -1304,6 +1378,12 @@ fn launch_repo_cmd(
 
 /// Handle a completed op result: log output, clear busy indicator, refresh.
 fn handle_op_result(app: &mut App, result: OpResult) {
+    // Handle release check result specially — it's app-wide, not per-repo.
+    if result.op_variant == app::RepoOperation::Working && result.repo_path.is_empty() {
+        handle_release_check_result(app, result);
+        return;
+    }
+
     app.finish_operation(&result.repo_path, result.op_variant);
     if !result.success {
         app.log_error(format!(
@@ -2072,11 +2152,11 @@ fn spawn_refresh(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, path:
         .unwrap_or_else(|| "git".to_string());
     app.begin_operation(path, app::RepoOperation::Scanning);
     spawn_op(
-        path.to_string(),
+        Some(path.to_string()),
         OpRequest::Refresh {
             case_sensitive_sort,
         },
-        git_bin,
+        Some(git_bin),
         op_tx.clone(),
         app::RepoOperation::Scanning,
     );
@@ -2333,6 +2413,36 @@ mod tests {
             app.operations.get(&path_errored).is_none(),
             "errored repo must not be queued for fetch"
         );
+    }
+
+    #[test]
+    fn semver_gt_returns_false_when_current_is_newer() {
+        assert!(!semver_gt("0.7.17", "0.8.8"));
+    }
+
+    #[test]
+    fn semver_gt_returns_true_when_latest_is_newer() {
+        assert!(semver_gt("0.10.0", "0.9.9"));
+    }
+
+    #[test]
+    fn semver_gt_returns_false_for_equal_versions() {
+        assert!(!semver_gt("0.8.8", "0.8.8"));
+    }
+
+    #[test]
+    fn semver_gt_handles_major_version_bump() {
+        assert!(semver_gt("1.0.0", "0.9.9"));
+    }
+
+    #[test]
+    fn semver_gt_handles_patch_version() {
+        assert!(semver_gt("0.8.9", "0.8.8"));
+    }
+
+    #[test]
+    fn semver_gt_returns_false_for_lower_patch() {
+        assert!(!semver_gt("0.8.7", "0.8.8"));
     }
 }
 

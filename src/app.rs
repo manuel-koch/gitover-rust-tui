@@ -298,6 +298,18 @@ pub struct App {
     /// Resets to `Instant::now() + AUTO_FETCH_INTERVAL` after each fetch.
     pub next_auto_fetch: Option<Instant>,
 
+    // ── Release check ─────────────────────────────────────────────────────────
+    /// Next time the release check should fire.
+    pub next_release_check: Option<Instant>,
+    /// Latest release tag name fetched from GitHub (e.g. "v0.9.0"), or None if not yet checked / no newer release.
+    pub latest_release_version: Option<String>,
+    /// The release version the user has dismissed (per-version dismissal).
+    /// When `latest_release_version` matches this, the popup is not shown again.
+    pub dismissed_release_version: Option<String>,
+    /// True when a new release has been detected and not yet dismissed by
+    /// viewing the help overlay or having the popup shown.
+    pub new_release_available: bool,
+
     // ── Git operations ────────────────────────────────────────────────────────
     /// Items shown in the action menu popup.
     pub menu_items: Vec<MenuItem>,
@@ -441,6 +453,7 @@ impl App {
         };
         let config_clone = config.clone();
         let interval = config.general.auto_fetch_interval();
+        let release_check_interval = config_clone.general.release_check_interval();
 
         let mut state = match state_path {
             Some(p) => State::load_from_path(p),
@@ -451,6 +464,7 @@ impl App {
         let show_log = state.show_log;
         let show_history = state.show_history;
         let show_details = state.show_details;
+        let last_notified_release_version = state.last_notified_release_version.clone();
 
         App {
             repos: Vec::new(),
@@ -475,6 +489,11 @@ impl App {
             log_offset: 0,
             log_follow: true,
             next_auto_fetch: Some(Instant::now() + interval),
+            // Release check fires at startup + interval
+            next_release_check: release_check_interval.map(|i| Instant::now() + i),
+            latest_release_version: last_notified_release_version.clone(),
+            dismissed_release_version: last_notified_release_version,
+            new_release_available: false,
             menu_items: Vec::new(),
             menu_selected: 0,
             menu_scroll: 0,
@@ -767,6 +786,22 @@ impl App {
             self.next_auto_fetch = Some(Instant::now() + interval);
         } else {
             self.next_auto_fetch = None;
+        }
+    }
+
+    /// Returns true if the release check timer has fired.
+    pub fn is_release_check_due(&self) -> bool {
+        self.next_release_check
+            .map(|t| t <= Instant::now())
+            .unwrap_or(false)
+    }
+
+    /// Reset the release check timer to now + the configured interval.
+    pub fn reset_release_check_timer(&mut self) {
+        if let Some(interval) = self.config.general.release_check_interval() {
+            self.next_release_check = Some(Instant::now() + interval);
+        } else {
+            self.next_release_check = None;
         }
     }
 
@@ -1201,7 +1236,7 @@ impl App {
         self.mode = AppMode::PopupMessage;
     }
 
-    /// Check if the popup message should auto-dismiss (2 seconds timeout).
+    /// Check if the popup message should auto-dismiss (5 seconds timeout).
     /// Show a short status text in the header for 2 seconds.
     pub fn set_header_flash(&mut self, msg: impl Into<String>) {
         self.header_flash = Some((msg.into(), Instant::now()));
@@ -1218,7 +1253,7 @@ impl App {
 
     pub fn check_popup_timeout(&mut self) {
         if let (Some(show_time), Some(_msg)) = (self.popup_show_time, &self.popup_message) {
-            if show_time.elapsed().as_secs() >= 2 {
+            if show_time.elapsed().as_secs() >= 30 {
                 self.popup_message = None;
                 self.popup_show_time = None;
                 self.restore_base_mode();

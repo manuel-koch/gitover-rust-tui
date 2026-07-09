@@ -62,6 +62,8 @@ struct RawState {
     show_history: bool,
     #[serde(default)]
     show_details: bool,
+    #[serde(default)]
+    last_notified_release_version: Option<String>,
 }
 
 /// Persisted application state saved to `gitover.state.yaml`.
@@ -88,6 +90,11 @@ pub struct State {
     /// Where this state was loaded from and will be saved to.
     #[serde(skip)]
     pub path: PathBuf,
+    /// The latest release version tag (e.g. "v0.9.0") that the user was last notified
+    /// about. A new release with a different tag will trigger a new popup.
+    /// Persisted across restarts to avoid re-notifying about the same version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_notified_release_version: Option<String>,
 }
 
 fn default_sections() -> Vec<RepoSection> {
@@ -103,6 +110,7 @@ impl Default for State {
             show_history: false,
             show_details: false,
             path: global_state_path(),
+            last_notified_release_version: None,
         }
     }
 }
@@ -171,6 +179,7 @@ impl State {
             show_history: raw.show_history,
             show_details: raw.show_details,
             path: path.to_path_buf(),
+            last_notified_release_version: raw.last_notified_release_version,
         })
     }
 
@@ -195,6 +204,7 @@ impl State {
             show_log: self.show_log,
             show_history: self.show_history,
             show_details: self.show_details,
+            last_notified_release_version: self.last_notified_release_version.clone(),
             path: PathBuf::new(),
         };
         let content = serde_yaml::to_string(&saveable)?;

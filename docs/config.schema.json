@@ -28,6 +28,12 @@
           "type": "boolean",
           "default": false,
           "description": "When true, paths are sorted case-sensitively across all panes (repositories, status files, history commit files)."
+        },
+        "release_check_interval": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 86400,
+          "description": "Interval in seconds for checking the GitHub Releases API for a new app version. Default: 86400 (24 hours). Set to 0 to disable."
         }
       }
     },

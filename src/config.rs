@@ -17,6 +17,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// Default interval in seconds for checking the GitHub Releases API for a new app version (24 hours).
+const DEFAULT_RELEASE_CHECK_INTERVAL_SECS: u64 = 86400;
+
 /// A custom command that can be run against the selected repository.
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct RepoCommand {
@@ -60,6 +63,10 @@ pub struct GeneralConfig {
     /// Defaults to false (case-insensitive sorting).
     #[serde(default)]
     pub case_sensitive_path_sorting: bool,
+    /// Interval in seconds for checking the GitHub Releases API for a new app version.
+    /// Defaults to 86400 (24 hours) if not set. 0 disables the check entirely.
+    #[serde(default)]
+    pub release_check_interval: Option<u64>,
 }
 
 impl GeneralConfig {
@@ -69,6 +76,16 @@ impl GeneralConfig {
         self.auto_fetch_interval
             .map(Duration::from_secs)
             .unwrap_or(Duration::from_secs(600))
+    }
+
+    /// Get the release_check_interval as Duration, falling back to default (86400 seconds = 24h).
+    /// Returns None when the check is disabled (interval = 0).
+    pub fn release_check_interval(&self) -> Option<Duration> {
+        match self.release_check_interval {
+            Some(0) => None,
+            Some(secs) => Some(Duration::from_secs(secs)),
+            None => Some(Duration::from_secs(DEFAULT_RELEASE_CHECK_INTERVAL_SECS)),
+        }
     }
 }
 
