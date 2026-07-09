@@ -1125,9 +1125,14 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
     app.log(format!("fetching all {} repos…", paths.len()));
 
     for path in paths {
-        app.operations
-            .insert(path.clone(), app::RepoOperation::Fetching);
-        spawn_op(path, OpRequest::Fetch, git_bin.clone(), op_tx.clone());
+        app.begin_operation(&path, app::RepoOperation::Fetching);
+        spawn_op(
+            path,
+            OpRequest::Fetch,
+            git_bin.clone(),
+            op_tx.clone(),
+            app::RepoOperation::Fetching,
+        );
     }
 }
 
@@ -1176,9 +1181,14 @@ fn launch_section_fetch(
     ));
 
     for path in paths {
-        app.operations
-            .insert(path.clone(), app::RepoOperation::Fetching);
-        spawn_op(path, OpRequest::Fetch, git_bin.clone(), op_tx.clone());
+        app.begin_operation(&path, app::RepoOperation::Fetching);
+        spawn_op(
+            path,
+            OpRequest::Fetch,
+            git_bin.clone(),
+            op_tx.clone(),
+            app::RepoOperation::Fetching,
+        );
     }
 }
 
@@ -1220,22 +1230,20 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
         .clone()
         .unwrap_or_else(|| "git".to_string());
     let label = request.label();
-    app.operations.insert(
-        path.clone(),
-        match &request {
-            OpRequest::Fetch => app::RepoOperation::Fetching,
-            OpRequest::Pull | OpRequest::PullBranch { .. } => app::RepoOperation::Pulling,
-            OpRequest::Push
-            | OpRequest::ForcePush
-            | OpRequest::PushBranch { .. }
-            | OpRequest::ForcePushBranch { .. } => app::RepoOperation::Pushing,
-            OpRequest::Commit { .. } => app::RepoOperation::Committing,
-            OpRequest::UndoCommit => app::RepoOperation::Working,
-            _ => app::RepoOperation::Working,
-        },
-    );
+    let variant = match &request {
+        OpRequest::Fetch => app::RepoOperation::Fetching,
+        OpRequest::Pull | OpRequest::PullBranch { .. } => app::RepoOperation::Pulling,
+        OpRequest::Push
+        | OpRequest::ForcePush
+        | OpRequest::PushBranch { .. }
+        | OpRequest::ForcePushBranch { .. } => app::RepoOperation::Pushing,
+        OpRequest::Commit { .. } => app::RepoOperation::Committing,
+        OpRequest::UndoCommit => app::RepoOperation::Working,
+        _ => app::RepoOperation::Working,
+    };
+    app.begin_operation(&path, variant);
     app.log(format!("run '{label}' in {path}"));
-    spawn_op(path, request, git_bin, op_tx.clone());
+    spawn_op(path, request, git_bin, op_tx.clone(), variant);
 }
 
 /// Expand `${ROOT}` / `${BRANCH}` and env vars in a repo command string and spawn it.
@@ -1280,6 +1288,7 @@ fn launch_repo_cmd(
         .clone()
         .unwrap_or_else(|| "git".to_string());
     app.log(format!("run '{name}' in {root}"));
+    app.begin_operation(&root, app::RepoOperation::Working);
     spawn_op(
         root,
         OpRequest::RunRepoCommand {
@@ -1289,12 +1298,13 @@ fn launch_repo_cmd(
         },
         git_bin,
         op_tx.clone(),
+        app::RepoOperation::Working,
     );
 }
 
 /// Handle a completed op result: log output, clear busy indicator, refresh.
 fn handle_op_result(app: &mut App, result: OpResult) {
-    app.operations.remove(&result.repo_path);
+    app.finish_operation(&result.repo_path, result.op_variant);
     if !result.success {
         app.log_error(format!(
             "'{}' failed in {}",
@@ -2060,8 +2070,7 @@ fn spawn_refresh(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, path:
         .git
         .clone()
         .unwrap_or_else(|| "git".to_string());
-    app.operations
-        .insert(path.to_string(), app::RepoOperation::Scanning);
+    app.begin_operation(path, app::RepoOperation::Scanning);
     spawn_op(
         path.to_string(),
         OpRequest::Refresh {
@@ -2069,6 +2078,7 @@ fn spawn_refresh(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, path:
         },
         git_bin,
         op_tx.clone(),
+        app::RepoOperation::Scanning,
     );
 }
 
@@ -2282,12 +2292,12 @@ mod tests {
         );
         assert_eq!(
             app.operations.get(&path_a),
-            Some(&app::RepoOperation::Scanning),
+            Some(&vec![app::RepoOperation::Scanning]),
             "new repo must be marked Scanning"
         );
         assert_eq!(
             app.operations.get(&path_b),
-            Some(&app::RepoOperation::Scanning),
+            Some(&vec![app::RepoOperation::Scanning]),
             "existing repo must be marked Scanning"
         );
     }
@@ -2316,7 +2326,7 @@ mod tests {
 
         assert_eq!(
             app.operations.get(&path_good),
-            Some(&app::RepoOperation::Fetching),
+            Some(&vec![app::RepoOperation::Fetching]),
             "non-errored repo must be marked Fetching"
         );
         assert!(

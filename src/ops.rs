@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::app::RepoOperation;
 use crate::git;
 use std::process::{Command, Output, Stdio};
 use std::sync::mpsc::Sender;
@@ -21,6 +22,7 @@ use std::time::SystemTime;
 pub struct OpResult {
     pub repo_path: String,
     pub op_label: String,
+    pub op_variant: RepoOperation,
     pub success: bool,
     pub lines: Vec<String>,
     /// Populated by `OpRequest::Refresh` — the freshly-read repo status.
@@ -132,7 +134,13 @@ impl OpRequest {
 }
 
 /// Spawn a background thread that executes `request` and sends the result to `tx`.
-pub fn spawn_op(repo_path: String, request: OpRequest, git_bin: String, tx: Sender<OpResult>) {
+pub fn spawn_op(
+    repo_path: String,
+    request: OpRequest,
+    git_bin: String,
+    tx: Sender<OpResult>,
+    op_variant: RepoOperation,
+) {
     std::thread::spawn(move || {
         let label = request.label();
         let (success, lines, fresh_status) = match &request {
@@ -153,6 +161,7 @@ pub fn spawn_op(repo_path: String, request: OpRequest, git_bin: String, tx: Send
         let _ = tx.send(OpResult {
             repo_path,
             op_label: label,
+            op_variant,
             success,
             lines,
             fresh_status,
@@ -619,6 +628,7 @@ mod tests {
             },
             "git".to_string(),
             tx,
+            RepoOperation::Scanning,
         );
 
         let result = rx
@@ -654,6 +664,7 @@ mod tests {
             OpRequest::Fetch,
             "git".to_string(),
             tx,
+            RepoOperation::Fetching,
         );
 
         let result = rx
@@ -695,8 +706,19 @@ mod tests {
     }
 
     fn run_op_sync(repo_path: &str, op: OpRequest) -> OpResult {
+        let variant = match &op {
+            OpRequest::Fetch => RepoOperation::Fetching,
+            OpRequest::Pull | OpRequest::PullBranch { .. } => RepoOperation::Pulling,
+            OpRequest::Push
+            | OpRequest::ForcePush
+            | OpRequest::PushBranch { .. }
+            | OpRequest::ForcePushBranch { .. } => RepoOperation::Pushing,
+            OpRequest::Commit { .. } => RepoOperation::Committing,
+            OpRequest::Refresh { .. } => RepoOperation::Scanning,
+            _ => RepoOperation::Working,
+        };
         let (tx, rx) = mpsc::channel::<OpResult>();
-        spawn_op(repo_path.to_string(), op, "git".to_string(), tx);
+        spawn_op(repo_path.to_string(), op, "git".to_string(), tx, variant);
         rx.recv_timeout(std::time::Duration::from_secs(15))
             .expect("op result within timeout")
     }

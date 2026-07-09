@@ -262,8 +262,9 @@ pub struct App {
     // ── UX Polish ─────────────────────────────────────────────────────────────
     /// True while the initial/global repo scan is running.
     pub scanning: bool,
-    /// Per-repo active operation (busy indicator + activity column).
-    pub operations: HashMap<String, RepoOperation>,
+    /// Per-repo active operations (busy indicator + activity column).
+    /// Supports concurrent ops via Vec — each completed op removes only itself.
+    pub operations: HashMap<String, Vec<RepoOperation>>,
     /// Timestamped log lines from git command output.
     pub log: Vec<LogLine>,
     /// Whether the File Status pane is shown.
@@ -896,15 +897,29 @@ impl App {
     // ── Operations / Log / UX helpers ─────────────────────────────────────────
 
     /// Mark a repo as having an active git operation in progress.
-    #[allow(dead_code)]
     pub fn begin_operation(&mut self, path: &str, op: RepoOperation) {
-        self.operations.insert(path.to_string(), op);
+        self.operations
+            .entry(path.to_string())
+            .or_default()
+            .push(op);
     }
 
     /// Clear the active operation for a repo.
-    #[allow(dead_code)]
     pub fn end_operation(&mut self, path: &str) {
         self.operations.remove(path);
+    }
+
+    /// Remove a specific operation variant from the repo's active ops.
+    /// Cleans up the map entry when the vec becomes empty.
+    pub fn finish_operation(&mut self, path: &str, variant: RepoOperation) {
+        if let std::collections::hash_map::Entry::Occupied(mut entry) =
+            self.operations.entry(path.to_string())
+        {
+            entry.get_mut().retain(|op| *op != variant);
+            if entry.get().is_empty() {
+                entry.remove();
+            }
+        }
     }
 
     /// Dismiss any transient popup and return to the appropriate base mode:
@@ -1921,9 +1936,9 @@ impl App {
         FRAMES[(self.spinner_tick as usize) % FRAMES.len()]
     }
 
-    /// Return the per-repo operation for `path`, if any.
-    pub fn repo_operation(&self, path: &str) -> Option<RepoOperation> {
-        self.operations.get(path).copied()
+    /// Return the per-repo active operations for `path`, if any.
+    pub fn repo_operations(&self, path: &str) -> &[RepoOperation] {
+        self.operations.get(path).map_or(&[], |v| v.as_slice())
     }
 
     /// Return the per-file changes of the currently-selected repo (for the

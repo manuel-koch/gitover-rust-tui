@@ -494,8 +494,8 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
                     let mut any_behind_trunk = false;
                     let mut active_ops: Vec<RepoOperation> = Vec::new();
                     for repo_path in &section.repos {
-                        if let Some(op) = app.repo_operation(repo_path) {
-                            active_ops.push(op);
+                        for op in app.repo_operations(repo_path) {
+                            active_ops.push(*op);
                         }
                         if let Some(repo) = app.repos.iter().find(|r| r.path == *repo_path) {
                             if !repo.is_clean() {
@@ -528,24 +528,8 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
                     } else {
                         Cell::from("")
                     };
-                    let ac = if active_ops.len() == 1 {
-                        Cell::from(Line::from(vec![
-                            Span::styled(spinner.clone(), Style::default().fg(theme.activity)),
-                            Span::raw(" "),
-                            Span::styled(
-                                active_ops[0].label(),
-                                Style::default().fg(theme.activity),
-                            ),
-                        ]))
-                    } else if active_ops.len() > 1 {
-                        Cell::from(Line::from(vec![
-                            Span::styled(spinner.clone(), Style::default().fg(theme.activity)),
-                            Span::raw(" "),
-                            Span::styled(
-                                format!("{} active", active_ops.len()),
-                                Style::default().fg(theme.activity),
-                            ),
-                        ]))
+                    let ac = if !active_ops.is_empty() {
+                        build_activity_cell(&active_ops, &spinner, theme)
                     } else {
                         Cell::from("")
                     };
@@ -610,7 +594,7 @@ fn draw_repo_table(frame: &mut Frame, area: Rect, app: &mut App) {
                 let upstream_cell = build_ahead_behind_cell(&repo.upstream, theme);
                 let trunk_cell = build_trunk_cell(&repo.trunk, theme);
                 let activity_cell =
-                    build_activity_cell(app.repo_operation(&repo.path), &spinner, theme);
+                    build_activity_cell(app.repo_operations(&repo.path), &spinner, theme);
                 Row::new(vec![
                     Cell::from(display_name).style(name_style),
                     Cell::from(repo.branch.as_str()).style(Style::default().fg(theme.branch)),
@@ -938,19 +922,31 @@ fn build_trunk_cell(
 }
 
 /// Per-repo busy indicator + op name. Empty cell when idle.
+/// Supports concurrent ops: renders each as `⠋<label>` separated by space.
 fn build_activity_cell(
-    op: Option<RepoOperation>,
+    ops: &[RepoOperation],
     spinner: &str,
     theme: &crate::theme::Theme,
 ) -> Cell<'static> {
-    match op {
-        None => Cell::from(""),
-        Some(op) => Cell::from(Line::from(vec![
-            Span::styled(spinner.to_string(), Style::default().fg(theme.activity)),
-            Span::raw(" "),
-            Span::styled(op.label(), Style::default().fg(theme.activity)),
-        ])),
+    if ops.is_empty() {
+        return Cell::from("");
     }
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for (i, op) in ops.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw(" "));
+        }
+        spans.push(Span::styled(
+            spinner.to_string(),
+            Style::default().fg(theme.activity),
+        ));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            op.label(),
+            Style::default().fg(theme.activity),
+        ));
+    }
+    Cell::from(Line::from(spans))
 }
 
 // ── Branches panel ───────────────────────────────────────────────────────────
