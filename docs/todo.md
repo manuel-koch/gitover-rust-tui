@@ -36,5 +36,24 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
 
 ## Check for new app release
 
-- [ ] Frequently check if there is a new released version of the app on github available
-      and show a hint in TUI for the user.
+- [ ] **HTTP dependency**: Add `ureq` (sync, pure Rust HTTP client) for querying GitHub Releases API
+      - `GET https://api.github.com/repos/manuelkoch/gitover-rust-tui/releases/latest`
+      - No async runtime needed — matches existing `std::thread::spawn` pattern in ops.rs
+- [ ] **Config**: Add `general.release_check_interval` (Option<u64>, default 86400s = 24h, 0 = disabled) to GeneralConfig
+      - Use "0" to disable the check entirely
+- [ ] **OpRequest/OpResult**: Add `CheckRelease` variant; background thread fetches & parses `tag_name` from JSON response
+      - Silent retry on network/rate-limit errors (no error log spam)
+- [ ] **Timer**: Add `next_release_check: Option<Instant>`, `is_release_check_due()`, `reset_release_check_timer()` to App
+      - Check fires in event loop alongside auto-fetch timer
+- [ ] **Popup notification**: On first detection of newer version, show auto-dismissing PopupMessage
+      - `"New release v0.9.0 available! → github.com/manuelkoch/gitover-rust-tui/releases"`
+- [ ] **Help dialog entry**: Add "new version available" hint to the help overlay, shown unconditionally whenever user opens it
+      - Persistent visual indicator (not auto-dismissing) so user sees it whenever they check shortcuts
+- [ ] **App title indicator**: Show a visual indicator (e.g. `◆` or `✦`) after the version in the header title when a new release is available
+- [ ] **Per-version dismissal**: Track dismissed release version so popup doesn't repeat for same version
+      - Header hint remains visible; popup only on first detection
+- [ ] **State persistence (optional)**: Save last-seen-latest-version to state file to survive restarts
+- [ ] **Update config schema**: Add `general.release_check_interval` to `docs/config.schema.json`
+- [ ] **Update state schema** (if state persistence implemented): Add `last_seen_release_version` to `docs/state.schema.json`
+- [ ] **Documentation**: Add feature entry to `docs/features.md` under new "Release Notifications" section
+- [ ] **Update README.md**: Mention release-check feature if appropriate
