@@ -1962,25 +1962,25 @@ fn handle_picker_event(
             }
 
             // Navigate down
-            KeyCode::Down => {
+            KeyCode::Down | KeyCode::Char('j') => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Down);
                 }
             }
             // Navigate up
-            KeyCode::Up => {
+            KeyCode::Up | KeyCode::Char('k') => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Up);
                 }
             }
             // Go into dir
-            KeyCode::Right => {
+            KeyCode::Right | KeyCode::Char('l') => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Right);
                 }
             }
             // Go to parent
-            KeyCode::Left | KeyCode::Backspace => {
+            KeyCode::Left | KeyCode::Backspace | KeyCode::Char('h') => {
                 if let Some(e) = app.file_explorer.as_mut() {
                     let _ = e.handle(ExplorerInput::Left);
                 }

@@ -12,7 +12,9 @@ Checkmarked tasks are removed on demand to merge them into `features.md`.
       ( long running pull ).
       Activity indicator should be visible as long as an activity in in progress.
 
-- [ ] j/k keybinding doesn't seem to work in file-picker dialog to add a repository
+- [x] j/k keybinding doesn't seem to work in file-picker dialog to
+      add a repository. The help hint is "↑↓/jk" but should be
+      "↑↓/kj".
 
 ## UX Polish
 

@@ -1939,7 +1939,7 @@ fn draw_file_picker(frame: &mut Frame, app: &App) {
     let kc = Style::default().fg(t.help_key_confirm);
     let mut spans: Vec<Span> = Vec::new();
     if w >= 82 {
-        spans.push(Span::styled("↑↓/jk", ks));
+        spans.push(Span::styled("↑↓/kj", ks));
         spans.push(Span::raw(" navigate  "));
     }
     if w >= 66 {
