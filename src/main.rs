@@ -1621,6 +1621,10 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
             app.close_menu();
             app.open_move_repo_section_select();
         }
+        'D' => {
+            app.close_menu();
+            app.request_remove_selected();
+        }
         _ => {}
     }
 }

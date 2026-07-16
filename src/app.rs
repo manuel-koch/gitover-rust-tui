@@ -1056,6 +1056,7 @@ impl App {
         if self.state.has_named_sections() {
             items.push(MenuItem::item("Move to Repo Section", 'M'));
         }
+        items.push(MenuItem::item("Remove Repo from App", 'D'));
 
         // Custom repo commands from config
         if !has_error {
@@ -3689,6 +3690,22 @@ mod tests {
         app.mode = AppMode::Normal;
         app.open_repo_action_menu();
         assert!(matches!(app.mode, AppMode::Normal));
+    }
+
+    #[test]
+    fn repo_action_menu_includes_remove_repo_entry() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake/repo".to_string());
+        app.repos = vec![crate::git::RepoStatus::error_entry("/fake/repo", "")];
+        app.selected = 0;
+        app.open_repo_action_menu();
+        let has_remove = app.menu_items.iter().any(|item| {
+            item.label == "Remove Repo from App" && item.key == 'D' && !item.is_separator
+        });
+        assert!(
+            has_remove,
+            "menu must contain 'Remove Repo from App' with key D"
+        );
     }
 
     // ── RepoOperation::label ──────────────────────────────────────────────────

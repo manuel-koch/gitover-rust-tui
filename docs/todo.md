@@ -21,7 +21,7 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
     repo selected
   - "Repositories ( <repo-group> )" when there is no repo selected
 
-- [ ] Action menu for selected repository doesn't include an action to
+- [x] Action menu for selected repository doesn't include an action to
       remove the repo from the app.
 
 ## Git Rebase Operation

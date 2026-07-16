@@ -1845,7 +1845,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
             ("n", "Create Branch"),
             ("Enter", "Action Menu"),
             ("A", "Add Repository"),
-            ("D", "Remove Repository"),
+            ("D", "Remove Repo from App"),
             ("r", "Refresh Repository Info"),
         ],
     ));

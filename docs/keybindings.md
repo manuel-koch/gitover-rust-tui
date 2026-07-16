@@ -37,7 +37,7 @@ opening the action menu (the menu itself is opened with `Enter` — see
 || Key | Action |
 |-----|--------|
 || `A` | Add repository (opens file picker — see below) |
-|| `D` | Remove selected repository (with confirmation). Not exposed in the action menu |
+|| `D` | Remove selected repository (with confirmation) |
 || `f` | On a repo row: fetch selected repo. On a section-title row: fetch all repos in that section in parallel |
 || `p` | Pull selected repo |
 || `P` | Push selected repo |

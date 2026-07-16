@@ -168,10 +168,11 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `n` | Create Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
 | `h` | Commit History — opens the history pane for the selected repo (full log) |
 | `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
-| `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
+|| `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
+|| `D` | Remove Repo from App — removes the selected repo from the app (with confirmation) |
 
 Direct shortcuts `f`, `p`, `P`, `c` also work from the normal Repositories view without opening the menu.
-The `D` (remove repo) shortcut is also direct-only — by design it is not exposed in the action menu.
+The `D` (remove repo) shortcut also works directly from the Repositories view without opening the menu.
 See [Keybindings → Repositories pane](./keybindings.md#repositories-pane) for the full set of direct shortcuts.
 
 ### Custom Repo Commands
