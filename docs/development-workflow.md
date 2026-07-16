@@ -33,12 +33,12 @@ make upgrade-dependencies            # cargo update — apply dependency upgrade
 The `Makefile` at the project root is the source of truth for `make` targets.
 This section is a documentation mirror — when a target is added, removed, renamed,
 or its command changes, update this section in the same commit (see
-[AGENTS.md](../AGENTS.md) → *Docs are part of the change set*).
+[AGENTS](../AGENTS.md) → *Docs are part of the change set*).
 Other documents that reference `make` targets must delegate here rather than
 re-list targets, otherwise the lists drift the next time the `Makefile` changes.
 
 When the visible UI changes materially, refresh `docs/screenshot.jpg` so it
-stays representative — see [project-layout.md](./project-layout.md) under
+stays representative — see [project-layout](./project-layout.md) under
 `docs/` for the full trigger list.
 
 ## Sandbox repositories

@@ -2,7 +2,7 @@
 
 A terminal UI for monitoring multiple git repositories simultaneously.
 
-See [docs/features.md](docs/features.md) for the full feature reference.
+See [features](docs/features.md) for the full feature reference.
 
 ## Features (brief)
 

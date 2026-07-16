@@ -70,5 +70,5 @@ README.md                  — landing-page project introduction and quickstart.
                               when the install/usage flow, top-level feature list,
                               or any CLI flag (advertised in the brief features list)
                               changes.
-Makefile        — build/test/lint/format/coverage/install targets (SSOT: `Makefile`; canonical user-facing list: [docs/development-workflow.md](./development-workflow.md))
+Makefile        — build/test/lint/format/coverage/install targets (SSOT: `Makefile`; canonical user-facing list: [development-workflow](./development-workflow.md))
 ```
