@@ -18,6 +18,7 @@ See [features](docs/features.md) for the full feature reference.
 - Per-file actions: stage, unstage, revert, discard, commit, amend commit
 - Branches pane — full list of local and remote-only branches with ahead/behind counts; direct checkout and branch action menu
 - Help overlay (`?`) — Show available keybindings
+- Automatic release version check (configurable, with popup + header indicator)
 - Custom repo commands configurable per project
 - File-system watcher for instant refresh (no polling)
 - Persistent repo list and pane state across sessions

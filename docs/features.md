@@ -53,8 +53,11 @@ in [`docs/config.schema.json`](./config.schema.json) and
     divergence, active operations); the summary is hidden when the section is expanded
   - When a section-title row is selected, the Status Details pane shows a
     "No repository selected" placeholder and the History pane is cleared
-  - The Repositories pane title changes to `Repositories ( <section-name> )`
-    when the cursor is on a named-section row; plain `Repositories` for the default section
+  - The Repositories pane title shows context about the current selection:
+    - `Repositories ( <section> - <repo> )` when a repo in a named section is selected
+    - `Repositories ( <section> )` when only a named-section row is selected
+    - `Repositories ( <repo> )` when a repo in the default section is selected
+    - `Repositories` when nothing is selected
   - `f` on a section-title row fetches all repos in that section in parallel;
     `r` refreshes all repos in that section
   - Each repo shows a `scan` spinner in the Activity column while a refresh is
