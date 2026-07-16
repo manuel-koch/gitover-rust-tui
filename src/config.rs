@@ -59,7 +59,10 @@ pub struct GeneralConfig {
     /// file (appended if it already exists). Overridden by `--debug-log` CLI flag.
     #[serde(default)]
     pub debug_log: Option<String>,
-    /// When true, paths are sorted case-sensitively across all panes.
+    /// When true, paths are sorted case-sensitively in the Status Details pane
+    /// (file list) and the Git History pane (per-commit file sub-rows), and
+    /// within each section of the Repositories pane. Section-name ordering is
+    /// always case-insensitive and is not affected by this setting.
     /// Defaults to false (case-insensitive sorting).
     #[serde(default)]
     pub case_sensitive_path_sorting: bool,

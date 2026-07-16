@@ -26,7 +26,7 @@ See [docs/features.md](docs/features.md) for the full feature reference.
 
 ## Build & Install
 
-Requirements: Rust toolchain (stable, 1.70+)
+Requirements: Rust toolchain
 
 ```shell
 git clone <repo-url>
@@ -34,13 +34,7 @@ cd gitover-rust-tui
 cargo build --release
 ```
 
-The binary is at `target/release/gitover`. Copy it anywhere on your PATH:
-
-```shell
-cp target/release/gitover ~/.local/bin/gitover
-```
-
-Or build and install in one step:
+Build and install in one step:
 
 ```shell
 make install
@@ -53,6 +47,8 @@ cargo install --git https://github.com/manuel-koch/gitover-rust-tui
 ```
 
 ## Configuration
+
+See [Configuration](docs/configuration.md) for full description.
 
 Config file lookup: searches for `gitover.config.yaml` starting from the current working directory,
 walking up to the filesystem root; falls back to `~/.config/gitover/config.yaml`.
@@ -81,91 +77,13 @@ State (repo list, pane visibility) is saved automatically to `~/.config/gitover/
 gitover [--config <path>] [--state <path>] [--debug-log <path>]
 ```
 
-Debug logging can also be enabled persistently via `general.debug_log` in the config file; the CLI flag takes precedence when both are set. Both paths support `~` and `${VAR}` expansion — the app terminates if a variable cannot be resolved.
-
-Repo command strings use `${VAR}` substitution: repo variables (`${ROOT}`, `${BRANCH}`) are resolved first, then any remaining references are resolved from the process environment. The command is not run if any variable is unresolvable.
+See [CLI options/flags](docs/configuration.md#cli-optionsflags),
+[Debug Logging](docs/features.md#debug-logging),
+and [Custom Repo Commands](docs/features.md#custom-repo-commands).
 
 On first launch the repo list is empty. Press `A` to add a repository using the file picker.
 If the current working directory is a git repository it is added automatically.
 
 ## Keybindings
 
-### Global
-
-| Key         | Action                                                                 |
-|-------------|------------------------------------------------------------------------|
-| `Ctrl-C`    | Quit                                                                   |
-| `Tab`       | Cycle focus forward: Repos → Status Details → History → Diff → Log     |
-| `Shift+Tab` | Cycle focus backward                                                   |
-| `↑` / `↓`  | Navigate in focused pane                                                |
-| `PgUp/Dn`  | Jump 10 rows in focused pane                                            |
-| `r`         | Refresh all repositories                                               |
-| `Alt-f`     | Fetch all tracked repos in parallel                                    |
-| `s`         | Toggle Status Details pane                                             |
-| `h`         | Toggle Git History pane                                                |
-| `b`         | Toggle Branches pane                                                   |
-| `d`         | Toggle Details pane                                                    |
-| `l`         | Toggle Output Log pane                                                 |
-| `?`         | Open keybinding help overlay                                           |
-
-### Repositories pane
-
-| Key     | Action                                      |
-|---------|---------------------------------------------|
-| `Enter` | Open per-repo action menu                   |
-| `f`     | Fetch selected repo                         |
-| `p`     | Pull selected repo                          |
-| `P`     | Push selected repo                          |
-| `c`     | Checkout branch                             |
-| `A`     | Add repository (file picker)                |
-| `D`     | Remove selected repository (with confirm)   |
-
-### Branches pane
-
-| Key         | Action                                             |
-|-------------|----------------------------------------------------|
-| `↑/↓`      | Navigate branches                                   |
-| `c`         | Checkout highlighted branch directly               |
-| `Enter`     | Open branch action menu                            |
-| `b` / `Esc` | Close Branches pane                                |
-
-### Action menu (opened with `Enter`)
-
-| Key   | Action                                            |
-|-------|---------------------------------------------------|
-| `f`   | Fetch (`git fetch origin --prune`)                |
-| `p`   | Pull (auto-stash/pop, `git pull --prune`)         |
-| `P`   | Push (sets upstream automatically if needed)      |
-| `F`   | Force Push (confirmation dialog)                  |
-| `c`   | Checkout Branch (auto-stash/pop)                  |
-| `n`   | New Branch (prompts for name)                     |
-| `x`   | Delete Branch (select from list)                  |
-| `h`   | Commit History (full log)                         |
-| `u/U` | Commit History ahead of / behind upstream         |
-| `t/T` | Commit History ahead of / behind trunk            |
-| `Esc` | Dismiss menu                                      |
-
-### Status Details pane
-
-| Key     | Action                           |
-|---------|----------------------------------|
-| `Enter` | Open per-file action menu        |
-| `↑/↓`  | Select file                       |
-| `PgUp/Dn` | Jump 10 files                  |
-
-### Git History pane
-
-| Key             | Action                                          |
-|-----------------|-------------------------------------------------|
-| `↑/↓`          | Navigate commits and file rows                   |
-| `PgUp/Dn`      | Jump 10 rows                                    |
-| `Shift-↑` / `,` | Jump to previous commit header row             |
-| `Shift-↓` / `.` | Jump to next commit header row                 |
-| `h`             | Close history pane                              |
-
-### Details pane
-
-| Key       | Action                  |
-|-----------|-------------------------|
-| `↑/↓`    | Scroll content           |
-| `PgUp/Dn` | Jump 10 lines           |
+See [Navigation Keyboard](./docs/keybindings.md).

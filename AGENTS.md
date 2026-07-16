@@ -1,162 +1,127 @@
 # Agent Guidelines for Gitover Rust TUI
 
-A rust based terminal UI to track git status of multiple repositories.
+A Rust-based terminal UI to track git status of multiple repositories.
 
-Check [features](./docs/features.md) for list of implemented features.
+## How to read these docs
 
-Check [todo](./docs/todo.md) for recent implemenation tasks and remaining tasks.
+The full document set is enumerated in
+[docs/project-layout.md](./docs/project-layout.md) under the `docs/` entry
+(this is the SSOT for "what doc exists, what it covers, when to update it").
+The reading order below is the common path through that set:
 
-## Task Execution
+1. **Before editing anything:** read
+  - [docs/project-layout.md](./docs/project-layout.md) — file tree, source/test
+   layout, and the canonical list of docs.
+2. **Before investigating behavior:** skim
+   [README](./README.md) (project intro and quickstart),
+   [docs/features.md](./docs/features.md) (implemented feature reference), and
+   [docs/todo.md](./docs/todo.md) (current tasks and known bugs). For configuration
+   fields and the keybinding tables consult
+   [docs/configuration.md](./docs/configuration.md) and
+   [docs/keybindings.md](./docs/keybindings.md).
+3. **Testing:** While implementing code changes (consent given), write tests according to
+   [docs/development-workflow.md](./docs/development-workflow.md)
+4. **Before claiming work done:** read
+   [docs/development-workflow.md](./docs/development-workflow.md) — available `make`
+   targets, test/lint/format conventions, sandbox-repos script and coverage
+   rules.
+   When you have implemented or fixed something (consent given per Execution), before
+   reporting it done, run at least the following commands and fix any findings:
+   - `make format`
+   - `make lint`
+   - `make test-coverage`
+5. **Mark done todo tasks:** Checkmark done todo tasks according to
+   [docs/todo-workflow.md](./docs/todo-workflow.md)
+6. On explicit user request, **Merge done todo tasks** into documentation according to
+   [docs/todo-workflow.md](./docs/todo-workflow.md)
+7. **For release-note generation:** read
+   [docs/release-notes-workflow.md](./docs/release-notes-workflow.md).
 
-Follow the user's instructions precisely!
-Do not add extra steps, merge documents, or perform cleanup actions unless explicitly asked!
-If you are unsure what the user wants, ask back using `clarify` with specific options
-or an open-ended question — do not guess or assume unstated intent.
+## Communication
 
-## Cleanup Todo and merge to Features
+* Be concise and direct
+* No preamble
+* No motivational filler
+* No repetition
+* Prefer bullets over prose
+* Keep explanations to the minimum needed
 
-Only perform cleanup of todo document when user requests it explicitly !
-This means the user says "clean up the todo" or "merge done tasks".
-Implementing tasks or marking them `[x]` does NOT trigger this section.
+## Execution
 
-When it does apply, follow these steps.
+* Admit uncertainty when appropriate
+* Break large tasks into independently-verifiable units
+* Parallelize independent subtasks where possible
+* Execute actions via your tools
+* No file edits without explicit user consent
+  * Chat triggers — do NOT edit on these alone:
+    * "analyze"
+    * "discuss"
+    * "evaluate"
+    * "explore"
+    * "focus"
+    * "highlight"
+    * "propose"
+    * "review"
+    * "re-think"
+    * "suggest"
+    * "X doesn't work"
+    * "can we refactor Y"
+    * "what if Z"
+    * Phrases with equivalent intent apply the same way
+  * Imperatives — DO edit on these:
+    * "apply it"
+    * "do it"
+    * "go ahead"
+    * "fix it"
+    * "fix the bug"
+    * "implement it"
+    * Phrases with equivalent intent apply the same way
 
-### Cleanup and merge steps
-
-Force re-reading features and todo document to fully grasp their current content !
-
-Merge finished todo tasks with the features document:
-
-- Check if there is an existing feature that matches task content fully/almost/partly
-  - If feature is matched fully, just remove the task from todo
-  - If feature is matched partly/almost, check whats the diff to task content and decide if feature
-    text should be updated or a new distinct feature be introduced with the task content
-  - If feature is not matched, introduce a new distinct feature with tasks content.
-    If needed check if the new feature belongs to a new section/heading within the documents
-    to group features by topics.
-  - if in doubt if a task matches a feature, ask the user how to proceed, provide proposal
-    what you think would fit best.
-- Don't add explicit features that would stem from task that have subject of
-  tests / refactoring / housekeeping or fixing bugs
-- Remove finished task from todo when merged with feature document
-- Don't remove empty todo sections - we might add new tasks to it,
-  add a placeholder "- [ ]" task if neccessary.
-
-For updated features document, consult the sources/implementation to check if features
-are actually implemented the way they are currently stated in the feature description.
-Update the feature descriptions to match the current implementation.
-
-Check `README.md` too and align it to `features.md`.
+When consent applies to a multi-step task, complete all the steps the user asked
+for before reporting back; partial completion is not the same as completion.
 
 ## Contributor Notes
 
-### Project layout
+**Docs are part of the change set.** A commit must update every doc affected
+by the change in the same commit. If a doc doesn't exist yet,
+ask the user before creating a new doc file.
+Out-of-date docs are treated as bugs.
 
-```text
-src/
-  main.rs       — event loop, key handling, ops channel dispatch
-  app.rs        — application state (AppState, Focus, AppMode, all fields)
-  ui.rs         — ratatui rendering (all draw_* functions)
-  git.rs        — git status parsing (RepoStatus, FileEntry, FileStatusKind)
-  ops.rs        — background git operations (OpRequest, spawn_op, run_op)
-  watcher.rs    — file-system watcher (notify crate, git-aware filter)
-  config.rs     — config file loading (~/.config/gitover/config.yaml)
-  theme.rs      — UI color theme definitions
-  state.rs      — persistent state (repo list, recents, ~/.config/gitover/state.yaml)
-  lib.rs        — re-exports config/git/state for integration tests
-tests/
-  git_tests.rs    — unit + integration tests for git.rs
-  config_tests.rs — unit tests for config.rs and state.rs
-docs/
-  features.md        — implemented feature reference (keep in sync with code)
-  todo.md            — living task list (never delete sections, use placeholder)
-  config.schema.json — JSON Schema for gitover.config.yaml (keep in sync with config.rs)
-  state.schema.json  — JSON Schema for gitover.state.yaml (keep in sync with state.rs)
-Makefile        — build, lint, format, test, release, install, tag-version targets
-```
+If you notice a stale doc while working on something else, report it; do not fix it unless
+asked (consent rule applies).
 
-### Coding Conventions
+Test coverage threshold: ≥80% line coverage (see [development-workflow.md](./docs/development-workflow.md)).
 
-- Use full, descriptive names for variables, functions, methods, and types — never abbreviations (e.g. `case_sensitive_sort` not `cs`, `repo_path` not `rp`, `format_timestamp` not `fmt_ts`). Exception: universally idiomatic Rust short-names such as `new`, `len`, `fmt`, `cmp`, `eq`.
+## Coding Conventions
 
-### Guidelines for Implementation, Testing and Bugfixing
+Use full, descriptive names for variables, functions, methods, and types — never
+abbreviations (e.g. `case_sensitive_sort` not `cs`, `repo_path` not `rp`,
+`format_timestamp` not `fmt_ts`).
 
-- Avoid Code Smells
-- KISS — Keep It Simple
-- SOLID Principles
+**Binary + library split.** The project ships both a `[[bin]]` (`src/main.rs`) and a
+`[lib]` (`src/lib.rs`) with the same crate name `gitover` (see `Cargo.toml`). Any
+type, function, or module that integration tests in `tests/` need to reach must be
+re-exported through `src/lib.rs` — `tests/*.rs` cannot `use` items from `src/main.rs`.
+
+Keep `main.rs` thin (event loop, key handling, ops-channel dispatch).
+
+## Guidelines for Implementation, Testing and Bugfixing
+
+These are well-known concepts (**Semantic Anchors**).
+Look up any unfamiliar principle via web search before applying it.
+Structure your work and thinking to follow those principles:
+
+- Code Smells by Fowler
+- Resist scope creep
+- KISS (Keep It Simple)
 - SSOT (Single Source of Truth)
 - YAGNI (You Aren’t Gonna Need It)
-- Clean Code (Uncle Bob)
-- Clean Architecture (Martin)
-- Minimum Viable Product (MVP)
-- Five Whys (Ohno) — find root cause before fixing
-- Chain of Thought (CoT)
+- Clean Code by Uncle Bob
+- SOLID Principles by Martin
+- Clean Architecture by Martin
+- Five Whys by Ohno — find root cause before fixing
+- CoT (Chain of Thought)
 - Occam’s Razor
-- TDD, Chicago School
-- Test Double: Mock / Spy / Stub (Meszaros)
-- Testing Pyramid (Cohn), Testing Trophy (Dodds)
-
-### Development workflow
-
-After implementing new functionality or fixing bugs, run the test suite to verify
-all tests still succeed and run linter of the project to verify no code smell was left.
-
-For new features come up with appropriate test case(s) to verify them.
-
-For bugfixes check whether there is an existing test case that could be improved to
-verify the fix or introduce new test case(s) to verify the fix.
-If unclear whether to introduce new test case(s), ask user for clarification.
-
-Coverage aim: **>80% line coverage** on testable files (`ui.rs` and `main.rs` are excluded because they require a live terminal).
-
-```shell
-make lint                         # cargo check + cargo clippy — fix all warnings before committing
-make format                       # cargo fmt — enforce consistent formatting
-make test                         # cargo test — all tests must pass
-make test-coverage                # run tests + print per-file coverage summary; fails if <80%
-make test-coverage-missing        # same as test-coverage but also prints uncovered line numbers
-make build                        # cargo build (debug)
-make rebuild                      # clean + build from scratch
-make build-and-run                # cargo run — quick manual test
-make build-and-run-with-sandbox-repos  # build + launch against ~/tmp/gitover-sandbox repos
-make clean                        # cargo clean — remove all build artifacts
-make release                      # cargo build --release
-make install                      # cargo install --path . → ~/.cargo/bin/gitover
-make tag-version                  # tag HEAD with version from Cargo.toml
-make outdated-dependencies        # cargo update --dry-run — show available upgrades
-make upgrade-dependencies         # cargo update — apply dependency upgrades to Cargo.lock
-```
-
-### Release notes
-
-When requested by user, create brief release notes for recent commits ( HEAD vs last tag ).
-Check the content of every commit, omit commits that are clearly not related to a
-feature or bugfix.
-
-Write the release notes to `docs/release-notes.md` (overwrite if it exists).
-Do NOT print the content to the conversation — only confirm the file was written.
-Prefix the release notes with a one-sentence title that denotes most important aspect of the release.
-
-Use the following format for each applicable commit ( curly braces denote dynamic content based on the commit ).
-Output entries one after another with NOTHING between them — no `---` separators, no blank lines
-between entries, no numbered lists, no extra headings. The trailing blank line inside each entry
-is the only spacing.
-
-<commit-format>
-**{title}**
-
-{Brief topic ( 1-2 sentences max ) of feature or bugfix change}
-
-</commit-format>
-
-Example file content for two consecutive entries ( do not deviate from this ):
-
-<commit-format-example>
-**Fix: Wrong Activity Indicator**
-
-Running a status-pane action incorrectly showed "fetching" in the Activity spinner. These operations now correctly show "working".
-
-**Case-Insensitive Path Sorting**
-
-File paths in the Status Details pane and History are now sorted case-insensitively by default, configurable via `general.case_sensitive_path_sorting`.
-</commit-format-example>
+- TDD (Test Driven Development)
+- Test Double: Mock / Spy / Stub by Meszaros
+- Testing Pyramid by Cohn, Testing Trophy by Dodds

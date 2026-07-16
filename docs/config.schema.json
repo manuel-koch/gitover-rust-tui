@@ -27,7 +27,7 @@
         "case_sensitive_path_sorting": {
           "type": "boolean",
           "default": false,
-          "description": "When true, paths are sorted case-sensitively across all panes (repositories, status files, history commit files)."
+          "description": "When true, paths are sorted case-sensitively in the Status Details pane (file list) and in the Git History pane (per-commit file sub-rows). Also controls the sort order of repo paths within each section of the Repositories pane. Section-name ordering is always case-insensitive and is not affected by this setting. Defaults to false (case-insensitive)."
         },
         "release_check_interval": {
           "type": "integer",
