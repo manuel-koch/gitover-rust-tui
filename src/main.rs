@@ -2469,6 +2469,87 @@ mod tests {
     }
 
     #[test]
+    fn f_on_section_title_fetches_all_repos_in_section() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        // Empty default section → first visible row is the named section's title.
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        let path_b = "/fake/w2".to_string();
+        let mut status_a = git::RepoStatus::error_entry(&path_a, "");
+        status_a.error = None;
+        let mut status_b = git::RepoStatus::error_entry(&path_b, "");
+        status_b.error = None;
+        app.state.sections[1].repos.push(path_a.clone());
+        app.state.sections[1].repos.push(path_b.clone());
+        app.repos = vec![status_a, status_b];
+
+        app.selected = 0; // SectionTitle row.
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
+        handle_normal_key(
+            &mut app,
+            &mut dirty_rx,
+            &op_tx,
+            KeyCode::Char('f'),
+            KeyModifiers::NONE,
+        );
+
+        assert_eq!(
+            app.operations.get(&path_a),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "all repos in the section must be queued for fetch"
+        );
+        assert_eq!(
+            app.operations.get(&path_b),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "all repos in the section must be queued for fetch"
+        );
+    }
+
+    #[test]
+    fn f_on_repo_row_fetches_only_selected_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        let path_b = "/fake/w2".to_string();
+        let mut status_a = git::RepoStatus::error_entry(&path_a, "");
+        status_a.error = None;
+        let mut status_b = git::RepoStatus::error_entry(&path_b, "");
+        status_b.error = None;
+        app.state.sections[1].repos.push(path_a.clone());
+        app.state.sections[1].repos.push(path_b.clone());
+        app.repos = vec![status_a, status_b];
+
+        app.selected = 1; // First repo row within the section.
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
+        handle_normal_key(
+            &mut app,
+            &mut dirty_rx,
+            &op_tx,
+            KeyCode::Char('f'),
+            KeyModifiers::NONE,
+        );
+
+        assert_eq!(
+            app.operations.get(&path_a),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "selected repo must be queued for fetch"
+        );
+        assert_eq!(
+            app.operations.get(&path_b),
+            None,
+            "only the selected repo may be fetched, not its sibling"
+        );
+    }
+
+    #[test]
     fn semver_gt_returns_false_when_current_is_newer() {
         assert!(!semver_gt("0.7.17", "0.8.8"));
     }
