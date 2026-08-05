@@ -25,7 +25,7 @@ descriptions, see [Features](./features.md).
 |-----|--------|
 | `↑` / `↓` | Navigate up/down in focused pane |
 | `PgUp` / `PgDn` | Jump 10 rows in focused pane or action menu; clamps at list boundaries, no wrap |
-| `→` / `←` | Expand / Collapse selected named section in the Repositories pane |
+| `→` / `←` | Expand / Collapse selected named section in the Repositories pane (clicking the section's `▶`/`▼` indicator does the same) |
 | `Shift-↑` / `Shift-↓` (or `,` / `.`) | Previous / next commit header row (History pane only); `,`/`.` are alternatives for terminals that intercept Shift+Arrow (e.g. Zed) |
 
 ## Repositories pane

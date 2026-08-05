@@ -781,6 +781,13 @@ fn handle_mouse_click(app: &mut App, mouse: &MouseEvent) {
     if in_rect(click, areas.repos) {
         app.focus = Focus::Repos;
         if let Some(selected_row) = row_under_mouse(app, mouse, areas.repos) {
+            if let Some(section_idx) =
+                section_indicator_under_mouse(app, mouse, areas.repos, selected_row)
+            {
+                app.toggle_section_collapsed(section_idx);
+                app.refresh_details();
+                return;
+            }
             if selected_row != app.selected {
                 app.selected = selected_row;
                 app.file_status_selected = 0;
@@ -866,6 +873,48 @@ fn row_under_mouse(
     // Clamp to visible rows (section title rows + repo rows).
     if offset_row < app.visible_rows().len() {
         Some(offset_row)
+    } else {
+        None
+    }
+}
+
+/// If the clicked row is a named section-title row and the horizontal click
+/// position lands inside the `▶`/`▼` indicator itself, return that section's
+/// index.  Otherwise return `None`.  Clicks anywhere else on the title row
+/// keep the normal select-only behaviour (no toggle).
+fn section_indicator_under_mouse(
+    app: &App,
+    mouse: &MouseEvent,
+    table_area: ratatui::layout::Rect,
+    row_index: usize,
+) -> Option<usize> {
+    let app::VisibleRow::SectionTitle(section_idx) = *app.visible_rows().get(row_index)? else {
+        return None;
+    };
+    if section_idx == 0 {
+        return None;
+    }
+
+    // The indicator is the `▶` / `▼` glyph at the start of the title cell; a
+    // trailing space separates it from the name and is treated as empty space
+    // (not part of the click target).  Match the rendered glyph width.
+    let glyph = if app.state.sections[section_idx].collapsed {
+        "▶"
+    } else {
+        "▼"
+    };
+    let indicator_w = unicode_width::UnicodeWidthStr::width(glyph) as u16;
+    if indicator_w == 0 {
+        return None;
+    }
+
+    // Column 0 starts right after the `> ` highlight gutter and the borders.
+    let inner_x = table_area.x + 1;
+    let highlight_w: u16 = 2;
+    let indicator_x0 = inner_x + highlight_w;
+    let indicator_x1 = indicator_x0.saturating_add(indicator_w);
+    if mouse.column >= indicator_x0 && mouse.column < indicator_x1 {
+        Some(section_idx)
     } else {
         None
     }

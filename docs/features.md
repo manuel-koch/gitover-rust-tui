@@ -48,7 +48,8 @@ in [`docs/config.schema.json`](./config.schema.json) and
     Per-section repo-path sort honors `general.case_sensitive_path_sorting`
     (default: case-insensitive)
   - Section title rows show `▶` (collapsed) or `▼` (expanded); `←` collapses a
-    named section, `→` expands it; collapse state is stored per section in the state file
+    named section, `→` expands it, and left-clicking the `▶`/`▼` indicator toggles
+    collapse/expand; collapse state is stored per section in the state file
   - A collapsed section shows an aggregated summary row (dirty count, upstream/trunk
     divergence, active operations); the summary is hidden when the section is expanded
   - When a section-title row is selected, the Status Details pane shows a
@@ -457,6 +458,8 @@ open, `Esc` to dismiss) are described per pane in the sections below.
 - Double-click on a file row in the Status Details pane opens the per-file action
   menu (same as `Enter`)
 - Left-click on an action menu entry executes the selected action
+- Left-click on the `▶`/`▼` indicator of a repository section-title row toggles
+  that section expanded/collapsed (same as `←`/`→`)
 - Clicking outside the action menu dismisses it, same as pressing `Esc`
 
 ## Git Branches Pane

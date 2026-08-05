@@ -2176,6 +2176,74 @@ impl App {
         let _ = self.state.save();
     }
 
+    /// Toggle the collapsed state of the named section at `section_idx`.
+    /// No-op for the default section (index 0).
+    ///
+    /// Collapsing preserves the selected row, re-locating it by content when
+    /// the layout above changes; a repo of the collapsed section moves to that
+    /// section's title row (its row disappears).  Expanding always selects the
+    /// expanded section's title row, which brings the newly-revealed content
+    /// into view.
+    pub fn toggle_section_collapsed(&mut self, section_idx: usize) {
+        if section_idx == 0 {
+            return;
+        }
+
+        // Determine up front what is selected and whether it is a repo of this
+        // section; this must be read before flipping the collapse state, because
+        // once collapsed the section's repo rows are no longer in visible_rows().
+        let selected_repo = self.selected_repo_idx();
+        let selected_title = self.selected_section_title_idx();
+        let selected_repo_in_collapsed_section = selected_repo.is_some_and(|repo_idx| {
+            self.state.section_idx_for_flat_repo_idx(repo_idx) == section_idx
+        });
+
+        let was_collapsed = self.state.sections[section_idx].collapsed;
+        self.state.sections[section_idx].collapsed = !was_collapsed;
+
+        if was_collapsed {
+            // Expanding: select the expanded section's title row so its content
+            // is revealed and scrolled into view.
+            let title_pos = self
+                .visible_rows()
+                .iter()
+                .position(|r| matches!(r, VisibleRow::SectionTitle(idx) if *idx == section_idx));
+            if let Some(title_pos) = title_pos {
+                self.selected = title_pos;
+            }
+        } else if selected_repo_in_collapsed_section {
+            // Collapsing the section holding the selected repo: that row
+            // disappears, so move to this section's title row.
+            let title_pos = self
+                .visible_rows()
+                .iter()
+                .position(|r| matches!(r, VisibleRow::SectionTitle(idx) if *idx == section_idx));
+            if let Some(title_pos) = title_pos {
+                self.selected = title_pos;
+            }
+        } else {
+            // Collapsing a different section: preserve the selected row by its
+            // content identity (repo by flat index, title by section index),
+            // re-locating it in the now-changed row layout.
+            let new_pos = if let Some(flat_idx) = selected_repo {
+                self.visible_rows()
+                    .iter()
+                    .position(|r| *r == VisibleRow::Repo(flat_idx))
+            } else if let Some(title_idx) = selected_title {
+                self.visible_rows()
+                    .iter()
+                    .position(|r| *r == VisibleRow::SectionTitle(title_idx))
+            } else {
+                None
+            };
+            if let Some(pos) = new_pos {
+                self.selected = pos;
+            }
+        }
+
+        let _ = self.state.save();
+    }
+
     // ── Section create / rename ───────────────────────────────────────────────
 
     /// Open the text-input popup for creating a new section.
@@ -3610,6 +3678,160 @@ mod tests {
         app.selected = 0; // SectionTitle(1)
         app.expand_current_section();
         assert!(!app.state.sections[1].collapsed);
+    }
+
+    // ── toggle_section_collapsed ──────────────────────────────────────────────
+
+    #[test]
+    fn toggle_section_collapsed_collapses_expanded_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        assert!(!app.state.sections[1].collapsed);
+        app.toggle_section_collapsed(1);
+        assert!(app.state.sections[1].collapsed);
+    }
+
+    #[test]
+    fn toggle_section_collapsed_expands_collapsed_named_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].collapsed = true;
+        app.toggle_section_collapsed(1);
+        assert!(!app.state.sections[1].collapsed);
+    }
+
+    #[test]
+    fn toggle_section_collapsed_noop_on_default_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.selected = 0; // Repo(0) → default section
+        app.toggle_section_collapsed(0);
+        assert!(!app.state.sections[0].collapsed);
+    }
+
+    #[test]
+    fn toggle_section_collapsed_selects_title_row_on_collapse() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        app.state.sections[1].repos.push("/w2".to_string());
+        // visible_rows: [SectionTitle(1), Repo(0), Repo(1)]
+        // Select the second repo row (index 2) — a repo in the section being collapsed.
+        app.selected = 2;
+        app.toggle_section_collapsed(1);
+        assert!(app.state.sections[1].collapsed);
+        // After collapse visible_rows: [SectionTitle(1)]; selection must be 0.
+        assert_eq!(app.selected, 0);
+        assert_eq!(
+            app.visible_rows()[app.selected],
+            VisibleRow::SectionTitle(1)
+        );
+    }
+
+    #[test]
+    fn toggle_section_collapsed_keeps_selection_when_repo_in_other_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        // visible_rows: [Repo(0)  -> /a (default), SectionTitle(1), Repo(1) -> /w1]
+        app.selected = 0; // Repo(0) in the default section
+        app.toggle_section_collapsed(1);
+        assert!(app.state.sections[1].collapsed);
+        // The selected repo is not in the collapsed section, so selection is unchanged.
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.visible_rows()[app.selected], VisibleRow::Repo(0));
+    }
+
+    #[test]
+    fn toggle_section_collapsed_expand_selects_expanded_section_title() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/a".to_string());
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        app.state.sections[1].collapsed = true;
+        // visible_rows: [Repo(0)  -> /a (default), SectionTitle(1), Repo(1) -> /w1]
+        app.selected = 0; // Repo(0) in the default section
+        app.toggle_section_collapsed(1); // expanding section 1
+        assert!(!app.state.sections[1].collapsed);
+        // Expanding selects the expanded section's title row so its content is revealed.
+        assert_eq!(app.selected, 1);
+        assert_eq!(
+            app.visible_rows()[app.selected],
+            VisibleRow::SectionTitle(1)
+        );
+    }
+
+    #[test]
+    fn toggle_section_collapsed_keeps_selection_on_expand() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("Work".to_string()).unwrap();
+        app.state.sections[1].repos.push("/w1".to_string());
+        app.state.sections[1].collapsed = true;
+        app.selected = 0; // SectionTitle(1)
+        app.toggle_section_collapsed(1);
+        assert!(!app.state.sections[1].collapsed);
+        // The expanded section's title (already selected) stays selected.
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn toggle_section_collapsed_expand_selects_expanded_title_from_repo_below() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("aaa".to_string()).unwrap();
+        app.state.sections[1].repos.push("/aaa-1".to_string());
+        app.state.sections[1].collapsed = true;
+        app.state.add_section("bbb".to_string()).unwrap();
+        app.state.add_section("ccc".to_string()).unwrap();
+        app.state.sections[3].repos.push("/ccc-1".to_string());
+        // Before: sections aaa (collapsed), bbb (collapsed), ccc (expanded) with /ccc-1.
+        // visible_rows: [SectionTitle(1) aaa, SectionTitle(2) bbb, SectionTitle(3) ccc, Repo(1) ccc-1]
+        app.selected = 3; // Repo(1) -> /ccc-1
+        app.toggle_section_collapsed(1); // expand aaa
+        assert!(!app.state.sections[1].collapsed);
+        // Expanding always selects the expanded section's title row, so the
+        // content of "aaa" is revealed and scrolls into view.
+        assert_eq!(app.selected, 0);
+        assert_eq!(
+            app.visible_rows()[app.selected],
+            VisibleRow::SectionTitle(1)
+        );
+    }
+
+    #[test]
+    fn toggle_section_collapsed_keeps_selection_below_collapsed_section() {
+        let (mut app, _tmp) = make_app();
+        app.state.add_section("aaa".to_string()).unwrap();
+        app.state.sections[1].repos.push("/aaa-1".to_string());
+        app.state.add_section("bbb".to_string()).unwrap();
+        app.state.sections[2].repos.push("/bbb-1".to_string());
+        app.state.add_section("ccc".to_string()).unwrap();
+        app.state.sections[3].repos.push("/ccc-1".to_string());
+        // Before (all expanded):
+        // visible_rows:
+        //   0 SectionTitle(1) aaa
+        //   1 Repo(0)        aaa-1
+        //   2 SectionTitle(2) bbb
+        //   3 Repo(1)        bbb-1
+        //   4 SectionTitle(3) ccc   <- selected
+        //   5 Repo(2)        ccc-1
+        app.selected = 4; // SectionTitle(3) ccc
+        app.toggle_section_collapsed(2); // collapse bbb
+        assert!(app.state.sections[2].collapsed);
+        // Collapsing bbb (above) removes its repo row; the selection must stay
+        // on the ccc title, not drift onto ccc's repo.
+        // After: visible_rows:
+        //   0 SectionTitle(1) aaa
+        //   1 Repo(0)        aaa-1
+        //   2 SectionTitle(2) bbb
+        //   3 SectionTitle(3) ccc   <- must stay here
+        //   4 Repo(2)        ccc-1
+        assert_eq!(app.selected, 3);
+        assert_eq!(
+            app.visible_rows()[app.selected],
+            VisibleRow::SectionTitle(3)
+        );
     }
 
     // ── staged_file_count ─────────────────────────────────────────────────────

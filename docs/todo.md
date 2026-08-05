@@ -19,7 +19,7 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
 
 ## UX Polish
 
-- [ ] Click on the collapse/expand indicator of repository section should
+- [x] Click on the collapse/expand indicator of repository section should
       toggle expand/collapse state of that section.
 
 ## Git Rebase Operation
@@ -41,3 +41,14 @@ Do NOT implement workarounds without explicit user direction.
 - [ ] In the file-picker popup, apply the sorting-flag for paths.
       ( blocked: ratatui-explorer sorts internally, no API to override,
       see https://github.com/tatounee/ratatui-explorer/issues/22 )
+
+## Docs
+
+- [ ] Unify the pane naming between "Status Details" and "Details" in
+      `docs/features.md` (the Mouse Interaction section and some headings
+      refer to "Details"). Raised in
+      [collapse-by-click-plan](./collapse-by-click-plan.md) → Consistency issues.
+- [ ] Align the "Polish UI"/"UX Polish" heading terminology between project
+      prompts and `docs/todo.md` (the todo section is titled "UX Polish";
+      the underlying plan recommends keeping that heading). Raised in
+      [collapse-by-click-plan](./collapse-by-click-plan.md) → Consistency issues.
