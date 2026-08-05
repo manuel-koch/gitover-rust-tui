@@ -405,7 +405,7 @@ open, `Esc` to dismiss) are described per pane in the sections below.
 
 - Layout (vertical): Repositories / Status Details / Git History / Output Log
   - Status Details, Output Log, and Git History are optional; shown only when toggled open
-  - When the Diff pane is open it occupies the right half of the combined
+  - When the Details pane is open it occupies the right half of the combined
     Status Details + History area
 - Focused pane highlighted with focused border colour; unfocused panes use
   unfocused border colour

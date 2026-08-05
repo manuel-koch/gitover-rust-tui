@@ -44,11 +44,9 @@ Do NOT implement workarounds without explicit user direction.
 
 ## Docs
 
-- [ ] Unify the pane naming between "Status Details" and "Details" in
+- [x] Unify the pane naming between "Status Details" and "Details" in
       `docs/features.md` (the Mouse Interaction section and some headings
-      refer to "Details"). Raised in
-      [collapse-by-click-plan](./collapse-by-click-plan.md) → Consistency issues.
-- [ ] Align the "Polish UI"/"UX Polish" heading terminology between project
+      refer to "Details").
+- [x] Align the "Polish UI"/"UX Polish" heading terminology between project
       prompts and `docs/todo.md` (the todo section is titled "UX Polish";
-      the underlying plan recommends keeping that heading). Raised in
-      [collapse-by-click-plan](./collapse-by-click-plan.md) → Consistency issues.
+      the underlying plan recommends keeping that heading).
