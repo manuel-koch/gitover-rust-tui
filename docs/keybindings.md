@@ -34,15 +34,15 @@ Shortcuts that work directly on the focused row (repo or section-title), without
 opening the action menu (the menu itself is opened with `Enter` — see
 [Features → Git Operations](./features.md#git-operations)):
 
-|| Key | Action |
-|-----|--------|
-|| `A` | Add repository (opens file picker — see below) |
-|| `D` | Remove selected repository (with confirmation) |
-|| `f` | On a repo row: fetch selected repo. On a section-title row: fetch all repos in that section in parallel |
-|| `p` | Pull selected repo |
-|| `P` | Push selected repo |
-|| `c` | Checkout branch on selected repo or currently selected branch |
-|| `r` | On a repo row: refresh selected repo. On a section-title row: refresh all repos in that section |
+| Key | Action |
+| ----- | -------- |
+| `A` | Add repository (opens file picker — see below) |
+| `D` | Remove selected repository (with confirmation) |
+| `f` | On a repo row: fetch selected repo. On a section-title row: fetch all repos in that section in parallel |
+| `p` | Pull selected repo |
+| `P` | Push selected repo |
+| `c` | Checkout branch on selected repo or currently selected branch |
+| `r` | On a repo row: refresh selected repo. On a section-title row: refresh all repos in that section |
 
 ## Other panes
 

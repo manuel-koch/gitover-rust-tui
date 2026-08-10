@@ -28,6 +28,7 @@ See [features](docs/features.md) for the full feature reference.
 ## Build & Install
 
 Requirements:
+
 - Rust toolchain
 - cmake + a C compiler (Xcode Command Line Tools) — vendored libgit2
 - perl + make — vendored OpenSSL

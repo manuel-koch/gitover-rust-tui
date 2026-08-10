@@ -172,8 +172,8 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `n` | Create Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
 | `h` | Commit History — opens the history pane for the selected repo (full log) |
 | `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
-|| `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
-|| `D` | Remove Repo from App — removes the selected repo from the app (with confirmation) |
+| `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
+| `D` | Remove Repo from App — removes the selected repo from the app (with confirmation) |
 
 Direct shortcuts `f`, `p`, `P`, `c` also work from the normal Repositories view without opening the menu.
 The `D` (remove repo) shortcut also works directly from the Repositories view without opening the menu.
@@ -288,7 +288,7 @@ structured log to the specified file.
 - Internal debug events (raw key events, operation dispatch) that are not
   shown in the UI are also written
 - Each line uses the format: `[HH:MM:SS LEVEL PID0000] message`
-  - `LEVEL` is right-aligned in a 5-character field: `DEBUG`, ` INFO`, ` WARN`, `ERROR`
+  - `LEVEL` is right-aligned in a 5-character field: `DEBUG`, `INFO`, `WARN`, `ERROR`
   - `PID` is the process identifier of the running app
 - Severity levels:
   - `DEBUG` — internal events (key presses, operation routing); file only,
@@ -470,10 +470,10 @@ open, `Esc` to dismiss) are described per pane in the sections below.
   checked out locally)
 - Each branch row has a 3-character marker column followed by branch name,
   upstream ahead/behind, and trunk ahead/behind:
-  - `*  ` — current branch
-  - `✓  ` — branch has been fully merged to trunk (0 commits ahead, ≥1 behind);
+  - `*` — current branch
+  - `✓` — branch has been fully merged to trunk (0 commits ahead, ≥1 behind);
     a hint to clean up the branch
-  - `*✓ ` — current branch that is also merged to trunk
+  - `*✓` — current branch that is also merged to trunk
   - Upstream column shows `remote only` for branches that exist only on the remote
   - Trunk column shows `is trunk` instead of ahead/behind numbers for the trunk branch itself
 - `c` directly checks out the highlighted branch without opening a selection dialog

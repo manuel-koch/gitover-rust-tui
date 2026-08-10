@@ -10,7 +10,7 @@ The full document set is enumerated in
 The reading order below is the common path through that set:
 
 1. **Before editing anything:** read
-  - [project-layout](./docs/project-layout.md) — file tree, source/test
+   [project-layout](./docs/project-layout.md) — file tree, source/test
    layout, and the canonical list of docs.
 2. **Before investigating behavior:** skim
    [README](./README.md) (project intro and quickstart),
@@ -25,29 +25,29 @@ The reading order below is the common path through that set:
    [development-workflow](./docs/development-workflow.md) and fix any findings.
 5. **Todo task lifecycle:** Checkmark done todo tasks and merge to
    documentation (consent given) as noted in [todo-workflow](./docs/todo-workflow.md)
-7. **For release-note generation:** read
+6. **For release-note generation:** read
    [release-notes-workflow](./docs/release-notes-workflow.md).
 
 ## Communication
 
-* Be concise and direct
-* No preamble
-* No motivational filler
-* No repetition
-* Prefer bullets over prose
-* Keep explanations to the minimum needed
+- Be concise and direct
+- No preamble
+- No motivational filler
+- No repetition
+- Prefer bullets over prose
+- Keep explanations to the minimum needed
 
 ## Execution
 
-* Admit uncertainty when appropriate
-* Break large tasks into independently-verifiable units
-* Parallelize independent subtasks where possible
-* Execute actions via your tools
-* No file edits without explicit user consent
-  * Chat triggers — do NOT edit: "analyze", "discuss", "evaluate", "explore", "focus",
+- Admit uncertainty when appropriate
+- Break large tasks into independently-verifiable units
+- Parallelize independent subtasks where possible
+- Execute actions via your tools
+- No file edits without explicit user consent
+  - Chat triggers — do NOT edit: "analyze", "discuss", "evaluate", "explore", "focus",
     "highlight", "propose", "review", "re-think", "suggest", "X doesn't work",
     "can we refactor Y", "what if Z" (and equivalent-intent phrases).
-  * Imperatives — DO edit: "apply it", "do it", "go ahead", "fix it", "fix the bug",
+  - Imperatives — DO edit: "apply it", "do it", "go ahead", "fix it", "fix the bug",
     "implement it" (and equivalent-intent phrases)
 
 When consent applies to a multi-step task, complete all the steps the user asked
