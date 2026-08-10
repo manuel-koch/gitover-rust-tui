@@ -1172,12 +1172,7 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
         .unwrap_or_else(|| "git".to_string());
 
     let total = app.repos.len();
-    let paths: Vec<String> = app
-        .repos
-        .iter()
-        .filter(|r| r.error.is_none())
-        .map(|r| r.path.clone())
-        .collect();
+    let paths: Vec<String> = app.repos.iter().map(|r| r.path.clone()).collect();
 
     dlog!(
         "launch_all_fetch: total_repos={} fetchable={}",
@@ -1189,7 +1184,8 @@ fn launch_all_fetch(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>) {
     }
 
     if paths.is_empty() {
-        dlog!("launch_all_fetch: no fetchable repos, returning early");
+        app.log("no tracked repos to fetch");
+        dlog!("launch_all_fetch: no tracked repos, noting it in the log");
         return;
     }
 
@@ -1220,20 +1216,7 @@ fn launch_section_fetch(
         .clone()
         .unwrap_or_else(|| "git".to_string());
 
-    let section_paths: Vec<String> = app.state.sections[section_idx].repos.clone();
-    let paths: Vec<String> = section_paths
-        .iter()
-        .filter(|path| {
-            app.repos
-                .iter()
-                .any(|r| r.path == **path && r.error.is_none())
-        })
-        .cloned()
-        .collect();
-
-    if paths.is_empty() {
-        return;
-    }
+    let paths: Vec<String> = app.state.sections[section_idx].repos.clone();
 
     let section_name = app.state.sections[section_idx]
         .name
@@ -1342,9 +1325,6 @@ fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: 
         None => return,
     };
     let repo = &app.repos[repo_idx];
-    if repo.error.is_some() {
-        return;
-    }
     let path = repo.path.clone();
     let git_bin = app
         .config
@@ -2436,7 +2416,7 @@ mod tests {
     }
 
     #[test]
-    fn launch_section_fetch_skips_repos_with_errors() {
+    fn launch_section_fetch_fetches_repos_even_with_errors() {
         let tmp = tempfile::TempDir::new().unwrap();
         let state_file = tmp.path().join("state.yaml");
         let mut app = App::new_with_overrides(None, Some(state_file));
@@ -2462,9 +2442,10 @@ mod tests {
             Some(&vec![app::RepoOperation::Fetching]),
             "non-errored repo must be marked Fetching"
         );
-        assert!(
-            app.operations.get(&path_errored).is_none(),
-            "errored repo must not be queued for fetch"
+        assert_eq!(
+            app.operations.get(&path_errored),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "errored repo must be queued for fetch (retry semantics)"
         );
     }
 
@@ -2478,13 +2459,16 @@ mod tests {
         app.state.add_section("Work".to_string()).unwrap();
         let path_a = "/fake/w1".to_string();
         let path_b = "/fake/w2".to_string();
+        let path_errored = "/fake/w3".to_string();
         let mut status_a = git::RepoStatus::error_entry(&path_a, "");
         status_a.error = None;
         let mut status_b = git::RepoStatus::error_entry(&path_b, "");
         status_b.error = None;
+        let status_errored = git::RepoStatus::error_entry(&path_errored, "some error");
         app.state.sections[1].repos.push(path_a.clone());
         app.state.sections[1].repos.push(path_b.clone());
-        app.repos = vec![status_a, status_b];
+        app.state.sections[1].repos.push(path_errored.clone());
+        app.repos = vec![status_a, status_b, status_errored];
 
         app.selected = 0; // SectionTitle row.
         let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
@@ -2507,6 +2491,11 @@ mod tests {
             Some(&vec![app::RepoOperation::Fetching]),
             "all repos in the section must be queued for fetch"
         );
+        assert_eq!(
+            app.operations.get(&path_errored),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "errored repo in the section must be queued for fetch (retry semantics)"
+        );
     }
 
     #[test]
@@ -2518,8 +2507,7 @@ mod tests {
         app.state.add_section("Work".to_string()).unwrap();
         let path_a = "/fake/w1".to_string();
         let path_b = "/fake/w2".to_string();
-        let mut status_a = git::RepoStatus::error_entry(&path_a, "");
-        status_a.error = None;
+        let status_a = git::RepoStatus::error_entry(&path_a, "some error");
         let mut status_b = git::RepoStatus::error_entry(&path_b, "");
         status_b.error = None;
         app.state.sections[1].repos.push(path_a.clone());
@@ -2540,12 +2528,71 @@ mod tests {
         assert_eq!(
             app.operations.get(&path_a),
             Some(&vec![app::RepoOperation::Fetching]),
-            "selected repo must be queued for fetch"
+            "errored selected repo must be queued for fetch (retry semantics)"
         );
         assert_eq!(
             app.operations.get(&path_b),
             None,
             "only the selected repo may be fetched, not its sibling"
+        );
+    }
+
+    #[test]
+    fn pull_on_errored_repo_row_proceeds() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_errored = "/fake/errored-repo".to_string();
+        app.state.sections[1].repos.push(path_errored.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_errored, "some error")];
+
+        app.selected = 1; // First repo row within the section.
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
+        handle_normal_key(
+            &mut app,
+            &mut dirty_rx,
+            &op_tx,
+            KeyCode::Char('p'),
+            KeyModifiers::NONE,
+        );
+
+        assert_eq!(
+            app.operations.get(&path_errored),
+            Some(&vec![app::RepoOperation::Pulling]),
+            "errored repo row must still dispatch a pull (retry semantics)"
+        );
+    }
+
+    #[test]
+    fn launch_all_fetch_fetches_repos_even_with_errors() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        let path_good = "/fake/good-repo".to_string();
+        let path_errored = "/fake/errored-repo".to_string();
+        let mut good_status = git::RepoStatus::error_entry(&path_good, "");
+        good_status.error = None;
+        app.repos = vec![
+            good_status,
+            git::RepoStatus::error_entry(&path_errored, "some error"),
+        ];
+
+        let (tx, _rx) = std::sync::mpsc::channel::<OpResult>();
+        launch_all_fetch(&mut app, &tx);
+
+        assert_eq!(
+            app.operations.get(&path_good),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "non-errored repo must be marked Fetching"
+        );
+        assert_eq!(
+            app.operations.get(&path_errored),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "errored repo must be fetched by fetch-all (retry semantics)"
         );
     }
 

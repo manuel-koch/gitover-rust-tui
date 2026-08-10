@@ -59,8 +59,8 @@ in [`docs/config.schema.json`](./config.schema.json) and
     - `Repositories ( <section> )` when only a named-section row is selected
     - `Repositories ( <repo> )` when a repo in the default section is selected
     - `Repositories` when nothing is selected
-  - `f` on a section-title row fetches all repos in that section in parallel;
-    `r` refreshes all repos in that section
+  - `f` on a section-title row fetches all repos in that section in parallel
+  - `r` on a section-title row refreshes all repos in that section in parallel
   - Each repo shows a `scan` spinner in the Activity column while a refresh is
     in progress (applies to both single-repo `r` and section-level `r`)
 - Section management actions (available via action menu when a section-title
