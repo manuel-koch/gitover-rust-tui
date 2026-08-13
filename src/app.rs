@@ -1010,6 +1010,7 @@ impl App {
             items.push(MenuItem::item("Force Push Branch", 'F'));
             items.push(MenuItem::item("Checkout Branch", 'c'));
             items.push(MenuItem::item("Create Branch", 'n'));
+            items.push(MenuItem::item("Amend Commit", 'a'));
 
             items.push(MenuItem::item("Commit History", 'h'));
             if let Some(upstream) = &repo.upstream {
@@ -1206,7 +1207,10 @@ impl App {
             return;
         }
         self.open_menu(
-            vec![MenuItem::item("Undo Commit", 'u')],
+            vec![
+                MenuItem::item("Amend Commit", 'a'),
+                MenuItem::item("Undo Commit", 'u'),
+            ],
             AppMode::HistoryActionMenu,
         );
     }
@@ -3927,6 +3931,48 @@ mod tests {
         assert!(
             has_remove,
             "menu must contain 'Remove Repo from App' with key D"
+        );
+    }
+
+    #[test]
+    fn repo_action_menu_includes_amend_commit_for_error_free_repo() {
+        let (mut app, _tmp) = make_app();
+        app.state.sections[0].repos.push("/fake/repo".to_string());
+        let mut repo = crate::git::RepoStatus::error_entry("/fake/repo", "");
+        repo.error = None;
+        app.repos = vec![repo];
+        app.selected = 0;
+        app.open_repo_action_menu();
+        let has_amend = app
+            .menu_items
+            .iter()
+            .any(|item| item.label == "Amend Commit" && item.key == 'a' && !item.is_separator);
+        assert!(has_amend, "menu must contain 'Amend Commit' with key a");
+    }
+
+    #[test]
+    fn history_action_menu_includes_amend_and_undo_for_head() {
+        let (mut app, _tmp) = make_app();
+        app.history = vec![make_commit(0)];
+        app.history_filter = HistoryFilter::Full;
+        app.history_selected = 0;
+        app.open_history_action_menu();
+        assert!(matches!(app.mode, AppMode::HistoryActionMenu));
+        let has_amend = app
+            .menu_items
+            .iter()
+            .any(|item| item.label == "Amend Commit" && item.key == 'a' && !item.is_separator);
+        let has_undo = app
+            .menu_items
+            .iter()
+            .any(|item| item.label == "Undo Commit" && item.key == 'u' && !item.is_separator);
+        assert!(
+            has_amend,
+            "history menu must contain 'Amend Commit' with key a"
+        );
+        assert!(
+            has_undo,
+            "history menu must contain 'Undo Commit' with key u"
         );
     }
 

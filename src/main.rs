@@ -1520,7 +1520,10 @@ fn dispatch_history_menu_action(
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: char,
 ) {
-    if key == 'u' {
+    if key == 'a' {
+        app.close_menu();
+        app.open_amend_input();
+    } else if key == 'u' {
         app.close_menu();
         launch_op(app, op_tx, OpRequest::UndoCommit);
     }
@@ -1579,6 +1582,10 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
         'n' => {
             app.close_menu();
             app.open_new_branch_input();
+        }
+        'a' => {
+            app.close_menu();
+            app.open_amend_input();
         }
 
         'h' => {

@@ -1098,6 +1098,25 @@ mod tests {
     }
 
     #[test]
+    fn amendment_succeeds_with_empty_index_and_rewrites_head() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::Commit {
+                message: "amended message".to_string(),
+                amend: true,
+            },
+        );
+        assert!(result.success, "Commit amend with empty index must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.summary().unwrap_or(""), "amended message");
+    }
+
+    #[test]
     fn spawn_op_run_repo_command_foreground_captures_output() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = make_committed_repo(&tmp);

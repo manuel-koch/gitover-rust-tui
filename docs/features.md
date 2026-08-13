@@ -170,6 +170,7 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 | `F` | Force Push — pushes with `--force --set-upstream origin HEAD` (confirmation dialog shown first) |
 | `c` | Checkout Branch — shows a list of local and remote branches; auto-stashes dirty changes before checkout, pops stash afterwards |
 | `n` | Create Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
+| `a` | Amend Commit — opens the amend dialog pre-filled with the HEAD message; available even when no file is staged |
 | `h` | Commit History — opens the history pane for the selected repo (full log) |
 | `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
 | `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
@@ -255,6 +256,12 @@ staged and open a multiline commit message popup:
 - Amend Commit pre-fills the message with the current HEAD commit message
 - Runs `git commit -m <message>` or `git commit --amend -m <message>`
 
+**Amend Commit** is also available from the per-repo action menu (`a`, see
+[Git Operations](#git-operations)) and from the History pane's per-commit action
+menu (when HEAD is selected in the full-history view), even when no file is
+staged — amending with zero staged files simply rewrites the HEAD commit
+message. The dialog title then renders `Amend Commit (0 staged + M from HEAD)`.
+
 ## Output Log Pane
 
 - Toggle with `l`
@@ -336,6 +343,7 @@ Opened with `Enter` on the HEAD commit row. Dismiss with `Esc`.
 
 | Key | Action |
 |-----|--------|
+| `a` | Amend Commit — opens the amend dialog pre-filled with the HEAD message |
 | `u` | Undo Commit — runs `git reset --mixed HEAD~1`; removes the HEAD commit and leaves all its changes as unstaged working-tree modifications (no data is lost; `git reflog` can recover the commit) |
 
 ## Details Pane
