@@ -22,7 +22,7 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
 
 ## UX Polish
 
-- [ ]
+- [ ] Allow ammending last git commit even no current file is staged.
 
 ## Git Rebase Operation
 
