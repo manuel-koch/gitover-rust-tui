@@ -29,6 +29,7 @@ format:
 # Build debug binary (output: target/debug/gitover)
 build-debug:
 	cargo build
+	@echo "Built: $(CARGO_TARGET_DIR)/debug/gitover"
 
 # Build debug binary and launch it
 build-debug-and-run:
@@ -42,6 +43,7 @@ build-debug-and-run-with-sandbox-repos: build-debug
 # Build optimized release binary (output: ${CARGO_TARGET_DIR}/release/gitover)
 build-release:
 	cargo build --release
+	@echo "Built: $(CARGO_TARGET_DIR)/release/gitover"
 
 # Build optimized release binary
 build-release-and-run: build-release
