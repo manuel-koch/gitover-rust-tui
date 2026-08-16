@@ -1814,74 +1814,112 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
         ]));
     }
 
+    // Menu-action rows inside a pane section, indented so they are visually
+    // distinct from direct pane keys (which work without opening a menu).
+    let menu_actions = |entries: &[(&'static str, &'static str)]| -> Vec<Line<'static>> {
+        let key_width = entries
+            .iter()
+            .map(|(k, _)| k.chars().count())
+            .max()
+            .unwrap_or(0);
+        entries
+            .iter()
+            .map(|&(k, v)| {
+                Line::from(vec![
+                    Span::styled(format!("    {k:<key_width$}  "), key_sty),
+                    Span::styled(v, desc_sty),
+                ])
+            })
+            .collect()
+    };
+
     lines.extend(section(
         "Navigation",
         &[
-            ("Tab / Shift-Tab", "cycle focus"),
             ("↑ / ↓", "move up / down"),
-            ("Shift-↑ / Shift-↓", "prev / next commit (History pane)"),
+            ("shift-↑ / shift-↓", "prev / next commit (History pane)"),
             (", / .", "prev / next commit (History pane)"),
             ("PgUp / PgDn", "move up / down fast"),
         ],
     ));
     lines.extend(section(
-        "Toggle Panes",
+        "Global",
         &[
-            ("s", "File Status"),
-            ("b", "Branches"),
-            ("h", "Commit History"),
-            ("d", "Details"),
-            ("l", "Output Log"),
+            ("tab / shift-tab", "cycle focus"),
+            (
+                "s / h / b / d / l",
+                "toggle panes: File Status / History / Branches / Details / Log",
+            ),
+            ("r", "refresh all repositories"),
+            ("alt-f", "fetch all repositories"),
+            ("shift-t", "cycle through themes"),
+            ("?", "help popup"),
+            ("ctrl-c", "quit app"),
         ],
     ));
     lines.extend(section(
         "Repositories",
         &[
-            ("f", "Fetch"),
-            ("p", "Pull Branch"),
-            ("P", "Push Branch"),
-            ("F", "Force Push Branch"),
-            ("c", "Checkout Branch"),
-            ("n", "Create Branch"),
-            ("Enter", "Action Menu"),
-            ("A", "Add Repository"),
-            ("D", "Remove Repo from App"),
-            ("r", "Refresh Repository Info"),
+            ("f", "fetch selected repo"),
+            ("p", "pull branch"),
+            ("shift-p", "push branch"),
+            ("alt-shift-p", "force push"),
+            ("c", "checkout branch"),
+            ("shift-a", "add repository"),
+            ("shift-d", "remove repository"),
+            ("r", "refresh selected repo"),
+            ("← / →", "collapse / expand section"),
+            ("Enter", "action menu"),
         ],
     ));
+    lines.extend(menu_actions(&[
+        ("n", "create branch"),
+        ("a", "amend last commit"),
+        ("shift-n / shift-m", "create section / move repo"),
+        ("h", "commit history"),
+        ("u / shift-u", "history ahead / behind upstream"),
+        ("t / shift-t", "history ahead / behind trunk"),
+    ]));
     lines.extend(section(
         "Repository Sections",
         &[
-            ("←", "Collapse repo section"),
-            ("→", "Expand repo section"),
-            ("f", "Fetch all repos in section (on section title)"),
-            ("r", "Refresh all repos in section (on section title)"),
-            ("N (menu)", "Create new repo section"),
-            ("R (menu)", "Rename current repo section"),
-            ("X (menu)", "Remove current repo section"),
-            ("M (menu)", "Move repo to repo section"),
+            ("f", "fetch all repos in section (title row)"),
+            ("r", "refresh all repos in section (title row)"),
+            ("Enter", "action menu"),
         ],
+    ));
+    lines.extend(menu_actions(&[
+        ("shift-n", "create new repo section"),
+        ("shift-r", "rename current repo section"),
+        ("shift-x", "remove current repo section"),
+        ("shift-m", "move repo to repo section"),
+    ]));
+    lines.extend(section(
+        "Status Details",
+        &[("Enter", "file action menu"), ("↑ / ↓", "select file")],
+    ));
+    lines.extend(section(
+        "Git History",
+        &[("Enter", "commit action menu (on HEAD)")],
     ));
     lines.extend(section(
         "Branches Pane",
         &[
-            ("c", "Checkout selected Branch"),
-            ("p", "Pull Branch (fast-forward)"),
-            ("P", "Push Branch"),
-            ("F", "Force Push Branch"),
-            ("n", "Create Branch"),
-            ("Enter", "Branch Action Menu"),
-            ("Esc / b", "Close Branches Pane"),
+            ("c", "checkout selected branch"),
+            ("p", "pull branch (fast-forward)"),
+            ("shift-p", "push branch"),
+            ("Enter", "branch action menu"),
+            ("Esc / b", "close Branches pane"),
         ],
     ));
-    lines.extend(section(
-        "Global",
-        &[
-            ("Alt-f", "Fetch All Repositories"),
-            ("Ctrl-C", "Quit Application"),
-        ],
-    ));
-
+    lines.extend(menu_actions(&[
+        ("alt-shift-p", "force push branch"),
+        ("n", "create branch"),
+        ("h", "commit history"),
+        ("u / shift-u", "history ahead / behind upstream"),
+        ("t / shift-t", "history ahead / behind trunk"),
+        ("d", "delete branch"),
+    ]));
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
@@ -2271,7 +2309,7 @@ fn draw_action_menu(frame: &mut Frame, app: &mut App) {
                 Style::default()
             };
             Row::new(vec![
-                Cell::from(format!(" {} ", item.key)).style(if selected {
+                Cell::from(format!(" {} ", item.shortcut)).style(if selected {
                     style
                 } else {
                     Style::default().fg(t.help_key)
@@ -2281,8 +2319,21 @@ fn draw_action_menu(frame: &mut Frame, app: &mut App) {
         })
         .collect();
 
-    let table = Table::new(rows, [Constraint::Length(4), Constraint::Fill(1)])
-        .block(Block::default().borders(Borders::NONE));
+    // Key column width fits the longest shortcut (e.g. "alt-shift-p").
+    let key_col_width = app
+        .menu_items
+        .iter()
+        .map(|i| i.shortcut.chars().count())
+        .max()
+        .unwrap_or(0);
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length((key_col_width + 2).max(4) as u16),
+            Constraint::Fill(1),
+        ],
+    )
+    .block(Block::default().borders(Borders::NONE));
     frame.render_widget(table, inner);
 
     // Overflow indicators: ▲ top-right when scrolled down, ▼ bottom-right when more below.

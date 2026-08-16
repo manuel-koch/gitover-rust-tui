@@ -324,13 +324,9 @@ where
             }
 
             match app.mode {
-                AppMode::Normal => {
+                AppMode::Normal | AppMode::History => {
                     if let Event::Key(key) = &ev {
-                        if app.show_history && app.focus == app::Focus::History {
-                            handle_history_key(app, op_tx, key.code, key.modifiers);
-                        } else {
-                            handle_normal_key(app, dirty_rx, op_tx, key.code, key.modifiers);
-                        }
+                        handle_base_mode_key(app, op_tx, key.code, key.modifiers);
                     }
                 }
                 AppMode::FilePicker => handle_picker_event(app, dirty_rx, &ev),
@@ -341,7 +337,7 @@ where
                 }
                 AppMode::ActionMenu => {
                     if let Event::Key(key) = &ev {
-                        handle_menu_key(app, dirty_rx, op_tx, key.code);
+                        handle_menu_key(app, dirty_rx, op_tx, key.code, key.modifiers);
                     }
                 }
                 AppMode::BranchSelect => {
@@ -376,11 +372,6 @@ where
                         handle_confirm_delete_local_branch_key(app, op_tx, key.code);
                     }
                 }
-                AppMode::History => {
-                    if let Event::Key(key) = &ev {
-                        handle_history_key(app, op_tx, key.code, key.modifiers);
-                    }
-                }
                 AppMode::HistoryActionMenu => {
                     if let Event::Key(key) = &ev {
                         handle_history_menu_key(app, op_tx, key.code);
@@ -398,7 +389,7 @@ where
                 }
                 AppMode::BranchActionMenu => {
                     if let Event::Key(key) = &ev {
-                        handle_branch_menu_key(app, op_tx, key.code);
+                        handle_branch_menu_key(app, op_tx, key.code, key.modifiers);
                     }
                 }
                 AppMode::PopupMessage => {
@@ -1020,23 +1011,48 @@ pub fn menu_item_under_mouse(app: &App, mouse: &MouseEvent) -> Option<usize> {
     Some(item_index)
 }
 
-fn handle_normal_key(
+/// Dispatch a base-mode key press (AppMode::Normal | AppMode::History) by the
+/// focused pane. Each focus handler first consults `handle_global_key` and
+/// returns early when it handled the key.
+fn handle_base_mode_key(
     app: &mut App,
-    _dirty_rx: &mut std::sync::mpsc::Receiver<String>,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
-    _modifiers: KeyModifiers,
+    modifiers: KeyModifiers,
 ) {
+    match app.focus {
+        Focus::Repos => handle_repos_key(app, op_tx, key, modifiers),
+        Focus::History => handle_history_key(app, op_tx, key, modifiers),
+        Focus::Branches => handle_branches_key(app, op_tx, key, modifiers),
+        Focus::FileStatus => handle_file_status_key(app, op_tx, key, modifiers),
+        Focus::Log => handle_log_key(app, op_tx, key, modifiers),
+        Focus::Details => handle_details_key(app, op_tx, key, modifiers),
+    }
+}
+
+/// Focus-independent key handling: same behaviour regardless of the focused
+/// pane. Each focus handler calls this first; the return value tells it
+/// whether the key was handled.
+fn handle_global_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) -> bool {
     match key {
         KeyCode::Tab => {
             app.cycle_focus();
             app.refresh_details();
+            true
         }
         KeyCode::BackTab => {
             app.cycle_focus_reverse();
             app.refresh_details();
+            true
         }
-        KeyCode::Down => {
+        KeyCode::Down
+            if !(app.focus == Focus::History && modifiers.contains(KeyModifiers::SHIFT)) =>
+        {
             app.next();
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
@@ -1044,8 +1060,11 @@ fn handle_normal_key(
                 app.reload_history_if_open(false);
             }
             app.refresh_details();
+            true
         }
-        KeyCode::Up => {
+        KeyCode::Up
+            if !(app.focus == Focus::History && modifiers.contains(KeyModifiers::SHIFT)) =>
+        {
             app.previous();
             if app.focus == Focus::Branches {
                 app.reload_history_from_branches();
@@ -1053,6 +1072,7 @@ fn handle_normal_key(
                 app.reload_history_if_open(false);
             }
             app.refresh_details();
+            true
         }
         KeyCode::PageDown => {
             app.next_page();
@@ -1062,6 +1082,7 @@ fn handle_normal_key(
                 app.reload_history_if_open(false);
             }
             app.refresh_details();
+            true
         }
         KeyCode::PageUp => {
             app.previous_page();
@@ -1071,49 +1092,149 @@ fn handle_normal_key(
                 app.reload_history_if_open(false);
             }
             app.refresh_details();
+            true
         }
-        // Collapse / expand repo sections (only when Repos pane has focus).
-        KeyCode::Left if app.focus == Focus::Repos => app.collapse_current_section(),
-        KeyCode::Right if app.focus == Focus::Repos => app.expand_current_section(),
+        // Section-aware refresh: a section-title row refreshes just that
+        // section's repos, any other row refreshes all tracked repos.
         KeyCode::Char('r') => {
             if let Some(section_idx) = app.selected_section_title_idx() {
                 refresh_section_repos(app, op_tx, section_idx);
             } else {
                 refresh_repos(app, op_tx);
             }
+            true
         }
-        KeyCode::Char('A') => app.enter_pick_mode(),
-        KeyCode::Char('D') => app.request_remove_selected(),
-        KeyCode::Char('s') => app.toggle_file_status(),
-        KeyCode::Char('l') => app.toggle_log(),
-        KeyCode::Char('d') => app.toggle_details(),
+        KeyCode::Char('s') => {
+            app.toggle_file_status();
+            true
+        }
+        KeyCode::Char('l') => {
+            app.toggle_log();
+            true
+        }
+        KeyCode::Char('d') => {
+            app.toggle_details();
+            true
+        }
         KeyCode::Char('b') => {
             if app.show_branches {
                 app.close_branches_pane();
             } else {
                 app.open_branches_pane();
             }
+            true
         }
         // Enter opens context-sensitive action menu
         KeyCode::Enter => {
             if app.focus == Focus::Branches {
                 app.open_branch_action_menu();
+            } else if app.focus == Focus::History && app.show_history {
+                app.open_history_action_menu();
             } else if app.focus == Focus::Log && app.show_log {
                 app.open_log_action_menu();
             } else if app.focus == Focus::FileStatus && app.show_file_status {
                 app.open_file_action_menu();
-            } else {
+            } else if app.focus != Focus::Details {
+                // Repos-pane default; Details pane has no action menu.
                 app.open_repo_action_menu();
             }
+            true
         }
-        // Direct shortcuts (bypass menu)
+        // Direct shortcuts: repo-pane actions (`f`, `p`, `P`, `c`) are handled
+        // by `handle_repos_key` / `handle_branches_key` — they do not fire from
+        // other panes.
+        // h toggles the History pane from any base-mode focus.
+        KeyCode::Char('h') => {
+            if app.show_history {
+                app.close_history();
+            } else {
+                app.open_history(app::HistoryFilter::Full);
+            }
+            true
+        }
+        KeyCode::Char('T') => {
+            app.next_theme();
+            true
+        }
+        KeyCode::Char('?') => {
+            app.mode = AppMode::HelpOverlay;
+            true
+        }
+        KeyCode::Esc => {
+            if app.focus == Focus::Branches {
+                app.close_branches_pane();
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn handle_repos_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    if handle_global_key(app, op_tx, key, modifiers) {
+        return;
+    }
+    // Alt+Shift+P directly opens the force-push confirmation, mirroring the
+    // action-menu behaviour. Handled before the plain `p`/`P` arms so the
+    // modified chord is never shrunk to a normal pull/push.
+    if is_alt_shift_p(modifiers, key) {
+        app.confirm_force_push();
+        return;
+    }
+    match key {
+        // Collapse / expand repo sections.
+        KeyCode::Left => app.collapse_current_section(),
+        KeyCode::Right => app.expand_current_section(),
+        KeyCode::Char('A') => app.enter_pick_mode(),
+        KeyCode::Char('D') => app.request_remove_selected(),
+        // Repo-pane direct shortcuts (bypass menu). These are repo-only actions
+        // and therefore fire only while the Repositories pane has focus.
         KeyCode::Char('f') => {
             if let Some(section_idx) = app.selected_section_title_idx() {
+                dlog!(
+                    "key 'f': section title selected → launch_section_fetch (section_idx={}, repos_in_section={})",
+                    section_idx,
+                    app.state.sections.get(section_idx).map(|s| s.repos.len()).unwrap_or(0)
+                );
                 launch_section_fetch(app, op_tx, section_idx);
             } else {
+                let selected_repo = app.selected_repo_idx();
+                dlog!(
+                    "key 'f': NO section title selected → fall through to single-repo fetch \
+                     (app.selected={}, visible_rows={}, selected_repo={:?}, visible_row={:?})",
+                    app.selected,
+                    app.visible_rows().len(),
+                    selected_repo,
+                    app.visible_rows().get(app.selected)
+                );
                 launch_op(app, op_tx, OpRequest::Fetch);
             }
         }
+        KeyCode::Char('p') => launch_op(app, op_tx, OpRequest::Pull),
+        KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
+        KeyCode::Char('c') => app.open_branch_select(),
+        _ => {}
+    }
+}
+
+fn handle_branches_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    if handle_global_key(app, op_tx, key, modifiers) {
+        return;
+    }
+    match key {
+        // Branch-pane direct actions. `p` fast-forward pulls the highlighted
+        // branch, falling back to a plain repo pull when not applicable; `P`
+        // pushes; `c` checks the highlighted branch out directly.
         KeyCode::Char('p') => {
             if let Some(op) = branch_pull_op(app) {
                 launch_op(app, op_tx, op);
@@ -1121,34 +1242,50 @@ fn handle_normal_key(
                 launch_op(app, op_tx, OpRequest::Pull);
             }
         }
-        KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
-        KeyCode::Char('c') => {
-            if app.focus == Focus::Branches {
-                // Direct checkout of the selected branch (bypasses dialog)
-                if let Some(b) = app.selected_branch_info().cloned() {
-                    if !b.is_current {
-                        let (name, is_remote) = if b.is_remote_only {
-                            (format!("origin/{}", b.name), true)
-                        } else {
-                            (b.name, false)
-                        };
-                        launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
-                    }
-                }
-            } else {
-                app.open_branch_select();
-            }
+        KeyCode::Char('P') => {
+            launch_op(app, op_tx, OpRequest::Push);
         }
-        KeyCode::Char('h') => app.open_history(app::HistoryFilter::Full),
-        KeyCode::Char('T') => app.next_theme(),
-        KeyCode::Char('?') => app.mode = AppMode::HelpOverlay,
-        KeyCode::Esc => {
-            if app.focus == Focus::Branches {
-                app.close_branches_pane();
+        KeyCode::Char('c') => {
+            if let Some(b) = app.selected_branch_info().cloned() {
+                if !b.is_current {
+                    let (name, is_remote) = if b.is_remote_only {
+                        (format!("origin/{}", b.name), true)
+                    } else {
+                        (b.name, false)
+                    };
+                    launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
+                }
             }
         }
         _ => {}
     }
+}
+
+fn handle_file_status_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    handle_global_key(app, op_tx, key, modifiers);
+}
+
+fn handle_log_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    handle_global_key(app, op_tx, key, modifiers);
+}
+
+fn handle_details_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    handle_global_key(app, op_tx, key, modifiers);
 }
 
 /// Spawn a background thread to check the GitHub Releases API for a new version.
@@ -1223,6 +1360,14 @@ fn launch_section_fetch(
         .as_deref()
         .unwrap_or("default")
         .to_string();
+
+    dlog!(
+        "launch_section_fetch: section_idx={} name={:?} queuing {} paths: {:?}",
+        section_idx,
+        section_name,
+        paths.len(),
+        paths
+    );
 
     app.set_header_flash(format!(
         "↻ fetching {} repos in {}…",
@@ -1322,7 +1467,16 @@ fn handle_release_check_result(app: &mut App, result: OpResult) {
 fn launch_op(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, request: OpRequest) {
     let repo_idx = match app.selected_repo_idx() {
         Some(i) => i,
-        None => return,
+        None => {
+            dlog!(
+                "launch_op: aborting '{}' — no repo selected (app.selected={}, visible_rows={}, visible_row={:?})",
+                request.label(),
+                app.selected,
+                app.visible_rows().len(),
+                app.visible_rows().get(app.selected)
+            );
+            return;
+        }
     };
     let repo = &app.repos[repo_idx];
     let path = repo.path.clone();
@@ -1413,6 +1567,14 @@ fn handle_op_result(app: &mut App, result: OpResult) {
         return;
     }
 
+    dlog!(
+        "handle_op_result: repo_path={:?} op_variant={:?} success={} lines={}",
+        result.repo_path,
+        result.op_variant,
+        result.success,
+        result.lines.len()
+    );
+
     app.finish_operation(&result.repo_path, result.op_variant);
     if !result.success {
         app.log_error(format!(
@@ -1446,7 +1608,14 @@ fn handle_menu_key(
     _dirty_rx: &mut std::sync::mpsc::Receiver<String>,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
+    modifiers: KeyModifiers,
 ) {
+    // Alt+Shift+P triggers force push in the repo action menu.
+    if is_alt_shift_p(modifiers, key) {
+        app.close_menu();
+        app.confirm_force_push();
+        return;
+    }
     match key {
         KeyCode::Down => app.menu_next(),
         KeyCode::Up => app.menu_previous(),
@@ -1571,7 +1740,7 @@ fn dispatch_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>
             app.close_menu();
             launch_op(app, op_tx, OpRequest::Push);
         }
-        'F' => {
+        app::ALT_SHIFT_MENU_KEY => {
             app.close_menu();
             app.confirm_force_push();
         }
@@ -1754,7 +1923,48 @@ fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpRe
     }
 }
 
-fn handle_branch_menu_key(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpResult>, key: KeyCode) {
+/// True when the key event is Alt+Shift+P. The app binds Force Push to this
+/// combined chord (not to a bare Alt+P).
+///
+/// macOS Terminal sends ∏ (U+220F) with no modifier instead of ALT+Shift+P,
+/// mirroring the `alt-f` → `ƒ` (U+0192) quirk handled for fetch-all.
+fn is_alt_shift_p(modifiers: KeyModifiers, key: KeyCode) -> bool {
+    (modifiers.contains(KeyModifiers::ALT)
+        && modifiers.contains(KeyModifiers::SHIFT)
+        && matches!(key, KeyCode::Char('p') | KeyCode::Char('P')))
+        || key == KeyCode::Char('∏')
+}
+
+/// Guard helper for branch-menu dispatch: Force Push confirmation on the
+/// currently selected branch.
+fn dispatch_force_push_branch(app: &mut App) {
+    let branch = match app
+        .branch_info_list
+        .get(app.branches_pane_selected)
+        .cloned()
+    {
+        Some(b) => b,
+        None => {
+            app.close_menu();
+            return;
+        }
+    };
+    let name = branch.name.clone();
+    app.close_menu();
+    app.confirm_force_push_branch(name);
+}
+
+fn handle_branch_menu_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+    modifiers: KeyModifiers,
+) {
+    // Alt+Shift+P triggers force push in the branch action menu.
+    if is_alt_shift_p(modifiers, key) {
+        dispatch_force_push_branch(app);
+        return;
+    }
     match key {
         KeyCode::Down => app.menu_next(),
         KeyCode::Up => app.menu_previous(),
@@ -1868,7 +2078,7 @@ fn dispatch_branch_menu_action(
             app.close_menu();
             launch_op(app, op_tx, OpRequest::PushBranch { name });
         }
-        'F' => {
+        app::ALT_SHIFT_MENU_KEY => {
             let name = branch.name.clone();
             app.close_menu();
             app.confirm_force_push_branch(name);
@@ -2479,14 +2689,8 @@ mod tests {
 
         app.selected = 0; // SectionTitle row.
         let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
-        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
-        handle_normal_key(
-            &mut app,
-            &mut dirty_rx,
-            &op_tx,
-            KeyCode::Char('f'),
-            KeyModifiers::NONE,
-        );
+        app.focus = Focus::Repos;
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('f'), KeyModifiers::NONE);
 
         assert_eq!(
             app.operations.get(&path_a),
@@ -2523,14 +2727,8 @@ mod tests {
 
         app.selected = 1; // First repo row within the section.
         let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
-        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
-        handle_normal_key(
-            &mut app,
-            &mut dirty_rx,
-            &op_tx,
-            KeyCode::Char('f'),
-            KeyModifiers::NONE,
-        );
+        app.focus = Focus::Repos;
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('f'), KeyModifiers::NONE);
 
         assert_eq!(
             app.operations.get(&path_a),
@@ -2557,19 +2755,258 @@ mod tests {
 
         app.selected = 1; // First repo row within the section.
         let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
-        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
-        handle_normal_key(
-            &mut app,
-            &mut dirty_rx,
-            &op_tx,
-            KeyCode::Char('p'),
-            KeyModifiers::NONE,
-        );
+        app.focus = Focus::Repos;
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('p'), KeyModifiers::NONE);
 
         assert_eq!(
             app.operations.get(&path_errored),
             Some(&vec![app::RepoOperation::Pulling]),
             "errored repo row must still dispatch a pull (retry semantics)"
+        );
+    }
+
+    #[test]
+    fn f_on_section_title_when_history_pane_is_open_dispatches_section_fetch() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        // Regression scenario: History pane open (AppMode::History), focus on
+        // the Repos pane, cursor on a section-title row.
+        app.mode = AppMode::History;
+        app.show_history = true;
+        app.focus = Focus::Repos;
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        let path_b = "/fake/w2".to_string();
+        let path_errored = "/fake/w3".to_string();
+        let mut status_a = git::RepoStatus::error_entry(&path_a, "");
+        status_a.error = None;
+        let mut status_b = git::RepoStatus::error_entry(&path_b, "");
+        status_b.error = None;
+        let status_errored = git::RepoStatus::error_entry(&path_errored, "some error");
+        app.state.sections[1].repos.push(path_a.clone());
+        app.state.sections[1].repos.push(path_b.clone());
+        app.state.sections[1].repos.push(path_errored.clone());
+        app.repos = vec![status_a, status_b, status_errored];
+
+        app.selected = 0; // SectionTitle row.
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('f'), KeyModifiers::NONE);
+
+        assert_eq!(
+            app.operations.get(&path_a),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "section fetch must dispatch in History mode (section b)"
+        );
+        assert_eq!(
+            app.operations.get(&path_b),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "section fetch must dispatch in History mode (section c)"
+        );
+        assert_eq!(
+            app.operations.get(&path_errored),
+            Some(&vec![app::RepoOperation::Fetching]),
+            "errored repo in the section must be queued (retry semantics)"
+        );
+    }
+
+    #[test]
+    fn r_on_section_title_unified_under_either_mode() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.mode = AppMode::History;
+        app.show_history = true;
+        app.focus = Focus::Repos;
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        let path_b = "/fake/w2".to_string();
+        app.state.sections[1].repos.push(path_a.clone());
+        app.state.sections[1].repos.push(path_b.clone());
+        app.repos = vec![
+            git::RepoStatus::error_entry(&path_a, ""),
+            git::RepoStatus::error_entry(&path_b, ""),
+        ];
+
+        app.selected = 0; // SectionTitle row.
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('r'), KeyModifiers::NONE);
+
+        assert_eq!(
+            app.operations.get(&path_a),
+            Some(&vec![app::RepoOperation::Scanning]),
+            "section refresh must dispatch in History mode for repo a"
+        );
+        assert_eq!(
+            app.operations.get(&path_b),
+            Some(&vec![app::RepoOperation::Scanning]),
+            "section refresh must dispatch in History mode for repo b"
+        );
+    }
+
+    #[test]
+    fn a_outside_repos_focus_does_not_trigger_pick_mode() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.mode = AppMode::History;
+        app.focus = Focus::History;
+        app.selected = 0;
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('A'), KeyModifiers::NONE);
+
+        assert!(
+            !matches!(app.mode, AppMode::FilePicker),
+            "pick mode must not open when focus is not on the Repos pane"
+        );
+        assert!(
+            app.file_explorer.is_none(),
+            "file explorer must stay closed when focus is not on the Repos pane"
+        );
+    }
+
+    #[test]
+    fn d_outside_repos_focus_does_not_request_remove() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        app.state.sections[1].repos.push(path_a.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+
+        app.mode = AppMode::History;
+        app.focus = Focus::History;
+        app.selected = 1; // Repo row.
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('D'), KeyModifiers::NONE);
+
+        assert!(
+            !matches!(app.mode, AppMode::ConfirmRemove),
+            "remove confirmation must not open when focus is not on the Repos pane"
+        );
+        assert_eq!(
+            app.section_to_remove_idx, None,
+            "no section must be staged for removal when focus is not on the Repos pane"
+        );
+    }
+
+    #[test]
+    fn f_does_not_fire_from_file_status_or_history_or_log_focus() {
+        for focus in [
+            Focus::FileStatus,
+            Focus::History,
+            Focus::Log,
+            Focus::Details,
+        ] {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let state_file = tmp.path().join("state.yaml");
+            let mut app = App::new_with_overrides(None, Some(state_file));
+
+            app.state.add_section("Work".to_string()).unwrap();
+            let path_a = "/fake/w1".to_string();
+            app.state.sections[1].repos.push(path_a.clone());
+            app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+
+            app.mode = AppMode::History;
+            app.focus = focus;
+            app.selected = 1; // Repo row within the section.
+
+            let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+            handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('f'), KeyModifiers::NONE);
+
+            assert_eq!(
+                app.operations.get(&path_a),
+                None,
+                "fetch must not fire from {:?} focus — it is a repo-only action",
+                focus
+            );
+        }
+    }
+
+    #[test]
+    fn pull_does_not_fire_from_history_focus() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        app.state.sections[1].repos.push(path_a.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+
+        // History pane open, focus on the History pane → `p` must do nothing.
+        app.mode = AppMode::History;
+        app.focus = Focus::History;
+        app.show_history = true;
+        app.selected = 1; // Repo row within the section.
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('p'), KeyModifiers::NONE);
+
+        assert_eq!(
+            app.operations.get(&path_a),
+            None,
+            "pull must not fire when the History pane has focus — it is a repo-only action"
+        );
+    }
+
+    #[test]
+    fn push_does_not_fire_from_file_status_focus() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        app.state.sections[1].repos.push(path_a.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+
+        app.focus = Focus::FileStatus;
+        app.selected = 1; // Repo row within the section.
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('P'), KeyModifiers::NONE);
+
+        assert_eq!(
+            app.operations.get(&path_a),
+            None,
+            "push must not fire from File Status focus — it is a repo-only action"
+        );
+    }
+
+    #[test]
+    fn checkout_does_not_open_branch_select_from_log_focus() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+
+        app.state.add_section("Work".to_string()).unwrap();
+        let path_a = "/fake/w1".to_string();
+        app.state.sections[1].repos.push(path_a.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+
+        app.focus = Focus::Log;
+        app.selected = 1; // Repo row within the section.
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('c'), KeyModifiers::NONE);
+
+        assert!(
+            !matches!(app.mode, AppMode::BranchSelect),
+            "branch select must not open from Log focus — 'c' is a repo-only action"
+        );
+        assert!(
+            app.branch_items.is_empty(),
+            "branch select list must stay empty when 'c' is pressed from Log focus"
         );
     }
 
@@ -2632,138 +3069,223 @@ mod tests {
     fn semver_gt_returns_false_for_lower_patch() {
         assert!(!semver_gt("0.8.7", "0.8.8"));
     }
+
+    #[test]
+    fn alt_shift_p_in_repo_menu_enters_force_push_confirmation() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let _path_a = "/fake/w1".to_string();
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
+
+        // alt-shift-p must open the force-push confirmation.
+        for code in [KeyCode::Char('p'), KeyCode::Char('P')] {
+            let mut app = App::new_with_overrides(None, Some(state_file.clone()));
+            app.mode = AppMode::ActionMenu;
+            app.menu_items = vec![
+                app::MenuItem::item("Push Branch", 'P'),
+                app::MenuItem::item_alt_shift("Force Push Branch", 'p'),
+            ];
+            handle_menu_key(
+                &mut app,
+                &mut dirty_rx,
+                &op_tx,
+                code,
+                KeyModifiers::ALT | KeyModifiers::SHIFT,
+            );
+            assert!(
+                matches!(app.mode, AppMode::ConfirmForcePush),
+                "alt-shift-p must enter Force Push confirmation (code={code:?})"
+            );
+        }
+
+        // A bare Alt+P (no Shift) must NOT trigger Force Push.
+        for alt_only_code in [KeyCode::Char('p'), KeyCode::Char('P')] {
+            let mut app = App::new_with_overrides(None, Some(state_file.clone()));
+            app.mode = AppMode::ActionMenu;
+            app.menu_items = vec![
+                app::MenuItem::item("Push", 'P'),
+                app::MenuItem::item_alt_shift("Force Push Branch", 'p'),
+            ];
+            handle_menu_key(
+                &mut app,
+                &mut dirty_rx,
+                &op_tx,
+                alt_only_code,
+                KeyModifiers::ALT,
+            );
+            assert!(
+                !matches!(app.mode, AppMode::ConfirmForcePush),
+                "bare Alt + {alt_only_code:?} must not force push — alt-shift-p is required"
+            );
+        }
+
+        // Plain 'p' must NOT force push — it stays a normal menu key dispatch.
+        let mut app = App::new_with_overrides(None, Some(state_file.clone()));
+        app.mode = AppMode::ActionMenu;
+        app.menu_items = vec![
+            app::MenuItem::item("Push", 'P'),
+            app::MenuItem::item_alt_shift("Force Push Branch", 'p'),
+        ];
+        handle_menu_key(
+            &mut app,
+            &mut dirty_rx,
+            &op_tx,
+            KeyCode::Char('p'),
+            KeyModifiers::NONE,
+        );
+        assert!(
+            !matches!(app.mode, AppMode::ConfirmForcePush),
+            "plain 'p' must not trigger force push"
+        );
+    }
+
+    #[test]
+    fn alt_shift_p_on_repos_pane_opens_force_push_confirmation() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let path_a = "/fake/w1".to_string();
+        let status_a = git::RepoStatus::error_entry(&path_a, "");
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+
+        for code in [KeyCode::Char('p'), KeyCode::Char('P')] {
+            let mut app = App::new_with_overrides(None, Some(state_file.clone()));
+            app.state.sections[0].repos.push(path_a.clone());
+            app.repos = vec![status_a.clone()];
+            app.focus = Focus::Repos;
+            app.selected = 0;
+
+            handle_base_mode_key(
+                &mut app,
+                &op_tx,
+                code,
+                KeyModifiers::ALT | KeyModifiers::SHIFT,
+            );
+
+            assert!(
+                matches!(app.mode, AppMode::ConfirmForcePush),
+                "alt-shift-p on the repos pane must open Force Push confirmation (code={code:?})"
+            );
+        }
+    }
+
+    #[test]
+    fn alt_shift_p_on_repos_pane_does_not_trigger_plain_pull_push() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let path_a = "/fake/w1".to_string();
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        app.state.sections[0].repos.push(path_a.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+        app.focus = Focus::Repos;
+        app.selected = 0;
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(
+            &mut app,
+            &op_tx,
+            KeyCode::Char('P'),
+            KeyModifiers::ALT | KeyModifiers::SHIFT,
+        );
+
+        assert!(
+            matches!(app.mode, AppMode::ConfirmForcePush),
+            "alt-shift-p must not be shrunken to a plain push"
+        );
+    }
+
+    #[test]
+    fn alt_shift_p_macos_pi_char_opens_force_push_confirmation() {
+        // macOS Terminal sends U+220F (∏) with no modifier instead of
+        // ALT+Shift+P — mirroring the alt-f → ƒ quirk. Force push must fire
+        // both from the repos pane and from the action menu.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let path_a = "/fake/w1".to_string();
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+
+        // Repos pane (base mode).
+        let mut app = App::new_with_overrides(None, Some(state_file.clone()));
+        app.state.sections[0].repos.push(path_a.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Char('∏'), KeyModifiers::NONE);
+        assert!(
+            matches!(app.mode, AppMode::ConfirmForcePush),
+            "∏ (macOS alt-shift-p) must open Force Push confirmation from the repos pane"
+        );
+
+        // Action menu.
+        let mut app = App::new_with_overrides(None, Some(state_file.clone()));
+        app.state.sections[0].repos.push(path_a.clone());
+        app.repos = vec![git::RepoStatus::error_entry(&path_a, "")];
+        app.focus = Focus::Repos;
+        app.selected = 0;
+        app.mode = AppMode::ActionMenu;
+        app.menu_items = vec![app::MenuItem::item_alt_shift("Force Push Branch", 'p')];
+        let (_dirty_tx, mut dirty_rx) = std::sync::mpsc::channel::<String>();
+        handle_menu_key(
+            &mut app,
+            &mut dirty_rx,
+            &op_tx,
+            KeyCode::Char('∏'),
+            KeyModifiers::NONE,
+        );
+        assert!(
+            matches!(app.mode, AppMode::ConfirmForcePush),
+            "∏ (macOS alt-shift-p) must open Force Push confirmation from the action menu"
+        );
+    }
+
+    #[test]
+    fn enter_on_details_focus_does_not_open_repo_action_menu() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let state_file = tmp.path().join("state.yaml");
+        let mut app = App::new_with_overrides(None, Some(state_file));
+        app.focus = Focus::Details;
+        app.show_details = true;
+
+        let (op_tx, _op_rx) = std::sync::mpsc::channel::<OpResult>();
+        handle_base_mode_key(&mut app, &op_tx, KeyCode::Enter, KeyModifiers::NONE);
+
+        assert!(
+            !matches!(app.mode, AppMode::ActionMenu),
+            "Enter on the Details pane must not open the repo action menu"
+        );
+        assert!(app.menu_items.is_empty(), "Details pane has no action menu");
+    }
 }
 
+/// Focus-specific keys for the History pane. The global handler runs first
+/// (and owns all cross-pane keys); this function only adds commit navigation.
 fn handle_history_key(
     app: &mut App,
     op_tx: &std::sync::mpsc::Sender<OpResult>,
     key: KeyCode,
     modifiers: KeyModifiers,
 ) {
+    if handle_global_key(app, op_tx, key, modifiers) {
+        return;
+    }
     match key {
-        KeyCode::Char('h') => app.close_history(),
-        KeyCode::Tab => {
-            app.cycle_focus();
-            app.refresh_details();
-        }
-        KeyCode::BackTab => {
-            app.cycle_focus_reverse();
-            app.refresh_details();
-        }
-        KeyCode::Down if modifiers.contains(KeyModifiers::SHIFT) && app.focus == Focus::History => {
+        KeyCode::Down if modifiers.contains(KeyModifiers::SHIFT) => {
             app.next_commit();
             app.refresh_details();
         }
-        KeyCode::Up if modifiers.contains(KeyModifiers::SHIFT) && app.focus == Focus::History => {
+        KeyCode::Up if modifiers.contains(KeyModifiers::SHIFT) => {
             app.previous_commit();
             app.refresh_details();
         }
         // Alternative bindings for terminals that intercept Shift+Arrow (e.g. Zed).
-        KeyCode::Char('.') if app.focus == Focus::History => {
+        KeyCode::Char('.') => {
             app.next_commit();
             app.refresh_details();
         }
-        KeyCode::Char(',') if app.focus == Focus::History => {
+        KeyCode::Char(',') => {
             app.previous_commit();
             app.refresh_details();
-        }
-        KeyCode::Down => {
-            app.next();
-            if app.focus == Focus::Branches {
-                app.reload_history_from_branches();
-            } else {
-                app.reload_history_if_open(false);
-            }
-            app.refresh_details();
-        }
-        KeyCode::Up => {
-            app.previous();
-            if app.focus == Focus::Branches {
-                app.reload_history_from_branches();
-            } else {
-                app.reload_history_if_open(false);
-            }
-            app.refresh_details();
-        }
-        KeyCode::PageDown => {
-            app.next_page();
-            if app.focus == Focus::Branches {
-                app.reload_history_from_branches();
-            } else {
-                app.reload_history_if_open(false);
-            }
-            app.refresh_details();
-        }
-        KeyCode::PageUp => {
-            app.previous_page();
-            if app.focus == Focus::Branches {
-                app.reload_history_from_branches();
-            } else {
-                app.reload_history_if_open(false);
-            }
-            app.refresh_details();
-        }
-        KeyCode::Enter => {
-            if app.focus == Focus::Branches {
-                app.open_branch_action_menu();
-            } else if app.focus == Focus::History && app.show_history {
-                app.open_history_action_menu();
-            } else if app.focus == Focus::Log && app.show_log {
-                app.open_log_action_menu();
-            } else if app.focus == Focus::FileStatus && app.show_file_status {
-                app.open_file_action_menu();
-            } else if app.focus == Focus::Repos {
-                app.open_repo_action_menu();
-            }
-        }
-        // Collapse / expand repo sections (Repos pane focus).
-        KeyCode::Left if app.focus == Focus::Repos => app.collapse_current_section(),
-        KeyCode::Right if app.focus == Focus::Repos => app.expand_current_section(),
-        // Global keys that must work from any pane
-        KeyCode::Char('s') => app.toggle_file_status(),
-        KeyCode::Char('l') => app.toggle_log(),
-        KeyCode::Char('d') => app.toggle_details(),
-        KeyCode::Char('b') => {
-            if app.show_branches {
-                app.close_branches_pane();
-            } else {
-                app.open_branches_pane();
-            }
-        }
-        KeyCode::Char('r') => refresh_repos(app, op_tx),
-        KeyCode::Char('T') => app.next_theme(),
-        KeyCode::Char('A') => app.enter_pick_mode(),
-        KeyCode::Char('D') => app.request_remove_selected(),
-        KeyCode::Char('c') => {
-            if app.focus == Focus::Branches {
-                if let Some(b) = app.selected_branch_info().cloned() {
-                    if !b.is_current {
-                        let (name, is_remote) = if b.is_remote_only {
-                            (format!("origin/{}", b.name), true)
-                        } else {
-                            (b.name, false)
-                        };
-                        launch_op(app, op_tx, OpRequest::CheckoutBranch { name, is_remote });
-                    }
-                }
-            } else {
-                app.open_branch_select();
-            }
-        }
-        KeyCode::Char('f') => launch_op(app, op_tx, OpRequest::Fetch),
-        KeyCode::Char('p') => {
-            if let Some(op) = branch_pull_op(app) {
-                launch_op(app, op_tx, op);
-            } else {
-                launch_op(app, op_tx, OpRequest::Pull);
-            }
-        }
-        KeyCode::Char('P') => launch_op(app, op_tx, OpRequest::Push),
-        KeyCode::Char('?') => app.mode = AppMode::HelpOverlay,
-        KeyCode::Esc => {
-            if app.focus == Focus::Branches {
-                app.close_branches_pane();
-            }
         }
         _ => {}
     }

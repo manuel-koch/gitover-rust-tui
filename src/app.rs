@@ -196,11 +196,20 @@ pub enum VisibleRow {
     Repo(usize),
 }
 
+/// Internal marker key for menu items whose real trigger is an Alt+Shift
+/// modified key (e.g. Force Push, bound to alt-shift-p). Plain
+/// single-character items use their own char; these use a sentinel so they are
+/// never activated by an unmodified letter key.
+pub const ALT_SHIFT_MENU_KEY: char = '\u{E000}';
+
 /// One entry in the action menu.
 #[derive(Debug, Clone)]
 pub struct MenuItem {
     pub label: String,
     pub key: char,
+    /// Human-readable representation of the bound key, e.g. "p", "shift-p",
+    /// "alt-shift-p" or "alt-f".
+    pub shortcut: String,
     /// When true this item is a visual separator row and cannot be activated.
     pub is_separator: bool,
     /// Raw (un-interpolated) shell command + background flag for custom repo commands from config.
@@ -208,10 +217,35 @@ pub struct MenuItem {
 }
 
 impl MenuItem {
+    /// Human-readable shortcut for a plain single-character key. Uppercase
+    /// letters are triggered with Shift held and render as `shift-<char>`
+    /// (e.g. `P` → `shift-p`); everything else renders verbatim.
+    fn format_plain_shortcut(key: char) -> String {
+        if key.is_ascii_uppercase() {
+            format!("shift-{}", key.to_ascii_lowercase())
+        } else {
+            key.to_string()
+        }
+    }
+
     pub fn item(label: impl Into<String>, key: char) -> Self {
         Self {
             label: label.into(),
             key,
+            shortcut: Self::format_plain_shortcut(key),
+            is_separator: false,
+            repo_cmd: None,
+        }
+    }
+    /// Item triggered by an Alt+Shift modified key (e.g. the Force Push
+    /// alt-shift-p entry). `key` is the plain lowercase base letter; the
+    /// alt-shift modifier comes from the constructor name, mirroring
+    /// [`Self::item`], where uppercase signals Shift.
+    pub fn item_alt_shift(label: impl Into<String>, key: char) -> Self {
+        Self {
+            label: label.into(),
+            key: ALT_SHIFT_MENU_KEY,
+            shortcut: format!("alt-shift-{}", key.to_ascii_lowercase()),
             is_separator: false,
             repo_cmd: None,
         }
@@ -220,6 +254,7 @@ impl MenuItem {
         Self {
             label: String::new(),
             key: '\0',
+            shortcut: String::new(),
             is_separator: true,
             repo_cmd: None,
         }
@@ -233,6 +268,7 @@ impl MenuItem {
         Self {
             label: label.into(),
             key,
+            shortcut: Self::format_plain_shortcut(key),
             is_separator: false,
             repo_cmd: Some((cmd, background)),
         }
@@ -1007,7 +1043,7 @@ impl App {
             items.push(MenuItem::item("Fetch", 'f'));
             items.push(MenuItem::item("Pull Branch", 'p'));
             items.push(MenuItem::item("Push Branch", 'P'));
-            items.push(MenuItem::item("Force Push Branch", 'F'));
+            items.push(MenuItem::item_alt_shift("Force Push Branch", 'p'));
             items.push(MenuItem::item("Checkout Branch", 'c'));
             items.push(MenuItem::item("Create Branch", 'n'));
             items.push(MenuItem::item("Amend Commit", 'a'));
@@ -1677,7 +1713,7 @@ impl App {
             let can_push = branch.upstream.as_ref().is_none_or(|u| u.ahead > 0);
             if can_push {
                 items.push(MenuItem::item("Push Branch", 'P'));
-                items.push(MenuItem::item("Force Push Branch", 'F'));
+                items.push(MenuItem::item_alt_shift("Force Push Branch", 'p'));
             }
         }
         items.push(MenuItem::item("Create Branch", 'n'));
@@ -4773,6 +4809,40 @@ mod tests {
         assert!(
             app.state.sections[1].repos.contains(&"/repo-a".to_string()),
             "repo should be in Work section after move"
+        );
+    }
+
+    // ── MenuItem shortcuts ────────────────────────────────────────────────────
+
+    #[test]
+    fn menu_item_uppercase_key_uses_shift_notation() {
+        assert_eq!(MenuItem::item("Push Branch", 'P').shortcut, "shift-p");
+        assert_eq!(
+            MenuItem::item("Create Repo Section", 'N').shortcut,
+            "shift-n"
+        );
+        assert_eq!(
+            MenuItem::item("Move to Repo Section", 'M').shortcut,
+            "shift-m"
+        );
+        assert_eq!(
+            MenuItem::item("Remove Repo from App", 'D').shortcut,
+            "shift-d"
+        );
+    }
+
+    #[test]
+    fn menu_item_lowercase_key_uses_plain_notation() {
+        assert_eq!(MenuItem::item("Fetch", 'f').shortcut, "f");
+        assert_eq!(MenuItem::item("Pull Branch", 'p').shortcut, "p");
+        assert_eq!(MenuItem::item("Checkout Branch", 'c').shortcut, "c");
+    }
+
+    #[test]
+    fn menu_item_alt_shift_keeps_alt_shift_prefix() {
+        assert_eq!(
+            MenuItem::item_alt_shift("Force Push Branch", 'p').shortcut,
+            "alt-shift-p"
         );
     }
 }

@@ -75,10 +75,10 @@ in [`docs/config.schema.json`](./config.schema.json) and
   - **Move to Section** — presents all sections except the current one (default section
     listed first); not shown when only a default section exists; moved repo stays
     selected in the target section
-- When adding a repository with `A`, it is added to the currently selected section;
+- When adding a repository with `Shift-a`, it is added to the currently selected section;
   if no default-section repos exist, the picker shows a hint about how to move the
   repo to the default section afterwards
-- Add a repository with `A`; opens a directory-browser starting at the current
+- Add a repository with `Shift-a`; opens a directory-browser starting at the current
   working directory
   - `↑`/`↓` navigate the directory list
   - `→` / `Enter` navigates into the selected directory
@@ -90,7 +90,7 @@ in [`docs/config.schema.json`](./config.schema.json) and
     terminal is too narrow, always keeping the `Space` / `Esc` hints visible
   - Auto-discovers and adds git submodules when a repo is added
   - Newly added repo is immediately selected in the Repositories pane
-- Remove a repository from the app ( not from disk ! ) with `D`; shows a
+- Remove a repository from the app ( not from disk ! ) with `Shift-d`; shows a
   confirmation dialog before removing
 - Each section's repos are kept sorted by absolute path; case-insensitive by default,
   configurable via `general.case_sensitive_path_sorting`. Section names are always
@@ -166,19 +166,24 @@ lists all available actions with their shortcut key. Dismiss with `Esc`.
 |---------------|--------|
 | `f` | Fetch — runs `git fetch origin --prune`; triggers a status refresh on completion |
 | `p` | Pull — runs `git pull --prune`; auto-stashes dirty changes before pull, pops stash afterwards |
-| `P` | Push — pushes current branch; automatically sets upstream (`--set-upstream origin HEAD`) if not configured |
-| `F` | Force Push — pushes with `--force --set-upstream origin HEAD` (confirmation dialog shown first) |
+| `Shift-p` | Push — pushes current branch; automatically sets upstream (`--set-upstream origin HEAD`) if not configured |
+| `Alt-Shift-p` | Force Push — pushes with `--force --set-upstream origin HEAD` (confirmation dialog shown first) |
 | `c` | Checkout Branch — shows a list of local and remote branches; auto-stashes dirty changes before checkout, pops stash afterwards |
 | `n` | Create Branch — prompts for a branch name (input is sanitised), runs `git checkout -b <name>` |
 | `a` | Amend Commit — opens the amend dialog pre-filled with the HEAD message; available even when no file is staged |
 | `h` | Commit History — opens the history pane for the selected repo (full log) |
-| `u` / `U` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
-| `t` / `T` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
-| `D` | Remove Repo from App — removes the selected repo from the app (with confirmation) |
+| `u` / `Shift-u` | Commit History ahead of / behind upstream (only shown when upstream is configured) |
+| `t` / `Shift-t` | Commit History ahead of / behind trunk (only shown when trunk branch is resolvable) |
+| `Shift-d` | Remove Repo from App — removes the selected repo from the app (with confirmation) |
 
-Direct shortcuts `f`, `p`, `P`, `c` also work from the normal Repositories view without opening the menu.
-The `D` (remove repo) shortcut also works directly from the Repositories view without opening the menu.
-See [Keybindings → Repositories pane](./keybindings.md#repositories-pane) for the full set of direct shortcuts.
+The `f`, `p`, `Shift-p`, `c` keys work on the repo row selected in the
+Repositories pane without opening the menu, as does `Shift-d` for removing it.
+`Alt-Shift-p` also works directly on the repo row: it opens the force-push
+confirmation dialog without opening the menu.
+See [Keybindings → Repositories pane](./keybindings.md#repositories-pane) for the full set.
+
+> **macOS Terminal note:** the Terminal app sends `∏` (U+220F) instead of
+> `Alt-Shift-p` (and `ƒ` instead of `Alt-f`) — both spellings are accepted.
 
 ### Custom Repo Commands
 
@@ -237,7 +242,7 @@ Staged changes are unstaged first.
 
 When the selected file has a `.patch` extension, an additional action is available:
 
-**Apply patch** (`P`): applies the patch file via `git apply`. First attempts a
+**Apply patch** (`Shift-p`): applies the patch file via `git apply`. First attempts a
 plain apply; if that fails, retries with `--ignore-whitespace`. Applies with
 `--ignore-whitespace` to tolerate trailing-whitespace differences in context lines.
 
@@ -249,7 +254,7 @@ staged and open a multiline commit message popup:
 - Title shows `Commit (N staged)` or `Amend Commit (N staged + M from HEAD)`
   where N is the current staged-file count and M is the number of files changed
   in the HEAD commit
-- `Enter` submits the commit; `Shift-Enter` / `Alt-Enter` inserts a newline into the
+- `Enter` submits the commit; `Shift-enter` / `Alt-enter` inserts a newline into the
   message; `Esc` cancels
 - Arrow keys (`←` / `→`) move the cursor within the message; full in-line cursor
   navigation is supported
@@ -306,7 +311,7 @@ structured log to the specified file.
 
 ## Git History Pane
 
-- Toggle with `h`; also opened via action menu entries `h` / `u` / `U` / `t` / `T`
+- Toggle with `h`; also opened via action menu entries `h` / `u` / `Shift-u` / `t` / `Shift-t`
 - Title shows pane name, commit position indicator, and active filter.
   E.g. `Commit History [3/42]` or `Commit History [3/42] (ahead of origin/main)`
 - Displays commit history for the current branch, newest commit first, up to 200 commits
@@ -321,7 +326,7 @@ structured log to the specified file.
 - `↑`/`↓` and `PgUp`/`PgDn` scroll through commits and file rows
 - `Shift-↑` / `Shift-↓` (or `,` / `.`) jump directly to the previous/next commit
   header row, skipping file sub-rows; `,`/`.` are provided as alternatives for
-  terminals that intercept Shift+Arrow (e.g. Zed)
+  terminals that intercept Shift-arrow (e.g. Zed)
 - Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area;
   coloured with focused/unfocused border colour
 - History reloads automatically when the selected repo changes while the pane is open
@@ -332,7 +337,10 @@ structured log to the specified file.
 - Filtered views available from the action menu:
   - Ahead of upstream / trunk — commits in HEAD not yet in the remote ref
   - Behind upstream / trunk — commits in the remote ref not yet merged locally
-- `h` closes the pane; `Tab` cycles focus between panes without closing it
+- Each pane's keys act on that pane; `f` / `r` on a section-title row of the
+  Repositories pane stay section-aware (see [Keybindings](./keybindings.md))
+- `h` toggles the pane; `Tab` cycles focus between panes without closing it
+  (`h` and `Tab` are global shortcuts and work from any pane)
 - `Enter` on a commit header row opens the per-commit action menu.
   Only available when the full current-branch history is shown and the selected
   commit is HEAD.
@@ -386,7 +394,7 @@ Opened with `Enter` on the HEAD commit row. Dismiss with `Esc`.
 - `↑`/`↓` and `PgUp`/`PgDn` scroll the content when Details pane has focus;
   mouse wheel also scrolls
 - Scroll indicators (▲ / ▼) appear when content overflows above or below the visible area
-- `Tab` / `Shift-Tab` cycles focus to/from the Details pane like any other pane
+- `Tab` / `Shift-tab` cycles focus to/from the Details pane like any other pane
 
 ## Real-time Updates
 
@@ -447,7 +455,7 @@ open, `Esc` to dismiss) are described per pane in the sections below.
   width is derived from menu content (minimum 40 % of the terminal width,
   clamped at 80 % of the pane width), the popup is centered horizontally over the
   current pane
-- Multiple built-in themes selectable at runtime with `T`
+- Multiple built-in themes selectable at runtime with `Shift-t`
 
 ## Mouse Interaction
 
@@ -502,14 +510,14 @@ Opened with `Enter` on the highlighted branch row. Dismiss with `Esc`.
 |-------|-----------------------------------------------------------------------------------------------------------|
 | `c`   | Checkout — checks out this branch with auto-stash/pop (shown only when not the current branch)            |
 | `p`   | Pull Branch (fast-forward) — fast-forward pull from upstream (shown only when branch is behind upstream with no local commits ahead) |
-| `P`   | Push Branch — pushes this branch to origin with `--set-upstream`; shown for any local branch that has no upstream yet or is ahead of its upstream |
-| `F`   | Force Push Branch — force-pushes this branch to origin (confirmation dialog shown first); same visibility condition as Push Branch |
+| `Shift-p`   | Push Branch — pushes this branch to origin with `--set-upstream`; shown for any local branch that has no upstream yet or is ahead of its upstream |
+| `Alt-Shift-p`   | Force Push Branch — force-pushes this branch to origin (confirmation dialog shown first); same visibility condition as Push Branch |
 | `n`   | Create Branch — prompts for a name and runs `git checkout -b <name> <this-branch>`                        |
 | `h`   | Commit History — opens the History pane for this branch (full log)                                        |
 | `u`   | Commit History Ahead of upstream — commits in this branch not yet in its upstream                         |
-| `U`   | Commit History Behind upstream — commits in the upstream not yet merged into this branch                  |
+| `Shift-u`   | Commit History Behind upstream — commits in the upstream not yet merged into this branch                  |
 | `t`   | Commit History Ahead of trunk — commits in this branch not yet in the trunk branch                        |
-| `T`   | Commit History Behind trunk — commits in the trunk branch not yet merged into this branch                 |
+| `Shift-t`   | Commit History Behind trunk — commits in the trunk branch not yet merged into this branch                 |
 | `d`   | Delete Branch — removes the local branch with `git branch -D` after yes/no confirmation (not shown for the current branch, remote-only branches, or the trunk branch) |
 | `Esc` | Dismiss menu                                                                                              |
 
