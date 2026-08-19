@@ -2033,17 +2033,29 @@ impl App {
         self.save_pane_state();
     }
 
-    pub fn toggle_log(&mut self) {
-        self.show_log = !self.show_log;
-        if self.show_log {
-            // Re-enable follow and snap to tail (offset 0) when opened.
-            self.log_follow = true;
-            self.log_offset = 0;
-            self.focus = Focus::Log;
-        } else if self.focus == Focus::Log {
-            self.focus = Focus::Repos;
-        }
+    fn show_log_pane(&mut self) {
+        self.show_log = true;
+        self.log_follow = true;
+        self.log_offset = 0;
         self.save_pane_state();
+    }
+
+    pub fn toggle_log(&mut self) {
+        if self.show_log {
+            self.show_log = false;
+            if self.focus == Focus::Log {
+                self.focus = Focus::Repos;
+            }
+            self.save_pane_state();
+        } else {
+            self.show_log_pane();
+            self.focus = Focus::Log;
+        }
+    }
+
+    /// Open the log pane without stealing focus. Used by auto-open on operation failure.
+    pub fn open_log_without_focus(&mut self) {
+        self.show_log_pane();
     }
 
     /// Sync current pane visibility to persisted state and save.
@@ -3714,6 +3726,38 @@ mod tests {
         app.toggle_log();
         assert!(!app.show_log);
         assert_eq!(app.focus, Focus::Repos);
+    }
+
+    #[test]
+    fn toggle_log_open_still_grants_focus() {
+        let (mut app, _tmp) = make_app();
+        app.show_log = false;
+        app.toggle_log();
+        assert!(app.show_log);
+        assert_eq!(app.focus, Focus::Log);
+    }
+
+    #[test]
+    fn open_log_without_focus_keeps_repos_focus() {
+        let (mut app, _tmp) = make_app();
+        app.show_log = false;
+        app.focus = Focus::Repos;
+        app.open_log_without_focus();
+        assert!(app.show_log);
+        assert!(app.log_follow);
+        assert_eq!(app.log_offset, 0);
+        assert_eq!(app.focus, Focus::Repos);
+    }
+
+    #[test]
+    fn open_log_without_focus_keeps_history_focus() {
+        let (mut app, _tmp) = make_app();
+        app.show_log = false;
+        app.show_history = true;
+        app.focus = Focus::History;
+        app.open_log_without_focus();
+        assert!(app.show_log);
+        assert_eq!(app.focus, Focus::History);
     }
 
     // ── toggle_details ────────────────────────────────────────────────────────

@@ -1601,7 +1601,7 @@ fn handle_op_result(app: &mut App, result: OpResult) {
     }
     // Auto-show output log on failure so the user sees what went wrong.
     if !result.success && !app.show_log {
-        app.toggle_log();
+        app.open_log_without_focus();
     }
     // Refresh ops carry the new RepoStatus directly — apply it without a second git call.
     if let Some(fresh) = result.fresh_status {

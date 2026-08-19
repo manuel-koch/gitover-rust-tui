@@ -10,6 +10,13 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
       `draw()`), so resize is not affected. Fix: call `terminal.clear()` on wakeup
       detection, and add a `Ctrl-L` keybinding to force a full repaint at any time.
 
+- [x] Functionality automatically opens log-pane when e.g. an error happens
+      from a triggered repo pull action.
+      But that immediately gives focus to the log-pane.
+      Thus if user tries to pull one repo after another, the focus suddenly switches
+      to log-pane and no key-press "p" appearently triggers another pull action.
+      Only give focus to log-pane when it was explicitly opened by "h" keybinding.
+
 ## Git History
 
 - [x] Annotate commit title rows in history-pane with git-tag(s) that are
