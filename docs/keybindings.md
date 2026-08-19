@@ -19,6 +19,7 @@ These keys work regardless of which pane currently has focus.
 | `l` | Toggle Output Log pane |
 | `?` | Help popup, showing available keybindings |
 | `Ctrl-c` | Quit application |
+| `Ctrl-l` | Force full screen repaint (clears display artefacts) |
 
 ## Navigation
 

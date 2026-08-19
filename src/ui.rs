@@ -1935,6 +1935,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
             ("alt-f", "fetch all repositories"),
             ("shift-t", "cycle through themes"),
             ("?", "help popup"),
+            ("ctrl-l", "force full screen repaint"),
             ("ctrl-c", "quit app"),
         ],
     ));

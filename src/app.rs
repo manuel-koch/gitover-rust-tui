@@ -475,6 +475,11 @@ pub struct App {
     pub dragging_details_divider: bool,
     /// True when the mouse is hovering over the details vertical divider column.
     pub hover_details_divider: bool,
+
+    // ── Screen repaint ────────────────────────────────────────────────────────
+    /// When true the event loop must call `terminal.clear()` before the next draw
+    /// to eliminate any screen artefacts (set by wake-from-sleep detection or Ctrl-L).
+    pub force_full_repaint: bool,
 }
 
 /// Maximum number of log lines retained.
@@ -585,6 +590,7 @@ impl App {
             details_width_override: None,
             dragging_details_divider: false,
             hover_details_divider: false,
+            force_full_repaint: false,
             section_input: String::new(),
             section_input_is_create: true,
             section_input_target_idx: 0,
@@ -820,6 +826,20 @@ impl App {
     }
 
     /// Returns true if the automatic background fetch timer has fired.
+    /// Request a full screen repaint on the next event-loop iteration.
+    /// Called by wake-from-sleep detection and the Ctrl-L handler.
+    pub fn request_full_repaint(&mut self) {
+        self.force_full_repaint = true;
+    }
+
+    /// Return the current repaint request and reset it to false.
+    /// The event loop calls this before each `terminal.draw()`.
+    pub fn take_full_repaint_request(&mut self) -> bool {
+        let pending = self.force_full_repaint;
+        self.force_full_repaint = false;
+        pending
+    }
+
     pub fn is_auto_fetch_due(&self) -> bool {
         self.next_auto_fetch
             .map(|t| t <= Instant::now())
@@ -5023,5 +5043,20 @@ mod tests {
             MenuItem::item_alt_shift("Force Push Branch", 'p').shortcut,
             "alt-shift-p"
         );
+    }
+
+    #[test]
+    fn force_full_repaint_starts_false() {
+        let mut app = App::new();
+        assert!(!app.take_full_repaint_request());
+    }
+
+    #[test]
+    fn request_full_repaint_sets_flag() {
+        let mut app = App::new();
+        app.request_full_repaint();
+        assert!(app.take_full_repaint_request());
+        // Second call must return false — flag was consumed.
+        assert!(!app.take_full_repaint_request());
     }
 }

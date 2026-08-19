@@ -205,6 +205,9 @@ where
     let mut last_tick = Instant::now();
 
     loop {
+        if app.take_full_repaint_request() {
+            terminal.clear()?;
+        }
         terminal.draw(|f| ui::draw(f, app))?;
 
         // Drain watcher notifications
@@ -231,6 +234,7 @@ where
         // Detect wake-from-sleep
         if last_tick.elapsed() > WAKE_THRESHOLD {
             refresh_repos(app, op_tx);
+            app.request_full_repaint();
         }
 
         // Check if the automatic background fetch timer has fired.
@@ -320,6 +324,16 @@ where
                     }
                 } else {
                     handle_mouse_event(app, op_tx, mouse);
+                }
+            }
+
+            // Ctrl-L: force a full screen repaint in any mode.
+            if let Event::Key(key) = &ev {
+                if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('l') {
+                    app.request_full_repaint();
+                    app.set_header_flash("⟳ redraw");
+                    last_tick = Instant::now();
+                    continue;
                 }
             }
 

@@ -4,9 +4,11 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
 
 ## Bugs
 
-- [ ] After terminal resize or computer wakeup the TUI contains incomplete
-      renderings with artefacts of renderings in the old terminal size.
-      We need a way to re-render the whole TUI.
+- [x] After computer wakeup the TUI can contain rendering artefacts because
+      the alternate screen buffer may be corrupted while the machine is sleeping.
+      Ratatui 0.30 handles terminal resize automatically (via `autoresize()` inside
+      `draw()`), so resize is not affected. Fix: call `terminal.clear()` on wakeup
+      detection, and add a `Ctrl-L` keybinding to force a full repaint at any time.
 
 ## Git History
 
