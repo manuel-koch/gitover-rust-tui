@@ -14,6 +14,7 @@
 
 use anyhow::Result;
 use git2::{Repository, Status};
+use std::collections::HashMap;
 
 /// Number of hex characters shown for abbreviated commit hashes.
 const COMMIT_HASH_SHORT_LEN: usize = 8;
@@ -60,6 +61,15 @@ pub struct CommitFileDelta {
     pub path: String,
 }
 
+/// A git tag pointing at a commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagEntry {
+    /// Short tag name (e.g. `v1.0`).
+    pub name: String,
+    /// Annotation message for annotated tags; `None` for lightweight tags.
+    pub annotation: Option<String>,
+}
+
 /// One commit in the history pane.
 #[derive(Debug, Clone)]
 pub struct CommitEntry {
@@ -77,6 +87,8 @@ pub struct CommitEntry {
     pub body: String,
     /// Files changed in this commit.
     pub files: Vec<CommitFileDelta>,
+    /// Git tags pointing at this commit's OID (sorted alphabetically by name).
+    pub tags: Vec<TagEntry>,
 }
 
 /// Filter applied when loading commit history.
@@ -112,6 +124,41 @@ impl HistoryFilter {
     }
 }
 
+/// Build a map from commit OID to the list of tags pointing at that commit.
+/// Both lightweight and annotated tags are resolved via `.peel_to_commit()`.
+/// For annotated tags the annotation message (first line) is captured.
+/// Tag lists within each entry are sorted alphabetically by name.
+pub fn collect_commit_tags(repo: &git2::Repository) -> HashMap<git2::Oid, Vec<TagEntry>> {
+    let mut map: HashMap<git2::Oid, Vec<TagEntry>> = HashMap::new();
+    if let Ok(tag_names) = repo.tag_names(None) {
+        for name in tag_names.iter().flatten() {
+            let refname = format!("refs/tags/{}", name);
+            let reference = match repo.find_reference(&refname) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let commit_oid = match reference.peel_to_commit() {
+                Ok(c) => c.id(),
+                Err(_) => continue,
+            };
+            // An annotated tag's ref target is a tag object (not a commit OID directly).
+            // We detect this by checking whether the direct target resolves to a tag object.
+            let annotation = reference
+                .target()
+                .and_then(|oid| repo.find_tag(oid).ok())
+                .and_then(|tag| tag.message().map(|m| m.trim().to_string()));
+            map.entry(commit_oid).or_default().push(TagEntry {
+                name: name.to_string(),
+                annotation,
+            });
+        }
+    }
+    for entries in map.values_mut() {
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    map
+}
+
 /// Load the commit history for the repository at `path`.
 /// Returns up to `limit` commits, newest first, optionally filtered.
 /// Files within each commit entry are sorted by path; `case_sensitive_sort`
@@ -123,6 +170,7 @@ pub fn get_commit_history(
     case_sensitive_sort: bool,
 ) -> Result<Vec<CommitEntry>> {
     let repo = Repository::open(path)?;
+    let commit_tags = collect_commit_tags(&repo);
     let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TIME)?;
 
@@ -275,6 +323,7 @@ pub fn get_commit_history(
             summary,
             body,
             files,
+            tags: commit_tags.get(&oid).cloned().unwrap_or_default(),
         });
     }
     Ok(entries)

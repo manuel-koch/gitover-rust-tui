@@ -6,9 +6,10 @@
 /// The integration tests create a real temporary git repository via git2 and
 /// verify that `get_repo_status` returns sensible results for several scenarios.
 use gitover::git::{
-    get_branches_with_ahead_behind, get_commit_file_diff, get_commit_history, get_file_diff,
-    get_head_commit_file_count, get_head_commit_message, get_repo_status,
+    collect_commit_tags, get_branches_with_ahead_behind, get_commit_file_diff, get_commit_history,
+    get_file_diff, get_head_commit_file_count, get_head_commit_message, get_repo_status,
     get_untracked_file_content, DeltaKind, FileEntry, FileStatusKind, HistoryFilter, RepoStatus,
+    TagEntry,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -736,4 +737,135 @@ fn get_branches_with_ahead_behind_lists_all_local_branches() {
     let names: Vec<_> = branches.iter().map(|b| b.name.as_str()).collect();
     assert!(names.contains(&"main"), "should list main");
     assert!(names.contains(&"feature-y"), "should list feature-y");
+}
+
+// ── collect_commit_tags ───────────────────────────────────────────────────────
+
+/// Helper: create a repo with a single commit and return (path_string, commit_oid).
+fn make_repo_single_commit(dir: &PathBuf) -> (String, git2::Oid) {
+    let repo = git2::Repository::init(dir).expect("git init");
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("user.name", "Test User").unwrap();
+    cfg.set_str("user.email", "test@example.com").unwrap();
+    drop(cfg);
+
+    let file = dir.join("README.md");
+    fs::write(&file, "hello").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("README.md")).unwrap();
+    index.write().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let sig = repo.signature().unwrap();
+    let oid = {
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(
+            Some("refs/heads/main"),
+            &sig,
+            &sig,
+            "initial commit",
+            &tree,
+            &[],
+        )
+        .unwrap()
+    };
+    repo.set_head("refs/heads/main").unwrap();
+    (dir.to_string_lossy().to_string(), oid)
+}
+
+#[test]
+fn collect_commit_tags_empty_when_no_tags() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (path, _oid) = make_repo_single_commit(&tmp.path().to_path_buf());
+    let repo = git2::Repository::open(&path).unwrap();
+    let map = collect_commit_tags(&repo);
+    assert!(map.is_empty(), "no tags → empty map");
+}
+
+#[test]
+fn collect_commit_tags_lightweight_tag() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (path, oid) = make_repo_single_commit(&tmp.path().to_path_buf());
+    let repo = git2::Repository::open(&path).unwrap();
+    let commit = repo.find_commit(oid).unwrap();
+    repo.tag_lightweight("v1.0", commit.as_object(), false)
+        .unwrap();
+    drop(commit);
+    let map = collect_commit_tags(&repo);
+    assert_eq!(
+        map.get(&oid),
+        Some(&vec![TagEntry {
+            name: "v1.0".to_string(),
+            annotation: None,
+        }])
+    );
+}
+
+#[test]
+fn collect_commit_tags_annotated_tag_peels_to_commit() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (path, oid) = make_repo_single_commit(&tmp.path().to_path_buf());
+    let repo = git2::Repository::open(&path).unwrap();
+    let commit = repo.find_commit(oid).unwrap();
+    let sig = repo.signature().unwrap();
+    repo.tag("release-1", commit.as_object(), &sig, "Release 1", false)
+        .unwrap();
+    drop(commit);
+    let map = collect_commit_tags(&repo);
+    assert_eq!(
+        map.get(&oid),
+        Some(&vec![TagEntry {
+            name: "release-1".to_string(),
+            annotation: Some("Release 1".to_string()),
+        }])
+    );
+}
+
+#[test]
+fn collect_commit_tags_two_tags_on_same_commit_sorted_alphabetically() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (path, oid) = make_repo_single_commit(&tmp.path().to_path_buf());
+    let repo = git2::Repository::open(&path).unwrap();
+    let commit = repo.find_commit(oid).unwrap();
+    repo.tag_lightweight("z-last", commit.as_object(), false)
+        .unwrap();
+    repo.tag_lightweight("a-first", commit.as_object(), false)
+        .unwrap();
+    drop(commit);
+    let map = collect_commit_tags(&repo);
+    assert_eq!(
+        map.get(&oid),
+        Some(&vec![
+            TagEntry {
+                name: "a-first".to_string(),
+                annotation: None,
+            },
+            TagEntry {
+                name: "z-last".to_string(),
+                annotation: None,
+            }
+        ])
+    );
+}
+
+#[test]
+fn get_commit_history_populates_tags_field() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (path, oid) = make_repo_single_commit(&tmp.path().to_path_buf());
+    {
+        let repo = git2::Repository::open(&path).unwrap();
+        let commit = repo.find_commit(oid).unwrap();
+        repo.tag_lightweight("v0.1", commit.as_object(), false)
+            .unwrap();
+    } // repo dropped here
+
+    let entries =
+        get_commit_history(&path, &HistoryFilter::Full, 10, true).expect("get_commit_history");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].tags,
+        vec![TagEntry {
+            name: "v0.1".to_string(),
+            annotation: None,
+        }]
+    );
 }

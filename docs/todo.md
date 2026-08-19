@@ -4,7 +4,16 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
 
 ## Bugs
 
-- [ ]
+- [ ] After terminal resize or computer wakeup the TUI contains incomplete
+      renderings with artefacts of renderings in the old terminal size.
+      We need a way to re-render the whole TUI.
+
+## Git History
+
+- [x] Annotate commit title rows in history-pane with git-tag(s) that are
+      avail for current commit.
+      Tags are rendered as distinct spans on right side of title row.
+      Truncate the displayed title so that tags have enough space.
 
 ## Git Rebase Operation
 

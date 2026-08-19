@@ -323,6 +323,13 @@ structured log to the specified file.
   - A = added (blue), M = modified (green), D = deleted (red), R = renamed (yellow)
   - File sub-rows within each commit are sorted alphabetically by path; case-insensitive
     by default, configurable via `general.case_sensitive_path_sorting`
+- Commits that have one or more git tags display a **tag row** immediately after the commit
+  header row (before any file sub-rows):
+  - Format: `[ ◆tag1, ◆tag2, ... ]` ; truncated with `…` when the string
+    exceeds the available column width: `[ ◆v1.0, ◆rc… ]`
+  - Styled in magenta (`history_tag` theme token)
+  - Both lightweight and annotated tags are shown
+  - `Shift-↑` / `Shift-↓` navigation skips tag rows and lands only on commit header rows
 - `↑`/`↓` and `PgUp`/`PgDn` scroll through commits and file rows
 - `Shift-↑` / `Shift-↓` (or `,` / `.`) jump directly to the previous/next commit
   header row, skipping file sub-rows; `,`/`.` are provided as alternatives for
@@ -382,6 +389,10 @@ Opened with `Enter` on the HEAD commit row. Dismiss with `Esc`.
   - Change summary: `N-A N-M N-D N-R` with per-kind colours, matching the
     Repositories pane status format
   - Author name and email
+  - Tags block (magenta) — shown only when the commit has git tags; one line per tag:
+    - Lightweight tag: `[◆name]`
+    - Annotated tag: `[◆name]  annotation text` — annotation word-wrapped to pane width,
+      continuation lines indented past the label; absent for untagged commits
   - Full commit message (summary in bold, body below a blank line); both summary
     and body lines are word-wrapped to the pane width
   - Position indicator in the title (`[n/m]`) reflects the commit's position

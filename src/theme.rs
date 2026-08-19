@@ -71,6 +71,7 @@ pub struct Theme {
     pub history_timestamp: Color,
     pub history_author: Color,
     pub history_scroll_info: Color,
+    pub history_tag: Color,
 
     // ── Delta (file changes in history) ───────────────────────────────────────
     pub delta_added: Color,
@@ -161,6 +162,7 @@ pub const DEFAULT: Theme = Theme {
     history_timestamp: Color::DarkGray,
     history_author: Color::Cyan,
     history_scroll_info: Color::DarkGray,
+    history_tag: Color::Magenta,
 
     status_staged: Color::Blue,
     status_conflict: Color::Yellow,

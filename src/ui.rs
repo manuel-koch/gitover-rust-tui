@@ -1427,6 +1427,47 @@ fn draw_history_panel(frame: &mut Frame, area: Rect, app: &mut App) {
         }
         flat_idx += 1;
 
+        // Tag row — rendered immediately after the commit header when tags are present
+        if !commit.tags.is_empty() {
+            if flat_idx >= app.history_scroll {
+                let selected = flat_idx == app.history_selected;
+                let row_style = if selected {
+                    Style::default()
+                        .bg(t.selection_row_bg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                let full_tag_str = format!(
+                    "[ {} ]",
+                    commit
+                        .tags
+                        .iter()
+                        .map(|tag| format!("\u{25C6}{}", tag.name))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                let tag_str: String = if full_tag_str.chars().count() > rest_w && rest_w > 3 {
+                    // Truncate: keep as many chars as fit, then close with "… ]"
+                    let truncated: String = full_tag_str
+                        .chars()
+                        .take(rest_w.saturating_sub(3))
+                        .collect();
+                    format!("{}\u{2026} ]", truncated)
+                } else {
+                    full_tag_str.chars().take(rest_w).collect()
+                };
+                let tag_span = Span::styled(tag_str, Style::default().fg(t.history_tag));
+                let row = Row::new(vec![Cell::from(""), Cell::from(Line::from(vec![tag_span]))])
+                    .style(row_style);
+                rows.push(row);
+                if rows.len() >= visible {
+                    break 'outer;
+                }
+            }
+            flat_idx += 1;
+        }
+
         // File sub-rows — col 0 empty, col 1 starts at the timestamp position
         for file_delta in &commit.files {
             if flat_idx >= app.history_scroll {
@@ -1513,11 +1554,14 @@ fn draw_details_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                 DetailsSource::HistoryFile | DetailsSource::HistoryCommit => {
                     let name = app
                         .history_row_at(app.history_selected)
-                        .and_then(|(ci, fi)| {
-                            let fi = fi?;
-                            app.history.get(ci)?.files.get(fi).map(|f| {
-                                f.path.split('/').next_back().unwrap_or(&f.path).to_string()
-                            })
+                        .and_then(|(ci, kind)| {
+                            if let crate::app::HistoryRowKind::FileDelta(fi) = kind {
+                                app.history.get(ci)?.files.get(fi).map(|f| {
+                                    f.path.split('/').next_back().unwrap_or(&f.path).to_string()
+                                })
+                            } else {
+                                None
+                            }
                         })
                         .unwrap_or_default();
                     if name.is_empty() {
@@ -1571,7 +1615,8 @@ fn draw_details_panel(frame: &mut Frame, area: Rect, app: &mut App) {
 
         DetailsMode::Commit => {
             let (commit_idx, _) = match app.history_row_at(app.history_selected) {
-                Some((ci, None)) => (ci, ()),
+                Some((ci, crate::app::HistoryRowKind::CommitHeader))
+                | Some((ci, crate::app::HistoryRowKind::TagRow)) => (ci, ()),
                 _ => return,
             };
             let commit = match app.history.get(commit_idx) {
@@ -1633,8 +1678,44 @@ fn draw_details_panel(frame: &mut Frame, area: Rect, app: &mut App) {
                     format!("{} <{}>", commit.author, commit.author_email),
                     Style::default().fg(t.history_author),
                 )),
-                Line::raw(""),
             ];
+            // Tags block — one line per tag: "[◆name]  annotation (word-wrapped)"
+            for tag in &commit.tags {
+                let tag_label = format!("[\u{25C6}{}]", tag.name);
+                match &tag.annotation {
+                    None => {
+                        // Lightweight tag — just the label on one line.
+                        lines.push(Line::from(Span::styled(
+                            tag_label,
+                            Style::default().fg(t.history_tag),
+                        )));
+                    }
+                    Some(annotation) => {
+                        // Annotated tag — label + annotation text, word-wrapped.
+                        // First line: label followed by two spaces then the start of the
+                        // annotation.  Continuation lines are indented by the label width
+                        // so the annotation text aligns.
+                        let indent = " ".repeat(tag_label.chars().count() + 2);
+                        let combined = format!("{}  {}", tag_label, annotation);
+                        let mut first = true;
+                        for wrapped in word_wrap(&combined, width) {
+                            if first {
+                                lines.push(Line::from(Span::styled(
+                                    wrapped,
+                                    Style::default().fg(t.history_tag),
+                                )));
+                                first = false;
+                            } else {
+                                lines.push(Line::from(Span::styled(
+                                    format!("{}{}", indent, wrapped.trim_start()),
+                                    Style::default().fg(t.history_tag),
+                                )));
+                            }
+                        }
+                    }
+                }
+            }
+            lines.push(Line::raw(""));
 
             for wrapped in word_wrap(&commit.summary, width) {
                 lines.push(Line::from(Span::styled(

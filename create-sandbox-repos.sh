@@ -27,9 +27,19 @@ identity() {   # set a throwaway git identity inside repo $1
     git -C "$1" config user.name  "Sandbox"
 }
 
+# Monotonically-increasing commit counter — each call to commit() advances it
+# by one hour so that Sort::TIME always yields a deterministic newest-first order,
+# regardless of how fast the shell executes.
+_COMMIT_EPOCH=1700000000   # 2023-11-14 22:13:20 UTC — arbitrary fixed base
+
 commit() {     # git add -A + commit with message "$2" inside repo "$1"
+    _COMMIT_EPOCH=$(( _COMMIT_EPOCH + 3600 ))
+    local _DATE
+    _DATE=$(date -u -r "$_COMMIT_EPOCH" "+%Y-%m-%dT%H:%M:%S" 2>/dev/null \
+            || date -u -d "@$_COMMIT_EPOCH" "+%Y-%m-%dT%H:%M:%S")
     git -C "$1" add -A
-    git -C "$1" commit -m "$2" -q
+    GIT_COMMITTER_DATE="$_DATE" \
+    git -C "$1" commit -m "$2" --date="$_DATE" -q
 }
 
 # ── clean up previous run ─────────────────────────────────────────────────────
@@ -37,7 +47,7 @@ commit() {     # git add -A + commit with message "$2" inside repo "$1"
 for d in repo-01 repo-01.origin repo-02 repo-03 repo-03.origin \
          repo-04 repo-04.origin repo-05 repo-05.origin \
          repo-06 repo-07 repo-08 repo-08.origin \
-         repo-09 repo-09.origin _tmp; do
+         repo-09 repo-09.origin repo-10 _tmp; do
     rm -rf "$SANDBOX/$d"
 done
 
@@ -268,6 +278,22 @@ echo "wip change 2" > "$SANDBOX/repo-09/wip-2.md"
 commit                "$SANDBOX/repo-09" "wip: second change"
 # HEAD = feature/wip, upstream = none → push shown in repo menu + branch menu
 
+# ── repo-10: tagged commits (lightweight + annotated, one with multiple tags) ─
+echo "  repo-10 — tagged commits (v0.1 lightweight; v1.0 annotated; v1.0-lts + stable + latest on hotfix)"
+git init -q                 "$SANDBOX/repo-10"
+identity                    "$SANDBOX/repo-10"
+echo "init" >               "$SANDBOX/repo-10/README.md"
+commit                      "$SANDBOX/repo-10" "initial commit"
+git -C                      "$SANDBOX/repo-10" tag v0.1
+echo "feature A" >          "$SANDBOX/repo-10/feature-a.md"
+commit                      "$SANDBOX/repo-10" "feat: add feature A"
+git -C                      "$SANDBOX/repo-10" tag -a v1.0 -m "Release 1.0"
+echo "hotfix" >             "$SANDBOX/repo-10/hotfix.md"
+commit                      "$SANDBOX/repo-10" "fix: hotfix on main"
+git -C                      "$SANDBOX/repo-10" tag v1.0-lts
+git -C                      "$SANDBOX/repo-10" tag stable
+git -C                      "$SANDBOX/repo-10" tag latest
+
 echo ""
 echo "Done. Add these paths to gitover with the 'A' key:"
 echo ""
@@ -280,3 +306,4 @@ echo "  $SANDBOX/repo-06 : detached HEAD"
 echo "  $SANDBOX/repo-07 : merge conflict"
 echo "  $SANDBOX/repo-08 : merged-feature (✓, ahead=0 vs trunk) + active-feature (↑1 vs trunk)"
 echo "  $SANDBOX/repo-09 : feature/wip (current, never pushed) + draft-notes (non-current, never pushed)"
+echo "  $SANDBOX/repo-10 : v0.1 (lightweight) on first commit; v1.0 (annotated) on second; v1.0-lts + stable + latest on hotfix"

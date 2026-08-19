@@ -57,6 +57,7 @@ stays representative — see [project-layout](./project-layout.md) under
 | `repo-07` | Active merge conflict (C count in Status column) |
 | `repo-08` | Two branches: `merged-feature` (fully merged to trunk, shown with ✓) and `active-feature` (1 commit ahead of trunk) |
 | `repo-09` | Two local branches never pushed to origin: `feature/wip` (current, no upstream) and `draft-notes` (non-current, no upstream) |
+| `repo-10` | Tagged commits: lightweight tag `v0.1` on first commit; annotated tag `v1.0` on second commit; three tags (`v1.0-lts`, `stable`, `latest`) on the hotfix commit |
 
 Usage: `./create-sandbox-repos.sh [<base-dir>]`
 

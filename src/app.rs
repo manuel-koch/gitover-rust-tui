@@ -196,6 +196,17 @@ pub enum VisibleRow {
     Repo(usize),
 }
 
+/// Classification of a flat row in the history pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryRowKind {
+    /// The commit's header row (hash + timestamp + author + summary).
+    CommitHeader,
+    /// The optional tag row rendered immediately after the commit header.
+    TagRow,
+    /// A file-delta sub-row; the value is the file index within the commit.
+    FileDelta(usize),
+}
+
 /// Internal marker key for menu items whose real trigger is an Alt+Shift
 /// modified key (e.g. Force Push, bound to alt-shift-p). Plain
 /// single-character items use their own char; these use a sentinel so they are
@@ -1236,7 +1247,9 @@ impl App {
     /// - the selected row is a commit header row (not a file sub-row), and
     /// - that commit is HEAD (index 0 in the Full filter).
     pub fn open_history_action_menu(&mut self) {
-        let Some((commit_index, None)) = self.history_row_at(self.history_selected) else {
+        let Some((commit_index, HistoryRowKind::CommitHeader)) =
+            self.history_row_at(self.history_selected)
+        else {
             return;
         };
         if self.history_filter != HistoryFilter::Full || commit_index != 0 {
@@ -1774,22 +1787,31 @@ impl App {
     }
 
     /// Return the total number of visible rows in the history pane:
-    /// one row per commit + one row per file delta within each commit.
+    /// one header row per commit + one tag row if the commit has tags + one row per file delta.
     pub fn history_row_count(&self) -> usize {
-        self.history.iter().map(|c| 1 + c.files.len()).sum()
+        self.history
+            .iter()
+            .map(|c| 1 + if c.tags.is_empty() { 0 } else { 1 } + c.files.len())
+            .sum()
     }
 
-    /// Resolve a flat `row_index` into (commit_index, Option<file_index>).
+    /// Resolve a flat `row_index` into (commit_index, HistoryRowKind).
     /// Returns None if row_index is out of bounds.
-    pub fn history_row_at(&self, row_index: usize) -> Option<(usize, Option<usize>)> {
+    pub fn history_row_at(&self, row_index: usize) -> Option<(usize, HistoryRowKind)> {
         let mut remaining = row_index;
         for (ci, commit) in self.history.iter().enumerate() {
             if remaining == 0 {
-                return Some((ci, None));
+                return Some((ci, HistoryRowKind::CommitHeader));
             }
             remaining -= 1;
+            if !commit.tags.is_empty() {
+                if remaining == 0 {
+                    return Some((ci, HistoryRowKind::TagRow));
+                }
+                remaining -= 1;
+            }
             if remaining < commit.files.len() {
-                return Some((ci, Some(remaining)));
+                return Some((ci, HistoryRowKind::FileDelta(remaining)));
             }
             remaining -= commit.files.len();
         }
@@ -1798,7 +1820,10 @@ impl App {
 
     /// Jump to the flat row index of commit `ci` (its header row).
     fn history_commit_flat_row(&self, ci: usize) -> usize {
-        self.history[..ci].iter().map(|c| 1 + c.files.len()).sum()
+        self.history[..ci]
+            .iter()
+            .map(|c| 1 + if c.tags.is_empty() { 0 } else { 1 } + c.files.len())
+            .sum()
     }
 
     /// Move history selection to the next commit header row (Shift+Down).
@@ -1814,12 +1839,12 @@ impl App {
 
     /// Move history selection to the previous commit header row (Shift+Up).
     pub fn previous_commit(&mut self) {
-        let Some((ci, fi)) = self.history_row_at(self.history_selected) else {
+        let Some((ci, kind)) = self.history_row_at(self.history_selected) else {
             return;
         };
         // If already on a commit header, go to the one before it.
-        // If on a file sub-row, go to this commit's header.
-        let target_ci = if fi.is_none() {
+        // If on a tag row or file sub-row, go to this commit's header.
+        let target_ci = if kind == HistoryRowKind::CommitHeader {
             ci.saturating_sub(1)
         } else {
             ci
@@ -1886,13 +1911,13 @@ impl App {
                 self.details_scroll = 0;
             }
             Focus::History => match self.history_row_at(self.history_selected) {
-                Some((_, None)) => {
+                Some((_, HistoryRowKind::CommitHeader)) | Some((_, HistoryRowKind::TagRow)) => {
                     self.details_source = DetailsSource::HistoryCommit;
                     self.details_mode = DetailsMode::Commit;
                     self.details_content.clear();
                     self.details_scroll = 0;
                 }
-                Some((_, Some(_))) => {
+                Some((_, HistoryRowKind::FileDelta(_))) => {
                     self.details_source = DetailsSource::HistoryFile;
                     self.details_mode = DetailsMode::Diff;
                     self.details_content = self.load_history_diff();
@@ -1918,10 +1943,15 @@ impl App {
             DetailsMode::Diff => self.details_content.lines().count(),
             DetailsMode::Commit => {
                 // commit hash+timestamp, change indicator, author, blank, summary, blank, body lines
-                if let Some((ci, None)) = self.history_row_at(self.history_selected) {
-                    if let Some(commit) = self.history.get(ci) {
-                        return 4 + commit.body.lines().count().max(1);
-                    }
+                let commit_idx = match self.history_row_at(self.history_selected) {
+                    Some((ci, HistoryRowKind::CommitHeader))
+                    | Some((ci, HistoryRowKind::TagRow)) => ci,
+                    _ => return 0,
+                };
+                if let Some(commit) = self.history.get(commit_idx) {
+                    return 4
+                        + (!commit.tags.is_empty()) as usize
+                        + commit.body.lines().count().max(1);
                 }
                 0
             }
@@ -1948,7 +1978,7 @@ impl App {
 
     fn load_history_diff(&self) -> String {
         let (commit_idx, file_idx) = match self.history_row_at(self.history_selected) {
-            Some((ci, Some(fi))) => (ci, fi),
+            Some((ci, HistoryRowKind::FileDelta(fi))) => (ci, fi),
             _ => return String::new(),
         };
         let commit = match self.history.get(commit_idx) {
@@ -2517,7 +2547,20 @@ mod tests {
                     path: format!("file{i}.txt"),
                 })
                 .collect(),
+            tags: vec![],
         }
+    }
+
+    fn make_tagged_commit(file_count: usize, tags: Vec<&str>) -> CommitEntry {
+        let mut c = make_commit(file_count);
+        c.tags = tags
+            .into_iter()
+            .map(|name| crate::git::TagEntry {
+                name: name.to_string(),
+                annotation: None,
+            })
+            .collect();
+        c
     }
 
     fn init_temp_repo(dir: &PathBuf) {
@@ -2624,6 +2667,7 @@ mod tests {
             summary: "old commit".to_string(),
             body: String::new(),
             files: vec![],
+            tags: vec![],
         }];
         app.history_repo_path = "/fake/old-repo".to_string();
         app.history_selected = 2;
@@ -2899,8 +2943,14 @@ mod tests {
         let (mut app, _tmp) = make_app();
         // commit 0: 2 files → rows 0,1,2  |  commit 1: 1 file → rows 3,4
         app.history = vec![make_commit(2), make_commit(1)];
-        assert_eq!(app.history_row_at(0), Some((0, None)));
-        assert_eq!(app.history_row_at(3), Some((1, None)));
+        assert_eq!(
+            app.history_row_at(0),
+            Some((0, HistoryRowKind::CommitHeader))
+        );
+        assert_eq!(
+            app.history_row_at(3),
+            Some((1, HistoryRowKind::CommitHeader))
+        );
         assert!(app.history_row_at(5).is_none());
     }
 
@@ -2908,9 +2958,18 @@ mod tests {
     fn history_row_at_file_sub_rows() {
         let (mut app, _tmp) = make_app();
         app.history = vec![make_commit(2), make_commit(1)];
-        assert_eq!(app.history_row_at(1), Some((0, Some(0))));
-        assert_eq!(app.history_row_at(2), Some((0, Some(1))));
-        assert_eq!(app.history_row_at(4), Some((1, Some(0))));
+        assert_eq!(
+            app.history_row_at(1),
+            Some((0, HistoryRowKind::FileDelta(0)))
+        );
+        assert_eq!(
+            app.history_row_at(2),
+            Some((0, HistoryRowKind::FileDelta(1)))
+        );
+        assert_eq!(
+            app.history_row_at(4),
+            Some((1, HistoryRowKind::FileDelta(0)))
+        );
     }
 
     // ── next_commit / previous_commit ─────────────────────────────────────────
@@ -2960,6 +3019,126 @@ mod tests {
         app.history_selected = 0; // commit 0 header
         app.previous_commit();
         assert_eq!(app.history_selected, 0, "must not go before first commit");
+    }
+
+    // ── history_row_at with tag rows ──────────────────────────────────────────
+
+    #[test]
+    fn history_row_at_tag_row_present_after_commit_header() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: 1 tag, 1 file → rows: 0=header, 1=tag, 2=file
+        // commit 1: no tags, 0 files → row: 3=header
+        app.history = vec![make_tagged_commit(1, vec!["v1.0"]), make_commit(0)];
+        assert_eq!(
+            app.history_row_at(0),
+            Some((0, HistoryRowKind::CommitHeader))
+        );
+        assert_eq!(app.history_row_at(1), Some((0, HistoryRowKind::TagRow)));
+        assert_eq!(
+            app.history_row_at(2),
+            Some((0, HistoryRowKind::FileDelta(0)))
+        );
+        assert_eq!(
+            app.history_row_at(3),
+            Some((1, HistoryRowKind::CommitHeader))
+        );
+        assert!(app.history_row_at(4).is_none());
+    }
+
+    #[test]
+    fn history_row_at_no_tag_row_when_commit_has_no_tags() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: no tags, 1 file → rows: 0=header, 1=file
+        app.history = vec![make_commit(1)];
+        assert_eq!(
+            app.history_row_at(0),
+            Some((0, HistoryRowKind::CommitHeader))
+        );
+        assert_eq!(
+            app.history_row_at(1),
+            Some((0, HistoryRowKind::FileDelta(0)))
+        );
+        assert!(app.history_row_at(2).is_none());
+    }
+
+    #[test]
+    fn history_row_count_includes_tag_rows() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: 1 tag, 2 files → 4 rows  |  commit 1: no tags, 1 file → 2 rows
+        app.history = vec![make_tagged_commit(2, vec!["v1.0"]), make_commit(1)];
+        assert_eq!(app.history_row_count(), 6);
+    }
+
+    // ── next_commit / previous_commit skip tag rows ───────────────────────────
+
+    #[test]
+    fn next_commit_skips_tag_row_and_lands_on_next_header() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: 1 tag, 0 files → rows 0=header, 1=tag
+        // commit 1: no tags, 0 files → row 2=header
+        app.history = vec![make_tagged_commit(0, vec!["v1.0"]), make_commit(0)];
+        app.history_selected = 0; // header of commit 0
+        app.next_commit();
+        assert_eq!(app.history_selected, 2, "must land on commit 1 header");
+    }
+
+    #[test]
+    fn previous_commit_from_tag_row_goes_to_its_commit_header() {
+        let (mut app, _tmp) = make_app();
+        // commit 0: 1 tag, 0 files → rows 0=header, 1=tag
+        app.history = vec![make_tagged_commit(0, vec!["v1.0"]), make_commit(0)];
+        app.history_selected = 1; // tag row of commit 0
+        app.previous_commit();
+        assert_eq!(app.history_selected, 0, "must land on commit 0 header");
+    }
+
+    // ── tag string truncation ─────────────────────────────────────────────────
+
+    #[test]
+    fn tag_string_not_truncated_when_fits() {
+        // "[ ◆v1.0 ]" = 9 chars; rest_w = 15 → no truncation
+        let tags = vec!["v1.0".to_string()];
+        let full = format!(
+            "[ {} ]",
+            tags.iter()
+                .map(|t| format!("\u{25C6}{}", t))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let rest_w = 15usize;
+        let result: String = if full.chars().count() > rest_w && rest_w > 3 {
+            let truncated: String = full.chars().take(rest_w.saturating_sub(3)).collect();
+            format!("{}\u{2026} ]", truncated)
+        } else {
+            full.chars().take(rest_w).collect()
+        };
+        assert_eq!(result, "[ \u{25C6}v1.0 ]");
+    }
+
+    #[test]
+    fn tag_string_truncated_with_ellipsis_when_too_long() {
+        // rest_w = 8; "[ ◆very-long-tag ]" is longer → must truncate ending with "… ]"
+        let tags = vec!["very-long-tag".to_string()];
+        let full = format!(
+            "[ {} ]",
+            tags.iter()
+                .map(|t| format!("\u{25C6}{}", t))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let rest_w = 8usize;
+        let result: String = if full.chars().count() > rest_w && rest_w > 3 {
+            let truncated: String = full.chars().take(rest_w.saturating_sub(3)).collect();
+            format!("{}\u{2026} ]", truncated)
+        } else {
+            full.chars().take(rest_w).collect()
+        };
+        assert_eq!(
+            result.chars().count(),
+            rest_w,
+            "result must fit exactly in rest_w"
+        );
+        assert!(result.ends_with("\u{2026} ]"), "result must end with … ]");
     }
 
     // ── next / previous navigation (Repos focus) ──────────────────────────────
