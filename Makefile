@@ -35,6 +35,10 @@ build-debug:
 build-debug-and-run:
 	cargo run
 
+# Build debug binary and launch it with logging
+build-debug-and-run-with-logs:
+	cargo run -- --debug-log gitover_$(shell date +%s).log
+
 build-debug-and-run-with-sandbox-repos: build-debug
 	mkdir -p ~/tmp/gitover-sandbox
 	./create-sandbox-repos.sh ~/tmp/gitover-sandbox
