@@ -66,6 +66,11 @@ pub enum OpRequest {
         base: String,
     },
     DeleteBranch(String),
+    RenameBranch {
+        old_name: String,
+        new_name: String,
+        upstream_new_ref: Option<String>,
+    },
     /// Stage a file: `git add -- <path>` (path relative to repo root).
     StageFile(String),
     /// Unstage a file: `git reset -- <path>` (path relative to repo root).
@@ -137,6 +142,7 @@ impl OpRequest {
                 "create branch".into()
             }
             OpRequest::DeleteBranch(_) => "delete branch".into(),
+            OpRequest::RenameBranch { new_name, .. } => format!("rename branch to {new_name}"),
             OpRequest::StageFile(_) => "stage file".into(),
             OpRequest::UnstageFile(_) => "unstage file".into(),
             OpRequest::RevertFile { .. } => "revert file".into(),
@@ -311,6 +317,30 @@ fn run_op(repo_path: &str, request: &OpRequest, git_bin: &str) -> (bool, Vec<Str
 
         OpRequest::DeleteBranch(name) => {
             run_git(git_bin, repo_path, &["branch", "-D", name], &mut lines)
+        }
+
+        OpRequest::RenameBranch {
+            old_name,
+            new_name,
+            upstream_new_ref,
+        } => {
+            let ok = run_git(
+                git_bin,
+                repo_path,
+                &["branch", "-m", old_name, new_name],
+                &mut lines,
+            );
+            if ok {
+                if let Some(upstream_ref) = upstream_new_ref {
+                    run_git(
+                        git_bin,
+                        repo_path,
+                        &["branch", "--set-upstream-to", upstream_ref, new_name],
+                        &mut lines,
+                    );
+                }
+            }
+            ok
         }
 
         OpRequest::StageFile(path) => run_git(git_bin, repo_path, &["add", "--", path], &mut lines),
@@ -949,6 +979,79 @@ mod tests {
         assert!(repo
             .find_branch("to-delete", git2::BranchType::Local)
             .is_err());
+    }
+
+    #[test]
+    fn spawn_op_rename_branch_no_upstream() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        run_op_sync(&path, OpRequest::CreateBranch("feature-old".to_string()));
+        run_op_sync(
+            &path,
+            OpRequest::CheckoutBranch {
+                name: "main".to_string(),
+                is_remote: false,
+            },
+        );
+
+        let result = run_op_sync(
+            &path,
+            OpRequest::RenameBranch {
+                old_name: "feature-old".to_string(),
+                new_name: "feature-new".to_string(),
+                upstream_new_ref: None,
+            },
+        );
+        assert!(result.success, "RenameBranch must succeed");
+
+        let repo = git2::Repository::open(&path).unwrap();
+        assert!(
+            repo.find_branch("feature-old", git2::BranchType::Local)
+                .is_err(),
+            "old branch must be gone"
+        );
+        assert!(
+            repo.find_branch("feature-new", git2::BranchType::Local)
+                .is_ok(),
+            "new branch must exist"
+        );
+    }
+
+    #[test]
+    fn spawn_op_rename_branch_upstream_failure_is_nonfatal() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = make_committed_repo(&tmp);
+
+        run_op_sync(&path, OpRequest::CreateBranch("local-branch".to_string()));
+        run_op_sync(
+            &path,
+            OpRequest::CheckoutBranch {
+                name: "main".to_string(),
+                is_remote: false,
+            },
+        );
+
+        // Pass an upstream_new_ref that cannot be set (no remote configured) — op should still succeed.
+        let result = run_op_sync(
+            &path,
+            OpRequest::RenameBranch {
+                old_name: "local-branch".to_string(),
+                new_name: "renamed-branch".to_string(),
+                upstream_new_ref: Some("nonexistent-remote/renamed-branch".to_string()),
+            },
+        );
+        assert!(
+            result.success,
+            "RenameBranch must succeed even when upstream update fails"
+        );
+
+        let repo = git2::Repository::open(&path).unwrap();
+        assert!(
+            repo.find_branch("renamed-branch", git2::BranchType::Local)
+                .is_ok(),
+            "new branch must exist after non-fatal upstream failure"
+        );
     }
 
     #[test]

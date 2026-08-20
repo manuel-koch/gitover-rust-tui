@@ -364,6 +364,11 @@ where
                         handle_new_branch_key(app, op_tx, key.code, key.modifiers);
                     }
                 }
+                AppMode::RenameBranchInput => {
+                    if let Event::Key(key) = &ev {
+                        handle_rename_branch_key(app, op_tx, key.code);
+                    }
+                }
                 AppMode::CommitMessageInput => {
                     if let Event::Key(key) = &ev {
                         handle_commit_message_key(app, op_tx, *key);
@@ -2102,6 +2107,10 @@ fn dispatch_branch_menu_action(
             app.close_menu();
             app.open_new_branch_from_input(base);
         }
+        'r' => {
+            app.close_menu();
+            app.open_rename_branch_input();
+        }
         'd' => {
             app.open_confirm_delete_local_branch();
         }
@@ -2169,6 +2178,50 @@ fn handle_new_branch_key(
                 } else {
                     launch_op(app, op_tx, OpRequest::CreateBranchFrom { name, base });
                 }
+            }
+        }
+        KeyCode::Backspace => {
+            app.branch_input.pop();
+        }
+        KeyCode::Char(c) => app.branch_input.push(c),
+        _ => {}
+    }
+}
+
+fn handle_rename_branch_key(
+    app: &mut App,
+    op_tx: &std::sync::mpsc::Sender<OpResult>,
+    key: KeyCode,
+) {
+    match key {
+        KeyCode::Esc => {
+            app.branch_input.clear();
+            app.restore_base_mode();
+        }
+        KeyCode::Enter => {
+            let new_name = app.sanitised_branch_name();
+            let old_name = app.branch_to_rename.clone();
+            if !new_name.is_empty() && new_name != old_name {
+                let upstream_new_ref = app
+                    .branch_info_list
+                    .iter()
+                    .find(|b| b.name == old_name)
+                    .and_then(|b| b.upstream.as_ref())
+                    .map(|u| {
+                        let base = u.branch.rfind('/').map_or("", |i| &u.branch[..=i]);
+                        format!("{base}{new_name}")
+                    });
+                app.branch_input.clear();
+                app.restore_base_mode();
+                launch_op(
+                    app,
+                    op_tx,
+                    OpRequest::RenameBranch {
+                        old_name,
+                        new_name,
+                        upstream_new_ref,
+                    },
+                );
             }
         }
         KeyCode::Backspace => {

@@ -329,6 +329,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if app.mode == AppMode::NewBranchInput {
         draw_new_branch_input(frame, app);
     }
+    if app.mode == AppMode::RenameBranchInput {
+        draw_rename_branch_input(frame, app);
+    }
     if app.mode == AppMode::CommitMessageInput {
         draw_commit_message_input(frame, app);
     }
@@ -2655,6 +2658,47 @@ fn draw_new_branch_input(frame: &mut Frame, app: &App) {
             Span::raw(" cancel"),
         ])),
         chunks[hint_idx],
+    );
+}
+
+// ── Rename branch input popup ──────────────────────────────────────────────
+
+fn draw_rename_branch_input(frame: &mut Frame, app: &App) {
+    let t = app.theme();
+    let area = centered_rect(BRANCH_SELECT_WIDTH_PCT, 7, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Rename Branch ")
+        .border_style(Style::default().fg(t.popup_border));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // "Branch name:" label
+            Constraint::Length(1), // text input
+            Constraint::Min(0),    // spacer
+            Constraint::Length(1), // key hints
+        ])
+        .split(inner);
+
+    frame.render_widget(Paragraph::new("Branch name:"), chunks[0]);
+    let display = format!("{}▍", app.branch_input);
+    frame.render_widget(
+        Paragraph::new(Span::styled(display, Style::default().fg(t.input_text))),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Enter", Style::default().fg(t.popup_confirm)),
+            Span::raw(" confirm    "),
+            Span::styled("Esc", Style::default().fg(t.popup_cancel)),
+            Span::raw(" cancel"),
+        ])),
+        chunks[3],
     );
 }
 

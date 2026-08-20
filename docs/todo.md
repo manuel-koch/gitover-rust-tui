@@ -17,12 +17,10 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
       to log-pane and no key-press "p" appearently triggers another pull action.
       Only give focus to log-pane when it was explicitly opened by "h" keybinding.
 
-## Git History
+## Git Branches
 
-- [x] Annotate commit title rows in history-pane with git-tag(s) that are
-      avail for current commit.
-      Tags are rendered as distinct spans on right side of title row.
-      Truncate the displayed title so that tags have enough space.
+- [x] New action in branches-pane to rename selected (local) branch locally and
+      its upstream name. But only change the upstream name if there is one ( to be used on next push ), don't rename the remote branch.
 
 ## Git Rebase Operation
 

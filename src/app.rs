@@ -154,6 +154,8 @@ pub enum AppMode {
     BranchSelect,
     /// Text input for creating a new branch.
     NewBranchInput,
+    /// Text input for renaming a branch (pre-populated with current name).
+    RenameBranchInput,
     /// Text-area popup for composing a commit message (new commit or amend).
     CommitMessageInput,
     /// Confirmation dialog for force-push of HEAD.
@@ -375,6 +377,8 @@ pub struct App {
     pub branch_input_base: String,
     /// Branch name staged for deletion (shown in confirm dialog).
     pub branch_to_delete: String,
+    /// Branch name staged for rename (holds old name during rename-input flow).
+    pub branch_to_rename: String,
     /// Branch name staged for force-push from the Branches pane (shown in confirm dialog).
     pub branch_to_force_push: String,
     /// Commit message being composed in the CommitMessageInput popup.
@@ -554,6 +558,7 @@ impl App {
             branch_input: String::new(),
             branch_input_base: String::new(),
             branch_to_delete: String::new(),
+            branch_to_rename: String::new(),
             branch_to_force_push: String::new(),
             commit_textarea: TextArea::default(),
             commit_is_amend: false,
@@ -1750,6 +1755,9 @@ impl App {
             }
         }
         items.push(MenuItem::item("Create Branch", 'n'));
+        if !branch.is_remote_only && !branch.is_trunk {
+            items.push(MenuItem::item("Rename Branch", 'r'));
+        }
         items.push(MenuItem::item("Commit History", 'h'));
         if let Some(upstream) = &branch.upstream {
             if upstream.ahead > 0 {
@@ -1804,6 +1812,19 @@ impl App {
         self.branch_to_delete = branch.name.clone();
         self.restore_base_mode();
         self.mode = AppMode::ConfirmDeleteLocalBranch;
+    }
+
+    /// Open the rename-branch text-input popup pre-populated with the current branch name.
+    pub fn open_rename_branch_input(&mut self) {
+        let Some(branch) = self.branch_info_list.get(self.branches_pane_selected) else {
+            return;
+        };
+        if branch.is_remote_only || branch.is_trunk {
+            return;
+        }
+        self.branch_to_rename = branch.name.clone();
+        self.branch_input = branch.name.clone();
+        self.mode = AppMode::RenameBranchInput;
     }
 
     /// Return the total number of visible rows in the history pane:

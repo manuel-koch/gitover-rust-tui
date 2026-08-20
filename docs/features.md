@@ -524,6 +524,7 @@ Opened with `Enter` on the highlighted branch row. Dismiss with `Esc`.
 | `Shift-p`   | Push Branch — pushes this branch to origin with `--set-upstream`; shown for any local branch that has no upstream yet or is ahead of its upstream |
 | `Alt-Shift-p`   | Force Push Branch — force-pushes this branch to origin (confirmation dialog shown first); same visibility condition as Push Branch |
 | `n`   | Create Branch — prompts for a name and runs `git checkout -b <name> <this-branch>`                        |
+| `r`   | Rename Branch — prompts for a new name (pre-populated with the current name, same sanitisation as Create Branch); renames the local branch with `git branch -m`; if the branch has a configured upstream, also updates the remote-tracking ref with `git branch --set-upstream-to` preserving the remote name (not available for remote-only branches or the trunk branch) |
 | `h`   | Commit History — opens the History pane for this branch (full log)                                        |
 | `u`   | Commit History Ahead of upstream — commits in this branch not yet in its upstream                         |
 | `Shift-u`   | Commit History Behind upstream — commits in the upstream not yet merged into this branch                  |
