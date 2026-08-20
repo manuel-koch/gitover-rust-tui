@@ -2000,6 +2000,7 @@ fn draw_help_overlay(frame: &mut Frame, app: &mut App) {
     lines.extend(menu_actions(&[
         ("alt-shift-p", "force push branch"),
         ("n", "create branch"),
+        ("r", "rename branch"),
         ("h", "commit history"),
         ("u / shift-u", "history ahead / behind upstream"),
         ("t / shift-t", "history ahead / behind trunk"),
