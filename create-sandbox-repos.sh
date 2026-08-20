@@ -88,9 +88,14 @@ git init                   "$SANDBOX/repo-02" -b main -q
 identity                   "$SANDBOX/repo-02"
 echo "# Beta"            > "$SANDBOX/repo-02/README.md"
 echo "hello world"       > "$SANDBOX/repo-02/hello.txt"
-echo "to be deleted"     > "$SANDBOX/repo-02/remove-me.txt"
 echo "original content"  > "$SANDBOX/repo-02/config.txt"
+echo "server=localhost"  > "$SANDBOX/repo-02/server.cfg"
+echo "timeout=30"        > "$SANDBOX/repo-02/limits.cfg"
+echo "to be deleted 1"   > "$SANDBOX/repo-02/remove-me.txt"
+echo "to be deleted 2"   > "$SANDBOX/repo-02/old-data.txt"
+echo "to be deleted 3"   > "$SANDBOX/repo-02/deprecated.txt"
 printf "line one\nline two\nline three\nline four\nline six\nline seven\nline eight\nline nine\n" > "$SANDBOX/repo-02/notes.txt"
+printf "alpha\nbeta\ngamma\ndelta\n" > "$SANDBOX/repo-02/items.txt"
 printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde' \
     > "$SANDBOX/repo-02/image.png"                              # binary file (initial)
 commit                     "$SANDBOX/repo-02" "initial commit"
@@ -124,15 +129,22 @@ echo "hello from search"   >> "$SANDBOX/repo-02/hello.txt"
 commit                        "$SANDBOX/repo-02" "docs: document search module and update hello"
 git -C "$SANDBOX/repo-02" checkout main -q
 
-# produce each status kind
-echo "modified"            >> "$SANDBOX/repo-02/hello.txt"   # M – modified
-rm                            "$SANDBOX/repo-02/remove-me.txt" # D – deleted
-echo "staged change"       >> "$SANDBOX/repo-02/config.txt"
-git -C "$SANDBOX/repo-02"  add config.txt                      # S – staged
-echo "brand new file"      >  "$SANDBOX/repo-02/new-file.txt"  # U – untracked
+# produce each status kind — multiple files per kind
+echo "modified content"   >> "$SANDBOX/repo-02/hello.txt"       # M – modified
 printf "line one\nline three\nline four\nline nine\nline ten\n" > "$SANDBOX/repo-02/notes.txt"  # M – line removed
+echo "extra=true"         >> "$SANDBOX/repo-02/limits.cfg"      # M – modified
 printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02\x00\x00\x00\x02\x08\x02\x00\x00\x00\x90wS\xde' \
-    > "$SANDBOX/repo-02/image.png"                              # M – binary modified
+    > "$SANDBOX/repo-02/image.png"                               # M – binary modified
+rm                            "$SANDBOX/repo-02/remove-me.txt"  # D – deleted
+rm                            "$SANDBOX/repo-02/old-data.txt"   # D – deleted
+rm                            "$SANDBOX/repo-02/deprecated.txt" # D – deleted
+echo "staged change"       >> "$SANDBOX/repo-02/config.txt"
+git -C "$SANDBOX/repo-02"  add config.txt                        # S – staged
+echo "server=remote.host" >> "$SANDBOX/repo-02/server.cfg"
+git -C "$SANDBOX/repo-02"  add server.cfg                        # S – staged
+echo "alpha\nbeta\ngamma\ndelta\nepsilon\n" > "$SANDBOX/repo-02/items.txt"
+git -C "$SANDBOX/repo-02"  add items.txt                         # S – staged
+echo "brand new file"      >  "$SANDBOX/repo-02/new-file.txt"   # U – untracked
 
 # ── repo-03: 3 commits ahead of upstream ───────────────────────────────────
 # Shows:  ↑3 ↓0 in the upstream column; trunk column in sync
@@ -298,7 +310,7 @@ echo ""
 echo "Done. Add these paths to gitover with the 'A' key:"
 echo ""
 echo "  $SANDBOX/repo-01 : clean, in sync with upstream; remote branches feature/login + feature/dashboard not checked out"
-echo "  $SANDBOX/repo-02 : S+M+D+U in status column"
+echo "  $SANDBOX/repo-02 : multiple S+M+D files, plus U (untracked) in status column"
 echo "  $SANDBOX/repo-03 : ↑3 ↓0 (3 commits ahead of upstream)"
 echo "  $SANDBOX/repo-04 : ↑0 ↓2 (2 commits behind upstream)"
 echo "  $SANDBOX/repo-05 : feature branch, ↑2 ahead of trunk"

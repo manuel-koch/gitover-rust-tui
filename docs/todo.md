@@ -17,7 +17,7 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
       to log-pane and no key-press "p" appearently triggers another pull action.
       Only give focus to log-pane when it was explicitly opened by "h" keybinding.
 
-- [ ] A modified file in repo is selected in status pane, details pane shows the diff.
+- [x] A modified file in repo is selected in status pane, details pane shows the diff.
       Reverting the modified file via action menu removes the file
       from the list, but details pane keeps showing the former diff although
       another ( or no ) file is currently selected in status pane afterwards.

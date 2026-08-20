@@ -2900,6 +2900,43 @@ mod tests {
         assert!(app.reselect_file_path.is_none(), "field must be cleared");
     }
 
+    #[test]
+    fn refresh_details_clears_stale_diff_after_revert() {
+        // Simulates: file selected, Details pane showing its diff, then file
+        // is reverted (removed from list). After reselect + refresh_details the
+        // stale content must be gone.
+        let repo_path = "/fake/repo";
+        let mut app = app_with_repo(
+            repo_path,
+            vec![
+                make_file_entry("a.rs", crate::git::FileStatusKind::Modified),
+                make_file_entry("b.rs", crate::git::FileStatusKind::Modified),
+            ],
+        );
+        app.file_status_selected = 0;
+        app.show_details = true;
+        app.focus = Focus::FileStatus;
+        app.details_content = "STALE DIFF CONTENT".to_string();
+        app.details_mode = DetailsMode::Diff;
+        // Step 1 behaviour: reselect_file_path is set before dispatching the op.
+        app.reselect_file_path = Some("a.rs".to_string());
+
+        // Simulate post-revert refresh: "a.rs" is gone, only "b.rs" remains.
+        app.repos[0].files = vec![make_file_entry(
+            "b.rs",
+            crate::git::FileStatusKind::Modified,
+        )];
+
+        app.reselect_file_after_refresh(repo_path);
+        assert_eq!(app.file_status_selected, 0, "should clamp to 0");
+
+        app.refresh_details();
+        assert_ne!(
+            app.details_content, "STALE DIFF CONTENT",
+            "stale diff must be replaced after refresh_details"
+        );
+    }
+
     // ── sanitised_branch_name ─────────────────────────────────────────────────
 
     #[test]

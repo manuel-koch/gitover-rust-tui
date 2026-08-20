@@ -1618,6 +1618,7 @@ fn handle_op_result(app: &mut App, result: OpResult) {
         refresh_single_repo(app, &result.repo_path);
     }
     app.reselect_file_after_refresh(&result.repo_path);
+    app.refresh_details();
     app.reload_history_if_open(true);
     app.refresh_branches_for_repo(&result.repo_path.clone());
 }
@@ -1904,6 +1905,7 @@ fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpRe
         }
         'r' => {
             let is_conflict = file.status == git::FileStatusKind::Conflict;
+            app.reselect_file_path = Some(file.path.clone());
             app.close_menu();
             launch_op(
                 app,
@@ -1915,10 +1917,12 @@ fn dispatch_file_menu_action(app: &mut App, op_tx: &std::sync::mpsc::Sender<OpRe
             );
         }
         'd' => {
+            app.reselect_file_path = Some(file.path.clone());
             app.close_menu();
             launch_op(app, op_tx, OpRequest::DiscardFile(file.path));
         }
         'p' => {
+            app.reselect_file_path = Some(file.path.clone());
             app.close_menu();
             launch_op(
                 app,

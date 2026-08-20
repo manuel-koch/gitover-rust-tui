@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "gitover"
-version = "0.8.18"
+version = "0.8.19"
 dependencies = [
  "anyhow",
  "arboard",

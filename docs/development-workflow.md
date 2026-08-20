@@ -49,7 +49,7 @@ stays representative — see [project-layout](./project-layout.md) under
 | Repo | What it demonstrates |
 |------|----------------------|
 | `repo-01` | Clean repo, fully in sync with upstream (↑0 ↓0) |
-| `repo-02` | Staged + modified + deleted + untracked files (S/M/D/U counts); includes a binary file (modified) and a text file with a removed line |
+| `repo-02` | Staged + modified + deleted + untracked files (S/M/D/U counts); multiple files per kind; includes a binary file (modified) and a text file with a removed line |
 | `repo-03` | 3 commits ahead of upstream (↑3 ↓0) |
 | `repo-04` | 2 commits behind upstream (↑0 ↓2) |
 | `repo-05` | Feature branch, 2 commits ahead of trunk (↑2 ↓0 trunk) |
