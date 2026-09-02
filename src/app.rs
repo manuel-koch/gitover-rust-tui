@@ -2568,10 +2568,10 @@ impl App {
     }
 }
 
-/// Format the current local wall-clock time as `HH:MM:SS`.
+/// Format the current local wall-clock time as `HH:MM:SS.mmm`.
 fn current_hms() -> String {
     use chrono::Local;
-    Local::now().format("%H:%M:%S").to_string()
+    Local::now().format("%H:%M:%S%.3f").to_string()
 }
 
 #[cfg(test)]

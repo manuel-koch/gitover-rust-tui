@@ -271,7 +271,7 @@ message. The dialog title then renders `Amend Commit (0 staged + M from HEAD)`.
 
 - Toggle with `l`
 - Shows timestamped lines from git command output in local time;
-  each line displays `[HH:MM:SS LEVEL] message`
+  each line displays `[HH:MM:SS.mmm LEVEL] message`
 - Severity is colour-coded: `INFO` default, `WARN` yellow, `ERROR` red, `DEBUG` dim gray
 - Auto-follows new entries (scrolls to tail) when cursor is at the last visible line
 - When pane is not focused, always shows the tail (latest entries)
@@ -299,7 +299,7 @@ structured log to the specified file.
 - Every entry in the Output Log pane is mirrored to the debug log file
 - Internal debug events (raw key events, operation dispatch) that are not
   shown in the UI are also written
-- Each line uses the format: `[HH:MM:SS LEVEL PID0000] message`
+- Each line uses the format: `[HH:MM:SS.mmm LEVEL PID0000] message`
   - `LEVEL` is right-aligned in a 5-character field: `DEBUG`, `INFO`, `WARN`, `ERROR`
   - `PID` is the process identifier of the running app
 - Severity levels:
