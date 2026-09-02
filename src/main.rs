@@ -66,8 +66,35 @@ macro_rules! dlog {
     }};
 }
 
+/// Like [`dlog!`] but recorded at `Warn` level — used for perf hotspots
+/// (e.g. slow event-loop ticks) so they stand out when grepping the log.
+#[macro_export]
+macro_rules! dlog_warn {
+    ($($arg:tt)*) => {{
+        $crate::write_debug_log(&$crate::app::LogLine::new_at(
+            $crate::app::LogLevel::Warn,
+            format!($($arg)*),
+        ));
+    }};
+}
+
 /// Tick interval for the event loop (UI responsiveness).
 const TICK: Duration = Duration::from_millis(200);
+
+/// Threshold for "pre-input work" (draw + watcher-drain + ops-drain), i.e.
+/// time spent BEFORE the loop even checks for new input. This is pure work
+/// time — it never includes idle waiting — so any excess here directly
+/// delays key/mouse handling and is worth flagging even at a small value.
+const SLOW_PRE_POLL_WARN: Duration = Duration::from_millis(50);
+
+/// Threshold for a full event-loop iteration (pre-input work + the
+/// `event::poll(timeout)` wait + input dispatch). Unlike `SLOW_PRE_POLL_WARN`,
+/// this naturally sits close to `TICK` (200ms) on any idle iteration, since
+/// `event::poll` blocks up to `TICK` waiting for input. Set comfortably above
+/// `TICK` so only genuinely slow iterations (extra time beyond the normal
+/// idle wait — e.g. slow input dispatch, or pre-poll work pushing the total
+/// past the timeout) are logged, instead of every idle tick.
+const SLOW_TOTAL_TICK_WARN: Duration = Duration::from_millis(250);
 
 /// If a single tick takes longer than this wall-clock gap, the system likely
 /// woke from sleep. Trigger a full refresh to pick up changes that happened
@@ -205,31 +232,72 @@ where
     let mut last_tick = Instant::now();
 
     loop {
+        // Track where the time within this iteration goes so a slow tick can
+        // be attributed to a specific stage (draw / watcher-drain / ops-drain
+        // / input handling) instead of just "the UI froze".
+        let tick_start = Instant::now();
+
         if app.take_full_repaint_request() {
             terminal.clear()?;
         }
+        let draw_start = Instant::now();
         terminal.draw(|f| ui::draw(f, app))?;
+        let draw_elapsed = draw_start.elapsed();
 
-        // Drain watcher notifications
+        // Drain watcher notifications.
+        // NOTE: refresh_single_repo() runs git::get_repo_status() SYNCHRONOUSLY
+        // on this thread (unlike spawn_refresh(), which offloads to a worker
+        // thread). If the watcher emits dirty signals frequently (e.g. once
+        // per debounce window per repo across many repos), this loop can
+        // block the event loop — and therefore key/mouse handling below —
+        // for a noticeable amount of time. The per-repo timing below is
+        // meant to make that visible in the debug log.
+        let dirty_drain_start = Instant::now();
+        let mut dirty_drain_count: usize = 0;
         loop {
             match dirty_rx.try_recv() {
                 Ok(dirty_path) => {
+                    dirty_drain_count += 1;
+                    let refresh_start = Instant::now();
                     refresh_single_repo(app, &dirty_path);
+                    let refresh_elapsed = refresh_start.elapsed();
+
+                    let branches_start = Instant::now();
                     app.refresh_branches_for_repo(&dirty_path);
+                    let branches_elapsed = branches_start.elapsed();
+
+                    dlog!(
+                        "watcher-dirty: repo={} status_scan={:?} branches_scan={:?} (synchronous, blocks event loop)",
+                        dirty_path, refresh_elapsed, branches_elapsed
+                    );
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
             }
         }
+        let dirty_drain_elapsed = dirty_drain_start.elapsed();
+        if dirty_drain_count > 0 {
+            dlog!(
+                "watcher-dirty: drained {} repo(s) in {:?} total",
+                dirty_drain_count,
+                dirty_drain_elapsed
+            );
+        }
 
         // Drain completed git-operation results
+        let ops_drain_start = Instant::now();
+        let mut ops_drain_count: usize = 0;
         loop {
             match op_rx.try_recv() {
-                Ok(result) => handle_op_result(app, result),
+                Ok(result) => {
+                    ops_drain_count += 1;
+                    handle_op_result(app, result);
+                }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
             }
         }
+        let ops_drain_elapsed = ops_drain_start.elapsed();
 
         // Detect wake-from-sleep
         if last_tick.elapsed() > WAKE_THRESHOLD {
@@ -259,6 +327,24 @@ where
 
         app.spinner_tick = app.spinner_tick.wrapping_add(1);
 
+        // Time spent this tick BEFORE we even check for new input — this is
+        // the portion of a tick that delays key/mouse handling regardless of
+        // whether an event is pending. Large values here (driven mostly by
+        // dirty_drain_elapsed, since draw and ops-drain are normally cheap)
+        // are the direct cause of perceived input lag.
+        let pre_poll_elapsed = draw_elapsed + dirty_drain_elapsed + ops_drain_elapsed;
+        if pre_poll_elapsed > SLOW_PRE_POLL_WARN {
+            dlog_warn!(
+                "slow tick: pre-input work took {:?} (draw={:?} watcher_drain={:?} [{} repo(s)] ops_drain={:?} [{} result(s)]) — input handling was delayed by this long",
+                pre_poll_elapsed,
+                draw_elapsed,
+                dirty_drain_elapsed,
+                dirty_drain_count,
+                ops_drain_elapsed,
+                ops_drain_count
+            );
+        }
+
         let timeout = TICK
             .checked_sub(last_tick.elapsed())
             .unwrap_or(Duration::ZERO);
@@ -267,10 +353,11 @@ where
             let ev = event::read()?;
             if let Event::Key(key) = &ev {
                 dlog!(
-                    "key: code={:?} modifiers={:?} mode={:?}",
+                    "key: code={:?} modifiers={:?} mode={:?} pre_poll_stall={:?}",
                     key.code,
                     key.modifiers,
-                    app.mode
+                    app.mode,
+                    pre_poll_elapsed
                 );
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
                     app.should_quit = true;
@@ -465,6 +552,17 @@ where
                     }
                 }
             }
+        }
+
+        let tick_elapsed = tick_start.elapsed();
+        if tick_elapsed > SLOW_TOTAL_TICK_WARN {
+            dlog_warn!(
+                "slow tick: total={:?} draw={:?} watcher_drain={:?} ops_drain={:?}",
+                tick_elapsed,
+                draw_elapsed,
+                dirty_drain_elapsed,
+                ops_drain_elapsed
+            );
         }
 
         if app.should_quit {

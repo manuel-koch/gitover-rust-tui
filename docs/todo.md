@@ -4,7 +4,20 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
 
 ## Bugs
 
-- [ ] 
+- [ ] Key/mouse input lag in file-status pane during repo watching.
+      Root cause suspected: `refresh_single_repo()` and
+      `refresh_branches_for_repo()` run `git::get_repo_status()` /
+      `git::get_branches_with_ahead_behind()` **synchronously on the main
+      event-loop thread** each time `dirty_rx` yields a path in `run_app()`
+      (`src/main.rs`), unlike `spawn_refresh()` which offloads to a worker
+      thread. With many tracked repos the filesystem watcher
+      (`src/watcher.rs`) can emit dirty signals frequently, each blocking
+      the loop before it polls for the next key/mouse event. Debug-log
+      instrumentation was added (see
+      [Debug Logging](./features.md#debug-logging)) to confirm this via
+      `watcher-dirty: ... status_scan=...` and `slow tick: ...` log lines.
+      Fix candidate: move the per-repo dirty refresh onto the same
+      background-thread path as `spawn_refresh()`.
 
 ## Git Rebase Operation
 

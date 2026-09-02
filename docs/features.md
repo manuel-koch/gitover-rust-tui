@@ -299,6 +299,12 @@ structured log to the specified file.
 - Every entry in the Output Log pane is mirrored to the debug log file
 - Internal debug events (raw key events, operation dispatch) that are not
   shown in the UI are also written
+- Filesystem-watcher tracing: each relevant filesystem event that (re)starts
+  or extends a repo's debounce window is logged with its path and event kind;
+  when the debounce fires, the resulting dirty signal is logged together with
+  the number of coalesced events, the elapsed debounce window, and the
+  triggering cause. Fallback HEAD/index mtime-poll triggers are logged too.
+  Useful for diagnosing key/mouse input lag caused by frequent repo scans
 - Each line uses the format: `[HH:MM:SS.mmm LEVEL PID0000] message`
   - `LEVEL` is right-aligned in a 5-character field: `DEBUG`, `INFO`, `WARN`, `ERROR`
   - `PID` is the process identifier of the running app

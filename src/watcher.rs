@@ -90,9 +90,17 @@ fn watch_repo(root: String, tx: Sender<String>) {
         }
     }
 
+    crate::dlog!("watcher[{}]: started, git_dir={:?}", root, git_dir);
+
     let mut last_relevant: Option<Instant> = None;
     let mut head_mtime: Option<SystemTime> = None;
     let mut index_mtime: Option<SystemTime> = None;
+    // First relevant event seen in the current debounce window, and how many
+    // relevant events were coalesced into it — logged when the debounce
+    // fires so the eventual dirty signal can be traced back to a cause.
+    let mut debounce_window_start: Option<Instant> = None;
+    let mut debounce_window_cause: Option<String> = None;
+    let mut debounce_window_count: u32 = 0;
 
     loop {
         let timeout = last_relevant
@@ -103,6 +111,17 @@ fn watch_repo(root: String, tx: Sender<String>) {
             Ok(Ok(event)) => {
                 if is_relevant(&event, &root_path, &git_dir, &repo) {
                     last_relevant = Some(Instant::now());
+                    debounce_window_count += 1;
+                    if debounce_window_start.is_none() {
+                        debounce_window_start = Some(Instant::now());
+                        debounce_window_cause = Some(format!("{:?} {:?}", event.kind, event.paths));
+                    }
+                    crate::dlog!(
+                        "watcher[{}]: relevant fs event kind={:?} paths={:?}",
+                        root,
+                        event.kind,
+                        event.paths
+                    );
                 }
             }
             Ok(Err(e)) => {
@@ -111,23 +130,39 @@ fn watch_repo(root: String, tx: Sender<String>) {
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if let Some(t) = last_relevant {
                     if t.elapsed() >= DEBOUNCE {
+                        crate::dlog!(
+                            "watcher[{}]: debounce elapsed after {} coalesced event(s) over {:?}, first cause={}, sending dirty signal",
+                            root,
+                            debounce_window_count,
+                            debounce_window_start.map(|s| s.elapsed()).unwrap_or_default(),
+                            debounce_window_cause.as_deref().unwrap_or("unknown")
+                        );
                         // If the receiver is gone (app replaced dirty_rx) exit the thread.
                         if tx.send(root.clone()).is_err() {
                             return;
                         }
                         last_relevant = None;
+                        debounce_window_start = None;
+                        debounce_window_cause = None;
+                        debounce_window_count = 0;
                     }
                 } else {
                     // No filesystem events pending — poll HEAD and index as a
                     // fallback in case the fs watcher missed the change (macOS
                     // FSEvents coalescing, etc.).  Uses a simple mtime check:
                     // stat is orders of magnitude cheaper than a full git status.
-                    match poll_mtime(&git_dir.join("HEAD"), &mut head_mtime, &tx, &root) {
+                    match poll_mtime(&git_dir.join("HEAD"), &mut head_mtime, &tx, &root, "HEAD") {
                         MtimeResult::DeadChannel => return,
                         MtimeResult::Changed => continue,
                         MtimeResult::Unchanged => {}
                     }
-                    match poll_mtime(&git_dir.join("index"), &mut index_mtime, &tx, &root) {
+                    match poll_mtime(
+                        &git_dir.join("index"),
+                        &mut index_mtime,
+                        &tx,
+                        &root,
+                        "index",
+                    ) {
                         MtimeResult::DeadChannel => return,
                         MtimeResult::Changed => {}
                         MtimeResult::Unchanged => {}
@@ -162,6 +197,7 @@ fn poll_mtime(
     mtime: &mut Option<SystemTime>,
     tx: &Sender<String>,
     root: &str,
+    label: &str,
 ) -> MtimeResult {
     let Ok(meta) = std::fs::metadata(path) else {
         return MtimeResult::Unchanged;
@@ -181,6 +217,10 @@ fn poll_mtime(
 
     if changed {
         *mtime = Some(new_mtime);
+        crate::dlog!(
+            "watcher[{}]: fallback mtime poll detected change in {} (fs watcher likely missed the event), sending dirty signal",
+            root, label
+        );
         if tx.send(root.to_string()).is_err() {
             return MtimeResult::DeadChannel;
         }
