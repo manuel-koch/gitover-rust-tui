@@ -245,31 +245,19 @@ where
         let draw_elapsed = draw_start.elapsed();
 
         // Drain watcher notifications.
-        // NOTE: refresh_single_repo() runs git::get_repo_status() SYNCHRONOUSLY
-        // on this thread (unlike spawn_refresh(), which offloads to a worker
-        // thread). If the watcher emits dirty signals frequently (e.g. once
-        // per debounce window per repo across many repos), this loop can
-        // block the event loop — and therefore key/mouse handling below —
-        // for a noticeable amount of time. The per-repo timing below is
-        // meant to make that visible in the debug log.
+        // NOTE: dirty paths are refreshed via spawn_refresh(), which offloads
+        // git::get_repo_status() to a worker thread and reports back through
+        // op_tx/op_rx (see handle_op_result()), same as manual refreshes.
+        // This keeps the event loop free to keep handling key/mouse input
+        // even when the watcher emits dirty signals frequently (e.g. once
+        // per debounce window per repo across many repos).
         let dirty_drain_start = Instant::now();
         let mut dirty_drain_count: usize = 0;
         loop {
             match dirty_rx.try_recv() {
                 Ok(dirty_path) => {
                     dirty_drain_count += 1;
-                    let refresh_start = Instant::now();
-                    refresh_single_repo(app, &dirty_path);
-                    let refresh_elapsed = refresh_start.elapsed();
-
-                    let branches_start = Instant::now();
-                    app.refresh_branches_for_repo(&dirty_path);
-                    let branches_elapsed = branches_start.elapsed();
-
-                    dlog!(
-                        "watcher-dirty: repo={} status_scan={:?} branches_scan={:?} (synchronous, blocks event loop)",
-                        dirty_path, refresh_elapsed, branches_elapsed
-                    );
+                    spawn_refresh(app, op_tx, &dirty_path);
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,

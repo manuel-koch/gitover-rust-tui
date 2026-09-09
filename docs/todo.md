@@ -4,7 +4,7 @@ This is a living document, see [todo-workflow](./todo-workflow.md).
 
 ## Bugs
 
-- [ ] Key/mouse input lag in file-status pane during repo watching.
+- [x] Key/mouse input lag in file-status pane during repo watching.
       Root cause suspected: `refresh_single_repo()` and
       `refresh_branches_for_repo()` run `git::get_repo_status()` /
       `git::get_branches_with_ahead_behind()` **synchronously on the main
