@@ -421,8 +421,10 @@ Opened with `Enter` on the HEAD commit row. Dismiss with `Esc`.
   - Git-aware filter: watches relevant `.git/` files (HEAD, refs, index, COMMIT_EDITMSG,
     rebase state, etc.) while ignoring noisy internals (objects, pack files, etc.)
   - 500 ms debounce prevents spurious updates during rapid saves
-- Wake-from-sleep detection: if a tick gap exceeds 3 s the system likely woke from sleep;
-  a full refresh fires to catch missed events
+- Wake-from-sleep detection: if the wall clock advances more than 5 s further than the
+  monotonic clock during one event-loop poll wait, the system likely slept (the monotonic
+  clock does not count sleep on macOS); a full refresh fires to catch missed events
+  (slow work inside the loop advances both clocks equally and does not count as a wake)
 - Automatic background fetch of all tracked repos every 10 minutes;
   manual `Alt-f` resets the timer
 - No unconditional background polling — the file watcher handles real-time updates

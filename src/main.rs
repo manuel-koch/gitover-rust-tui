@@ -41,7 +41,7 @@ use std::{
         mpsc::{self, Receiver, TryRecvError},
         Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 pub(crate) static DEBUG_LOG: Mutex<Option<std::fs::File>> = Mutex::new(None);
@@ -96,10 +96,17 @@ const SLOW_PRE_POLL_WARN: Duration = Duration::from_millis(50);
 /// past the timeout) are logged, instead of every idle tick.
 const SLOW_TOTAL_TICK_WARN: Duration = Duration::from_millis(250);
 
-/// If a single tick takes longer than this wall-clock gap, the system likely
-/// woke from sleep. Trigger a full refresh to pick up changes that happened
-/// while sleeping.
-const WAKE_THRESHOLD: Duration = Duration::from_secs(3);
+/// Minimum extra wall-clock time (beyond monotonic time) over one poll wait
+/// that is taken to mean the system slept. Trigger a full refresh to pick up
+/// changes that happened while sleeping.
+const WAKE_THRESHOLD: Duration = Duration::from_secs(5);
+
+/// True if the wall clock advanced much more than the monotonic clock during one
+/// `event::poll` wait. The monotonic clock does not advance during system sleep
+/// on macOS, while the wall clock does. Busy work advances both equally.
+fn poll_indicates_wake(wall_waited: Duration, monotonic_waited: Duration) -> bool {
+    wall_waited.saturating_sub(monotonic_waited) > WAKE_THRESHOLD
+}
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -229,7 +236,7 @@ fn run_app<B: ratatui::backend::Backend>(
 where
     B::Error: Send + Sync + 'static,
 {
-    let mut last_tick = Instant::now();
+    let mut wake_detected = false;
 
     loop {
         // Track where the time within this iteration goes so a slow tick can
@@ -272,23 +279,31 @@ where
             );
         }
 
-        // Drain completed git-operation results
+        // Drain completed git-operation results. Per-result state is applied
+        // immediately; the selected-repo UI refresh runs once after the drain.
         let ops_drain_start = Instant::now();
         let mut ops_drain_count: usize = 0;
+        let mut changed_repo_paths: Vec<String> = Vec::new();
         loop {
             match op_rx.try_recv() {
                 Ok(result) => {
                     ops_drain_count += 1;
-                    handle_op_result(app, result);
+                    if let Some(repo_path) = handle_op_result(app, result) {
+                        changed_repo_paths.push(repo_path);
+                    }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
             }
         }
+        if !changed_repo_paths.is_empty() {
+            refresh_selected_repo_view(app, &changed_repo_paths);
+        }
         let ops_drain_elapsed = ops_drain_start.elapsed();
 
-        // Detect wake-from-sleep
-        if last_tick.elapsed() > WAKE_THRESHOLD {
+        // Detect wake-from-sleep (flagged by the poll wait below, so that slow
+        // work in this loop iteration is not mistaken for a suspended process)
+        if wake_detected {
             refresh_repos(app, op_tx);
             app.request_full_repaint();
         }
@@ -311,8 +326,7 @@ where
             app.check_popup_timeout();
         }
         app.tick_header_flash();
-        last_tick = Instant::now();
-
+        let last_tick = Instant::now();
         app.spinner_tick = app.spinner_tick.wrapping_add(1);
 
         // Time spent this tick BEFORE we even check for new input — this is
@@ -337,7 +351,12 @@ where
             .checked_sub(last_tick.elapsed())
             .unwrap_or(Duration::ZERO);
 
-        if event::poll(timeout)? {
+        let poll_start_monotonic = Instant::now();
+        let poll_start_wall = SystemTime::now();
+        let input_ready = event::poll(timeout)?;
+        let wall_waited = poll_start_wall.elapsed().unwrap_or(Duration::ZERO);
+        wake_detected = poll_indicates_wake(wall_waited, poll_start_monotonic.elapsed());
+        if input_ready {
             let ev = event::read()?;
             if let Event::Key(key) = &ev {
                 dlog!(
@@ -407,7 +426,6 @@ where
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('l') {
                     app.request_full_repaint();
                     app.set_header_flash("⟳ redraw");
-                    last_tick = Instant::now();
                     continue;
                 }
             }
@@ -1665,11 +1683,15 @@ fn launch_repo_cmd(
 }
 
 /// Handle a completed op result: log output, clear busy indicator, refresh.
-fn handle_op_result(app: &mut App, result: OpResult) {
+///
+/// Returns the repo path whose status changed, or `None` for app-wide results.
+/// The selected-repo UI refresh is left to `refresh_selected_repo_view()` so it
+/// runs once per drain instead of once per result.
+fn handle_op_result(app: &mut App, result: OpResult) -> Option<String> {
     // Handle release check result specially — it's app-wide, not per-repo.
     if result.op_variant == app::RepoOperation::Working && result.repo_path.is_empty() {
         handle_release_check_result(app, result);
-        return;
+        return None;
     }
 
     dlog!(
@@ -1704,9 +1726,34 @@ fn handle_op_result(app: &mut App, result: OpResult) {
         refresh_single_repo(app, &result.repo_path);
     }
     app.reselect_file_after_refresh(&result.repo_path);
+    Some(result.repo_path)
+}
+
+/// Refresh the views that depend on the selected repo, once per op drain.
+/// `changed_repo_paths` are the repos whose status was updated during the drain.
+fn refresh_selected_repo_view(app: &mut App, changed_repo_paths: &[String]) {
+    let selected_repo_path = app
+        .selected_repo_idx()
+        .and_then(|i| app.repos.get(i))
+        .map(|r| r.path.clone());
     app.refresh_details();
     app.reload_history_if_open(true);
-    app.refresh_branches_for_repo(&result.repo_path.clone());
+    if selected_branches_need_refresh(selected_repo_path.as_deref(), changed_repo_paths) {
+        if let Some(path) = selected_repo_path {
+            app.refresh_branches_for_repo(&path);
+        }
+    }
+}
+
+/// True if the selected repo's status changed during the drain, so its branch list is stale.
+fn selected_branches_need_refresh(
+    selected_repo_path: Option<&str>,
+    changed_repo_paths: &[String],
+) -> bool {
+    match selected_repo_path {
+        Some(selected) => changed_repo_paths.iter().any(|p| p == selected),
+        None => false,
+    }
 }
 
 fn handle_menu_key(
@@ -2680,6 +2727,43 @@ fn refresh_section_repos(
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn wall_clock_ahead_of_monotonic_is_detected_as_wake() {
+        let monotonic = Duration::from_millis(100);
+        assert!(poll_indicates_wake(
+            monotonic + WAKE_THRESHOLD + Duration::from_millis(1),
+            monotonic
+        ));
+    }
+
+    #[test]
+    fn busy_stall_advancing_both_clocks_is_not_a_wake() {
+        let long_stall = Duration::from_secs(30);
+        assert!(!poll_indicates_wake(long_stall, long_stall));
+    }
+
+    #[test]
+    fn small_wall_clock_drift_is_not_a_wake() {
+        let monotonic = Duration::from_millis(100);
+        assert!(!poll_indicates_wake(
+            monotonic + Duration::from_millis(500),
+            monotonic
+        ));
+        assert!(!poll_indicates_wake(
+            monotonic,
+            monotonic + Duration::from_secs(1)
+        ));
+    }
+
+    #[test]
+    fn branches_refresh_only_when_selected_repo_changed() {
+        let changed = vec!["/a".to_string(), "/b".to_string()];
+        assert!(selected_branches_need_refresh(Some("/b"), &changed));
+        assert!(!selected_branches_need_refresh(Some("/c"), &changed));
+        assert!(!selected_branches_need_refresh(None, &changed));
+        assert!(!selected_branches_need_refresh(Some("/a"), &[]));
+    }
 
     #[test]
     fn parse_path_flag_returns_value_after_flag() {
