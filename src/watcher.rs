@@ -231,9 +231,11 @@ fn poll_mtime(
 }
 
 /// Returns true if this filesystem event should trigger a git status refresh.
-//////
-/// For paths OUTSIDE .git:
+///
+/// For all paths (checked first, inside and outside .git):
 ///   - Skip noisy filenames: .DS_Store, __pycache__
+///
+/// For paths OUTSIDE .git:
 ///   - Skip directory-level events (only file changes matter)
 ///   - Skip git-ignored files
 ///
@@ -272,6 +274,12 @@ fn is_relevant_path(
     git_dir: &Path,
     repo: &Option<git2::Repository>,
 ) -> bool {
+    // Skip noisy OS/tool artifacts in both the worktree and .git/
+    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if matches!(filename, ".DS_Store" | "__pycache__") {
+        return false;
+    }
+
     let inside_git = path.starts_with(git_dir);
 
     if inside_git {
@@ -373,12 +381,6 @@ fn is_relevant_worktree_path(
 ) -> bool {
     // Ignore the repo root directory event itself
     if path == repo_root {
-        return false;
-    }
-
-    // Skip noisy OS/tool artifacts
-    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    if matches!(filename, ".DS_Store" | "__pycache__") {
         return false;
     }
 
@@ -530,21 +532,49 @@ mod tests {
     }
 
     #[test]
-    fn worktree_ds_store_is_skipped() {
+    fn worktree_ds_store_is_skipped_via_is_relevant_path() {
         let root = Path::new("/repo");
-        assert!(!is_relevant_worktree_path(
+        let git_dir = root.join(".git");
+        assert!(!is_relevant_path(
             &root.join(".DS_Store"),
             root,
+            &git_dir,
             &None
         ));
     }
 
     #[test]
-    fn worktree_pycache_is_skipped() {
+    fn worktree_pycache_is_skipped_via_is_relevant_path() {
         let root = Path::new("/repo");
-        assert!(!is_relevant_worktree_path(
+        let git_dir = root.join(".git");
+        assert!(!is_relevant_path(
             &root.join("__pycache__"),
             root,
+            &git_dir,
+            &None
+        ));
+    }
+
+    #[test]
+    fn git_dir_ds_store_is_skipped_via_is_relevant_path() {
+        let root = Path::new("/repo");
+        let git_dir = root.join(".git");
+        assert!(!is_relevant_path(
+            &git_dir.join(".DS_Store"),
+            root,
+            &git_dir,
+            &None
+        ));
+    }
+
+    #[test]
+    fn git_dir_head_is_relevant_via_is_relevant_path() {
+        let root = Path::new("/repo");
+        let git_dir = root.join(".git");
+        assert!(is_relevant_path(
+            &git_dir.join("HEAD"),
+            root,
+            &git_dir,
             &None
         ));
     }
